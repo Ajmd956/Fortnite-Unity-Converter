@@ -35,6 +35,16 @@ Not everything converts exactly. Some Unreal features have no Unity
 equivalent, so the app uses a stand-in and tells you when it does.
 
 
+## License
+
+Fortnite Unity Converter is distributed under the [GNU General Public License
+v3.0](LICENSE), the same license as FortnitePorting, which this project builds
+on.
+
+You are free to use, share and modify it, as long as any version you distribute
+stays under the same license and keeps its source available.
+
+
 ## Credits
 
 - @psdkyo - https://x.com/psdkyo
