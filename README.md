@@ -86,8 +86,8 @@ Materials that read colour or direction values from Unreal curve assets (curve a
 - The app is no longer labelled Beta. This is version v1.0.0, an early build.
 - Speed: the game file list is read in small pieces in the background, textures download and convert several at a time, and files are read without blocking the window, so the app opens faster and no longer freezes.
 - Speed: the app is packed without compression, so the exe opens faster. The exe file is bigger as a result.
-- Updates: the update window shows your version, the size and what changed, and downloads inside the app. It warns you first if a conversion is running. App Settings has a Check for Updates switch and a Check now button, and a failed check is retried a few minutes later.
-- Loading screens: the Home and News & Updates pictures are real Fortnite loading screens from your game files, picked at random, never repeated on screen at the same time, and changed every 10 seconds. HUD tips and plain map art are no longer used.
+- Updates: the update window is styled like Fortnite Porting's, shows your version, the size and what changed, and downloads inside the app. It warns you first if a conversion is running. App Settings has a Check for Updates switch and a Check now button, and a failed check is retried a few minutes later.
+- Loading screens: the Home and News & Updates pictures are real Fortnite loading screens from your game files, picked at random, never repeated on screen at the same time, and changed every 10 seconds. HUD tips and plain map art are no longer used. If no pictures load, the Console in App Settings says why.
 - News & Updates: the cards fill two full rows of three.
 
 

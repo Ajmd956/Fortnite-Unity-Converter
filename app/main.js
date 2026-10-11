@@ -1594,9 +1594,16 @@ ipcMain.handle('files:thumb', async (_e, p) => {
 // Home cards: the app no longer fetches pictures from another service, so the cards keep their plain look
 ipcMain.handle('news:images', async () => [])
 
+let screenNotes = 0
+function screenNote(msg) {
+  if (screenNotes >= 12) return
+  screenNotes++
+  send('engine:log', '[loading screens] ' + msg + '\n')
+}
+
 async function gameScreens() {
   if (!fileIndex && fs.existsSync(pathsFile)) await ensureIndex()
-  if (!fileIndex) return []
+  if (!fileIndex) { screenNote('the game file list is not built yet; open the Files tab once'); return [] }
   const items = []
   const loose = []
   for (const f of fileIndex) {
@@ -1604,10 +1611,18 @@ async function gameScreens() {
     const name = f.p.slice(f.p.lastIndexOf('/') + 1)
     if (/^LSID_/i.test(name)) { items.push(f.p); continue }
     if (!/\/loading[_ ]?screens?\//i.test(f.p)) continue
-    if (!/^T_LS[_-]/i.test(name) || /icon|thumb|small|mask|logo|_n\.|normal|button/i.test(name)) continue
+    if (!/^T_/i.test(name) || /icon|thumb|small|mask|logo|_n\.|normal|button|tip|hud|tutorial|map|poi|lobby/i.test(name)) continue
     loose.push(f.p)
   }
-  return items.length ? items : loose
+  screenNote(items.length + ' loading screen items and ' + loose.length + ' loose pictures found')
+  const mix = a => {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+  return mix(items).slice(0, 500).concat(mix(loose).slice(0, 200))
 }
 
 const lsidTextures = new Map()
@@ -1618,8 +1633,14 @@ async function quietExport(kind, p) {
 }
 
 function texturePathFromRef(v) {
-  let s = v && typeof v === 'object' ? (v.ObjectPath || (v.AssetPathName && (v.AssetPathName.Text || v.AssetPathName)) || '') : v
+  let s = v
+  if (v && typeof v === 'object') {
+    const n = v.AssetPathName
+    s = v.ObjectPath || (n && typeof n === 'object' ? n.Text || n.Name || '' : n) || v.ObjectName || ''
+  }
   s = String(s || '').replace(/\\/g, '/').trim()
+  const q = s.match(/'([^']+)'/)
+  if (q && !s.includes('/')) s = q[1]
   if (!s || s === 'None') return ''
   const dot = s.lastIndexOf('.')
   if (dot > s.lastIndexOf('/')) s = s.slice(0, dot)
@@ -1630,31 +1651,43 @@ function texturePathFromRef(v) {
   return m ? '/FortniteGame/Plugins/GameFeatures/' + m[1] + '/Content/' + m[2] : ''
 }
 
+function findTextureRef(props) {
+  if (!props || typeof props !== 'object') return ''
+  const direct = props.BackgroundImage
+  if (direct) { const t = texturePathFromRef(direct); if (t) return t }
+  let best = ''
+  for (const k of Object.keys(props)) {
+    if (!/background|loading|image|texture/i.test(k) || /preview|icon|small|thumb|mask/i.test(k)) continue
+    const v = props[k]
+    if (!v || typeof v !== 'object') continue
+    const t = texturePathFromRef(v)
+    if (t && /\/T_[^/]+$/i.test(t)) { best = t; break }
+  }
+  return best
+}
+
 async function loadingScreenTexture(p) {
   if (lsidTextures.has(p)) return lsidTextures.get(p)
   let tex = ''
+  let why = ''
   try {
     const r = await quietExport('json', p)
-    if (r.ok) {
+    if (!r.ok) why = 'could not read it (' + r.error + ')'
+    else {
       const data = JSON.parse(await fs.promises.readFile(r.file, 'utf8'))
       for (const e of Array.isArray(data) ? data : [data]) {
-        const ref = e && e.Properties && e.Properties.BackgroundImage
-        if (ref) { tex = texturePathFromRef(ref); if (tex) break }
+        tex = findTextureRef(e && e.Properties)
+        if (tex) break
       }
+      if (!tex) why = 'no picture reference found; its properties are: ' + Object.keys(((Array.isArray(data) ? data : [data]).find(e => e && e.Properties) || { Properties: {} }).Properties).slice(0, 12).join(', ')
     }
-  } catch (e) {}
+  } catch (e) { why = String(e && e.message || e) }
+  if (!tex) screenNote(p.slice(p.lastIndexOf('/') + 1) + ': ' + why)
   lsidTextures.set(p, tex)
   return tex
 }
 
-ipcMain.handle('home:screens', async () => {
-  const pool = await gameScreens()
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]]
-  }
-  return pool.slice(0, 600)
-})
+ipcMain.handle('home:screens', () => gameScreens())
 ipcMain.handle('home:fetchimg', async (_e, u) => {
   if (typeof u !== 'string' || !/^https:\/\//.test(u)) return null
   try {
@@ -1687,7 +1720,7 @@ ipcMain.handle('home:screenimg', async (_e, p) => {
       if (!pp) return null
     }
     const r = await previewExport('banner', pp)
-    if (!r.ok) return null
+    if (!r.ok) { screenNote(pp.slice(pp.lastIndexOf('/') + 1) + ': picture export failed (' + r.error + ')'); return null }
     return 'data:image/png;base64,' + (await fs.promises.readFile(r.file)).toString('base64')
   } catch (e) { return null }
 })
