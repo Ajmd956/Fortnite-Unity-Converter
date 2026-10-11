@@ -476,6 +476,10 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .upd-meta{font-size:12px;color:var(--muted);margin:-10px 0 12px;}
 .upd-notes{max-height:140px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.5;color:var(--muted);background:var(--sel);border-radius:8px;padding:10px 12px;margin:0 0 16px;}
 #updatedOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
+#instOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
+#instOverlay .btn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
+#instOverlay .btn:hover{background:#2a2733;}
+#instOverlay .btn:active{background:#1a1822;}
 #updDoneNotesBtn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
 #updDoneNotesBtn:hover{background:#2a2733;}
 #updDoneNotesBtn:active{background:#1a1822;}
@@ -807,6 +811,16 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
   </div>
 </div>
 
+<div class="overlay" id="instOverlay">
+  <div class="panel upd-panel">
+    <h2 id="instTitle">Preview</h2>
+    <div class="upd-sub">What asset type would you like to preview?</div>
+    <div class="upd-btns">
+      <button class="btn" id="instTree">Material Node Tree</button>
+      <button class="btn" id="instProps">Material Properties</button>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="updatedOverlay">
   <div class="panel upd-panel">
     <h2>Updated successfully</h2>
@@ -3183,10 +3197,35 @@ async function openPreview(paths, kind) {
     setStatus('Select a file first')
     return
   }
+  if (!kind && paths.length === 1) {
+    const it = fileItems.get('f|' + paths[0])
+    if (it && (it.type === 'MaterialInstance' || /^MaterialInstance/.test(it.cls || ''))) {
+      askInstance(paths[0], it.name)
+      return
+    }
+  }
   const r = await window.api.preview({ paths, kind })
   if (!r || !r.ok) setStatus('Could not open the preview')
   else setStatus(r.total > r.opened ? 'Opened ' + r.opened + ' of ' + r.total + ' previews' : 'Opening preview...')
 }
+let instPath = ''
+function closeInst() { $('instOverlay').classList.remove('open') }
+function askInstance(path, name) {
+  instPath = path
+  $('instTitle').textContent = 'Preview ' + name
+  $('instOverlay').classList.add('open')
+}
+$('instProps').onclick = () => { const p = instPath; closeInst(); openPreview([p], 'json') }
+$('instTree').onclick = async () => {
+  const p = instPath
+  closeInst()
+  setStatus('Finding the parent material...')
+  let r = null
+  try { r = await window.api.previewMaterialTree(p) } catch (e) {}
+  setStatus(r && r.ok ? 'Opening material node tree...' : (r && r.error) || 'Could not open the node tree')
+}
+$('instOverlay').addEventListener('mousedown', e => { if (e.target === $('instOverlay')) closeInst() })
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('instOverlay').classList.contains('open')) closeInst() })
 $('filePreview').onclick = () => openPreview(selectedFilePaths())
 $('fileProps').onclick = () => openPreview(selectedFilePaths(), 'json')
 $('fileMenuPrev').onclick = () => { const it = fileCtx; hideFileMenu(); if (it && it.kind === 'file') openPreview([it.path]) }

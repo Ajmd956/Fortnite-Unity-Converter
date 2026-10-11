@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('api', {
   homeScreenImg: p => ipcRenderer.invoke('home:screenimg', p),
   filesThumb: p => ipcRenderer.invoke('files:thumb', p),
   preview: payload => ipcRenderer.invoke('preview:open', payload),
+  previewMaterialTree: path => ipcRenderer.invoke('preview:material-tree', path),
   previewCacheSize: () => ipcRenderer.invoke('preview:cacheSize'),
   previewClearCache: () => ipcRenderer.invoke('preview:clearCache'),
   onFilesStatus: cb => listen('files:status', cb),

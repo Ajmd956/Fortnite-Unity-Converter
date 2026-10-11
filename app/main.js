@@ -516,6 +516,11 @@ function runEngine(args) {
     if (settings.unity) env.UNITY_EDITOR = settings.unity
     let output = ''
     let child
+    if (app.isPackaged && !fs.existsSync(cmd)) {
+      send('engine:log', 'The conversion engine (FortniteUnityPorter.exe) is missing from the app. Windows Security may have removed it. Open Windows Security, Virus & threat protection, Protection history, restore FortniteUnityPorter.exe, add an exclusion for this app, then start it again.\n')
+      resolve({ code: -1, output })
+      return
+    }
     try {
       child = spawn(cmd, pre.concat(args), { env, windowsHide: true })
     } catch (e) {
@@ -1950,6 +1955,34 @@ ipcMain.handle('preview:open', async (_e, payload) => {
     else openPreviewWindow(p, kind)
   }
   return { ok: true, opened: Math.min(paths.length, PREVIEW_MAX), total: paths.length }
+})
+
+async function baseMaterialOf(p) {
+  let cur = p
+  const seen = new Set()
+  for (let depth = 0; depth < 16 && cur && !seen.has(cur); depth++) {
+    seen.add(cur)
+    const text = await jsonOf(cur)
+    if (!text) return ''
+    let list
+    try { list = JSON.parse(text) } catch (e) { return '' }
+    const ex = mainExport(list, cur)
+    if (!ex) return ''
+    if (ex.Type === 'Material') return cur
+    cur = objectPathOf((ex.Properties || {}).Parent)
+  }
+  return ''
+}
+
+ipcMain.handle('preview:material-tree', async (_e, raw) => {
+  const p = packagePath(String(raw || ''))
+  if (!p) return { ok: false, error: 'No file selected' }
+  const up = await startTypeServer()
+  if (!up) return { ok: false, error: 'The built-in API is not running, so the game files cannot be read' }
+  const base = await baseMaterialOf(p)
+  if (!base) return { ok: false, error: 'Could not find the parent material of this instance' }
+  openMulti('material', base, { name: base.slice(base.lastIndexOf('/') + 1).split('.')[0] })
+  return { ok: true, base }
 })
 
 // The material viewer's texture nodes ask for a small picture of their texture
