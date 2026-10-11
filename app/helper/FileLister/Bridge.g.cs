@@ -63,6 +63,13 @@ public sealed class Bridge : IDisposable
 
     async Task Handle(HttpListenerContext ctx)
     {
+        // Only programs on this computer talk to the API. A web page open in a browser always sends an Origin header, so those are refused.
+        if (!string.IsNullOrEmpty(ctx.Request.Headers["Origin"]))
+        {
+            ctx.Response.StatusCode = 403;
+            ctx.Response.Close();
+            return;
+        }
         var q = ctx.Request.QueryString;
         var route = ctx.Request.Url?.AbsolutePath.Trim('/') ?? "";
         var path = q["path"];

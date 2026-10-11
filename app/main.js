@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage, session } = require('electron')
 const meshThumb = require('./meshthumb')
 const crypto = require('crypto')
 const path = require('path')
@@ -605,6 +605,9 @@ function createWindow() {
       spellcheck: false
     }
   })
+  // The window only ever shows the app's own page: no pop-ups, and no navigating away from it (a dropped file would otherwise open in it)
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', e => e.preventDefault())
   win.once('ready-to-show', () => {
     win.show()
     loadTypeCache().then(() => { if (fs.existsSync(pathsFile)) ensureIndex().catch(() => {}) })
@@ -724,6 +727,8 @@ if (!gotLock) {
     migrateOldData()
     ensureFolders()
     settings = store.load(settingsFile)
+    // The app never needs camera, microphone, location or similar access, so refuse any request for it
+    session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false))
     createWindow()
   })
 }
@@ -772,6 +777,7 @@ ipcMain.handle('app:reset', () => {
 ipcMain.handle('settings:get', () => settings)
 
 ipcMain.handle('settings:set', (_e, next) => {
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return settings
   const before = (settings.fortniteArchive || '') + '|' + (settings.bridge || '')
   settings = Object.assign({}, settings, next)
   if (typeServer && before !== (settings.fortniteArchive || '') + '|' + (settings.bridge || '')) {
@@ -1741,8 +1747,24 @@ ipcMain.handle('home:screens', async () => {
   if (web.length) return web.concat(fileIndex ? await gameScreens().catch(() => []) : [])
   return gameScreens()
 })
+// Only public web addresses: never this computer or anything on the local network
+function publicHttps(u) {
+  try {
+    const x = new URL(u)
+    if (x.protocol !== 'https:' || x.username || x.password) return false
+    const h = x.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return false
+    const ip = net.isIP(h)
+    if (ip === 6) return false
+    if (ip === 4) {
+      const [a, b] = h.split('.').map(Number)
+      if (a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)) return false
+    }
+    return true
+  } catch (e) { return false }
+}
 ipcMain.handle('home:fetchimg', async (_e, u) => {
-  if (typeof u !== 'string' || !/^https:\/\//.test(u)) return null
+  if (typeof u !== 'string' || u.length > 2000 || !publicHttps(u)) return null
   try {
     const dir = path.join(root, 'cache', 'screens')
     const key = require('crypto').createHash('md5').update(u).digest('hex')
@@ -1913,7 +1935,16 @@ ipcMain.handle('export:dir', () => {
 
 ipcMain.handle('clipboard:read', () => clipboard.readText())
 
-ipcMain.handle('shell:open', (_e, target) => shell.openPath(target))
+// Opening is for folders and ordinary files only; programs and scripts are never launched from the page
+const NEVER_OPEN = /\.(exe|bat|cmd|com|msi|msix|msp|scr|pif|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|hta|jar|lnk|url|reg|cpl|dll|appx|appinstaller|application|gadget|msc|inf|scf|sh)$/i
+ipcMain.handle('shell:open', async (_e, target) => {
+  if (typeof target !== 'string' || !target || target.length > 1000 || !path.isAbsolute(target)) return 'Invalid path'
+  try {
+    const st = await fs.promises.stat(target)
+    if (!st.isDirectory() && NEVER_OPEN.test(target)) return 'That kind of file cannot be opened from here'
+  } catch (e) { return 'Not found' }
+  return shell.openPath(target)
+})
 const EXTERNAL_OK = ['https://github.com/halfuwu', 'https://halfheart.dev', 'https://discord.gg/FortnitePorting']
 ipcMain.handle('shell:external', (_e, url) => {
   if (typeof url !== 'string' || !EXTERNAL_OK.some(ok => url === ok || url.startsWith(ok + '/'))) return false
@@ -1922,6 +1953,7 @@ ipcMain.handle('shell:external', (_e, url) => {
 })
 
 ipcMain.handle('shell:show', (_e, target) => {
+  if (typeof target !== 'string' || !target || target.length > 1000 || !path.isAbsolute(target)) return false
   shell.showItemInFolder(target)
   return true
 })

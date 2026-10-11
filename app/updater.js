@@ -62,6 +62,16 @@ function createUpdater(opts) {
     if (!o) throw new Error('No update to download.')
     if (state.downloading) throw new Error('Already downloading.')
     if (!opts.exePath) throw new Error('Updating only works from the built app.')
+    // Updates only ever come from GitHub, over a secure connection
+    try {
+      const u = new URL(o.url)
+      const host = u.hostname.toLowerCase()
+      const home = new URL(api).hostname.toLowerCase()
+      if (u.protocol !== 'https:' && host !== home) throw new Error('bad scheme')
+      if (host !== home && !/(^|\.)(github\.com|githubusercontent\.com)$/.test(host)) throw new Error('bad host')
+    } catch (e) {
+      throw new Error('The update came from an unexpected place, so it was not downloaded.')
+    }
     state.downloading = true
     const target = path.join(path.dirname(opts.exePath), path.basename(opts.exePath, '.exe') + '.update.exe')
     const tmp = target + '.part'
