@@ -2038,7 +2038,7 @@ let thumbActive = 0
 let thumbObserver = null
 
 function paintThumb(it, url) {
-  if (!url || !it.iconEl || !it.el || !it.el.isConnected) return
+  if (!url || !it.iconEl || !it.el) return
   const img = document.createElement('img')
   img.className = 'fb-thumb'
   img.draggable = false
