@@ -2,13 +2,20 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release, for example 1.0.1'
-        required: true
+        description: 'Optional: version to release, for example 1.0.1. Leave empty for the next automatic number.'
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -23,7 +30,8 @@ jobs:
         id: ver
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then V="${{ github.event.inputs.version }}"; else V="${GITHUB_REF_NAME}"; fi
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then V="1.0.${{ github.run_number }}"; fi
           V="${V#v}"
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
