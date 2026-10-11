@@ -77,4 +77,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v${{ steps.ver.outputs.version }}"
-          gh release create "$TAG" "app/dist/Fortnite Unity Converter.exe" --title "$TAG" --notes "Fortnite Unity Converter $TAG" --target "${GITHUB_SHA}" || gh release upload "$TAG" "app/dist/Fortnite Unity Converter.exe" --clobber
+          FILE="$(ls app/dist/*.exe 2>/dev/null | grep -v -i -E 'setup|installer|uninstall' | head -n 1)"
+          if [ -z "$FILE" ]; then
+            echo "::error::No exe was built. app/dist has: $(ls -la app/dist 2>&1 | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "Publishing $FILE as $TAG"
+          if OUT=$(gh release create "$TAG" "$FILE" --title "$TAG" --notes "Fortnite Unity Converter $TAG" --target "${GITHUB_SHA}" 2>&1); then
+            echo "$OUT"
+          else
+            echo "::warning::release create failed: $(echo "$OUT" | tr '\n' ' ')"
+            if OUT2=$(gh release upload "$TAG" "$FILE" --clobber 2>&1); then
+              echo "$OUT2"
+            else
+              echo "::error::release upload failed: $(echo "$OUT2" | tr '\n' ' ')"
+              exit 1
+            fi
+          fi
