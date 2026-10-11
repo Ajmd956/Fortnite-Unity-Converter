@@ -111,6 +111,15 @@ static class AssetExport
                     await File.WriteAllBytesAsync(file, data);
                     return file;
                 }
+                case "matgraph":
+                {
+                    // the material's (or material function's) node graph, as the game stores it in its editor-only data
+                    var service = Materials ?? throw new InvalidOperationException("the material service is not running");
+                    var graphFile = await service.GraphAsync(stem);
+                    var graphDest = Path.Combine(outRoot, name + ".json");
+                    File.Copy(graphFile, graphDest, true);
+                    return graphDest;
+                }
                 case "modelexport":
                 {
                     // the Files page export: just the model file in the chosen folder, no textures and no subfolders
