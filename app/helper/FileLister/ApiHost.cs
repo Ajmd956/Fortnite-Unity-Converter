@@ -130,7 +130,7 @@ static class AssetExport
                         var mobj = ResolveMesh(provider, stem);
                         var mres = await RunWithDiag(provider, stem, mobj, true, () => RunWithRetry(
                             () => { var s1 = new ExportSession(); s1.Add(mobj); return s1.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png)); },
-                            () => { var s2 = new ExportSession(); s2.Add(mobj); return s2.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); },
+                            () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); }),
                             r => r.All(x => !x.Success),
                             true));
                         var bad = mres.FirstOrDefault(r => !r.Success);
@@ -162,7 +162,7 @@ static class AssetExport
                     var obj = kind == "model" ? ResolveMesh(provider, stem) : provider.LoadPackageObject(stem);
                     var results = await RunWithDiag(provider, stem, obj, kind == "model", () => RunWithRetry(
                         () => { var s1 = new ExportSession(); s1.Add(obj); return s1.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png)); },
-                        () => { var s2 = new ExportSession(); s2.Add(obj); return s2.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); },
+                        () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); }),
                         r => r.All(x => !x.Success),
                         kind == "model"));
                     var failed = results.FirstOrDefault(r => !r.Success);
@@ -189,7 +189,12 @@ static class AssetExport
                         case USkeletalMesh skeletalMesh:
                         {
                             var dto = new SkeletalMeshDto(skeletalMesh, EMeshQuality.Highest, exportMorphTarget: false);
-                            if (dto.LODs.Count == 0) { dto.Dispose(); dto = new SkeletalMeshDto(skeletalMesh, EMeshQuality.All, ENaniteMeshFormat.NoNanite, false); }
+                            if (dto.LODs.Count == 0)
+                            {
+                                dto.Dispose();
+                                var plain = LoadWithoutNanite(provider, stem) as USkeletalMesh ?? skeletalMesh;
+                                dto = new SkeletalMeshDto(plain, EMeshQuality.All, ENaniteMeshFormat.NoNanite, false);
+                            }
                             using (dto) WriteMeshThumb(file, dto);
                             break;
                         }
@@ -227,6 +232,20 @@ static class AssetExport
         }
         return obj;
     }
+
+    // Some skeletal meshes carry Nanite data the parser cannot read (it throws while reading the Nanite hierarchy, which
+    // leaves the mesh with no LODs). Loading the mesh again with Nanite reading switched off skips that data and uses the
+    // ordinary LODs instead.
+    static UObject LoadWithoutNanite(IFileProvider provider, string stem)
+    {
+        var prev = provider.ReadNaniteData;
+        provider.ReadNaniteData = false;
+        try { return ResolveMesh(provider, stem); }
+        finally { provider.ReadNaniteData = prev; }
+    }
+
+    static Task<T> WithoutNanite<T>(IFileProvider provider, string stem, Func<UObject, Task<T>> run)
+        => run(LoadWithoutNanite(provider, stem));
 
     static string MeshDiag(IFileProvider provider, string stem, UObject? obj)
     {
