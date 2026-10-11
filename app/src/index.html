@@ -459,11 +459,19 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .panel h2{font-size:14px;font-weight:700;margin-bottom:14px;}
 .done-panel{text-align:center;}
 #updateOverlay{backdrop-filter:none;}
-.upd-panel{width:clamp(380px,33.3vw,560px);padding:24px;border-radius:16px;box-shadow:inset 0 1px 2px -1px #ffffff50,inset 0 -1px 2px -2px #ffffff50,0 4px 8px #00000020,0 8px 12px #00000010,0 0 16px 4px #00000080;}
+.upd-panel{width:clamp(380px,33.3vw,560px);padding:24px;border:none;border-radius:16px;box-shadow:inset 0 1px 2px -1px #ffffff50,inset 0 -1px 2px -2px #ffffff50,0 4px 8px #00000020,0 8px 12px #00000010,0 0 16px 4px #00000080;}
 .upd-panel h2{font-size:18px;font-weight:600;margin-bottom:8px;}
-.upd-sub{font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.4;}
+.upd-sub{font-size:14px;color:#cdc9de;margin-bottom:16px;line-height:1.4;}
 .upd-btns{display:flex;justify-content:flex-end;gap:12px;}
-.upd-btns .btn{min-width:84px;justify-content:center;border-radius:20px;}
+.upd-btns .btn{height:28px;padding:0 11px;min-width:0;justify-content:center;border-radius:14px;font-weight:500;box-shadow:none;}
+#updCancel{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
+#updCancel:hover{background:#2a2733;}
+#updCancel:active{background:#1a1822;}
+#updGo{background:var(--primary);color:var(--on-primary);}
+#updGo:hover{background:#a355fa;}
+#updGo:active{background:#8531e0;}
+#updGo:disabled{opacity:.6;cursor:default;}
+#updateOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
 .upd-meta{font-size:12px;color:var(--muted);margin:-10px 0 12px;}
 .upd-notes{max-height:140px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.5;color:var(--muted);background:var(--sel);border-radius:8px;padding:10px 12px;margin:0 0 16px;}
 .upd-bar{height:6px;border-radius:3px;background:var(--sel);overflow:hidden;margin:2px 0 4px;}
@@ -548,7 +556,7 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
   <aside class="side">
     <div class="brand">
       <img class="side-logo" src="../assets/logo.png" alt="" draggable="false">
-      <div class="brand-text"><div class="app-title">Fortnite <b>Unity</b></div><div class="app-ver">v1.0.0 early build</div></div>
+      <div class="brand-text"><div class="app-title">Fortnite <b>Unity</b></div><div class="app-ver" id="appVer">&nbsp;</div></div>
     </div>
     <div class="sec">General</div>
     <button class="tab nav active" data-tab="home"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z"/></svg><span>Home</span></button>
@@ -1002,6 +1010,8 @@ function addLine(line) {
   if (stick) log.scrollTop = log.scrollHeight
 }
 
+let logReadyRes
+const logReady = new Promise(r => { logReadyRes = r })
 function onLog(chunk) {
   const text = partial + chunk.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const lines = text.split('\n')
@@ -1385,12 +1395,21 @@ async function init() {
   $('pathCache').textContent = info.cache
   fillSettings()
   window.api.onLog(onLog)
+  logReadyRes()
   window.api.onState(setRunning)
   window.api.onDone(showDone)
   window.api.onNotice(showNotice)
   window.api.onUpdate(showUpdate)
   window.api.updatePending().then(u => { if (u) showUpdate(u) }).catch(() => {})
-  window.api.appVersion().then(v => { updCheckInfo = v; paintVersion('') }).catch(() => {})
+  window.api.appVersion().then(v => {
+    updCheckInfo = v
+    paintVersion('')
+    if (v && v.version) {
+      $('appVer').textContent = 'v' + v.version
+      const h = document.querySelector('#nwFeat .nw-h1')
+      if (h) h.textContent = 'Release v' + v.version
+    }
+  }).catch(() => {})
   window.api.onUpdateProgress(p => {
     if (p.done) { $('updBody').textContent = 'Restarting...'; $('updFill').style.width = '100%'; return }
     if (p.total) {
@@ -1412,9 +1431,8 @@ $('logBtn').onclick = () => { showTab('settings'); showSub('console') }
 $('openConv2').onclick = () => window.api.open(info.conversions)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
-const NEWS_VERSION = 'v1.0.0 early build'
 const NEWS_DATE = 'Oct 10'
-const NEWS_FEATURED = { title: 'Release ' + NEWS_VERSION, sub: 'Faster downloads and a smoother app', date: NEWS_DATE }
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Faster downloads and a smoother app', date: NEWS_DATE }
 const NEWS = [
   { tag: 'Performance', title: 'Faster and smoother', sub: 'Quicker texture downloads, no freezing.', body: 'Textures now download and convert several at a time, so converting a shader with many textures finishes sooner. The app no longer reads files on its main thread, so it opens faster and does not freeze or show Not Responding while the Files list, shader list or previews load.' },
   { tag: 'News', title: 'Rotating pictures', sub: 'Pictures change every 10 seconds.', body: 'The pictures on the Home cards and the News & Updates tab are real Fortnite loading screens picked at random. They change every 10 seconds, never repeat on screen at the same time, and are positioned so faces and heads stay in view.' },
@@ -1604,7 +1622,6 @@ const badPics = new Set()
 let scannerOn = false
 let scanPos = 0
 let scanFails = 0
-let skippedItems = false
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const picSigs = []
 function sigOf(im) {
@@ -1639,20 +1656,30 @@ async function validPic(p) {
   picSigs.push(sig)
   return true
 }
+const GOOD_MAX = 30
+const picGroup = p => /^https:/.test(p) ? 0 : /\/LSID_[^/]*$/i.test(p) ? 1 : 2
+let goodGroup = 9
 async function scanWorker(list) {
   while (true) {
-    if (goodPics.length >= 60 || scanPos >= list.length) { if (scanPos >= list.length) return; await sleep(20000); continue }
+    if (goodPics.length >= GOOD_MAX || scanPos >= list.length) { if (scanPos >= list.length) return; await sleep(20000); continue }
     const p = list[scanPos++]
-    if (!goodPics.length && ++scanFails > 20 && !skippedItems) {
-      skippedItems = true
-      const at = list.findIndex(q => !/\/LSID_[^/]*$/i.test(q))
-      if (at > scanPos) scanPos = at
-    }
+    const g = picGroup(p)
+    if (g > goodGroup) return
     if (badPics.has(p) || goodPics.includes(p)) continue
     let ok = false
     try { ok = await validPic(p) } catch (e) {}
-    if (ok) goodPics.push(p)
-    else badPics.add(p)
+    if (ok) {
+      goodPics.push(p)
+      scanFails = 0
+      if (g < goodGroup) goodGroup = g
+    } else {
+      badPics.add(p)
+      if (!goodPics.length && ++scanFails >= 20) {
+        scanFails = 0
+        const at = list.findIndex((q, i) => i >= scanPos && picGroup(q) > g)
+        if (at > scanPos) scanPos = at
+      }
+    }
   }
 }
 async function ensureScanner() {
@@ -1664,19 +1691,20 @@ async function ensureScanner() {
   scanWorker(list)
 }
 const recentPics = []
-function claimedPics() {
+function claimedPics(box) {
   const set = new Set()
-  document.querySelectorAll('[data-pic]').forEach(b => set.add(b.dataset.pic))
-  document.querySelectorAll('[data-pending]').forEach(b => set.add(b.dataset.pending))
+  const scope = (box && box.closest('.page')) || document
+  scope.querySelectorAll('[data-pic]').forEach(b => { if (b !== box) set.add(b.dataset.pic) })
+  scope.querySelectorAll('[data-pending]').forEach(b => { if (b !== box) set.add(b.dataset.pending) })
   return set
 }
 function choosePic(box) {
-  const taken = claimedPics()
+  const taken = claimedPics(box)
   const own = box.dataset.pic
-  let cand = goodPics.filter(p => !taken.has(p))
-  const fresh = cand.filter(p => !recentPics.includes(p))
-  if (fresh.length) cand = fresh
-  if (!cand.length) cand = goodPics.filter(p => p !== own && p !== box.dataset.pending && !Array.from(document.querySelectorAll('[data-pic]')).some(b => b !== box && b.dataset.pic === p))
+  const others = goodPics.filter(p => p !== own)
+  let cand = others.filter(p => !taken.has(p) && !recentPics.includes(p))
+  if (!cand.length) cand = others.filter(p => !taken.has(p))
+  if (!cand.length) cand = others
   return cand.length ? cand[Math.floor(Math.random() * cand.length)] : ''
 }
 function rotator(getBoxes, visible, dw, dh) {
@@ -1715,6 +1743,7 @@ function rotator(getBoxes, visible, dw, dh) {
   setInterval(() => { if (!document.hidden && visible()) tick() }, 10000)
 }
 async function fillNewsPics() {
+  await Promise.race([logReady, sleep(8000)])
   let list = await screenList()
   if (!list.length) { await new Promise(r => setTimeout(r, 20000)); list = await screenList(true) }
   if (!list.length) return
@@ -1722,6 +1751,7 @@ async function fillNewsPics() {
   rotator(() => [$('nwFeat')].concat(Array.from(document.querySelectorAll('#nwGrid .nw-pic'))), () => upd && upd.offsetParent, 380, 150)
 }
 async function startHomeScreens(attempt) {
+  await Promise.race([logReady, sleep(8000)])
   let list = []
   try { list = (await screenList(!!attempt)) || [] } catch (e) {}
   if (!list.length) { if ((attempt || 0) < 6) setTimeout(() => startHomeScreens((attempt || 0) + 1), 20000); return }

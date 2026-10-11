@@ -1,4 +1,4 @@
-# Fortnite Unity Converter (v1.0.0 early build)
+# Fortnite Unity Converter
 
 Fortnite Unity Converter turns Fortnite materials into Unity shaders.
 You give it a material path, it pulls the material's node graph and textures
@@ -83,11 +83,11 @@ Materials that read colour or direction values from Unreal curve assets (curve a
 
 ## v1.0.0 early build changes
 
-- The app is no longer labelled Beta. This is version v1.0.0, an early build.
+- The app is no longer labelled Beta. The top left of the window shows the version you are running, which is the same number as the latest release on GitHub once you have updated.
 - Speed: the game file list is read in small pieces in the background, textures download and convert several at a time, and files are read without blocking the window, so the app opens faster and no longer freezes.
 - Speed: the app is packed without compression, so the exe opens faster. The exe file is bigger as a result.
 - Updates: the update window is styled like Fortnite Porting's, shows your version, the size and what changed, and downloads inside the app. It warns you first if a conversion is running. App Settings has a Check for Updates switch and a Check now button, and a failed check is retried a few minutes later.
-- Loading screens: the Home and News & Updates pictures are real Fortnite loading screens from your game files, picked at random, never repeated on screen at the same time, and changed every 10 seconds. HUD tips and plain map art are no longer used. If no pictures load, the Console in App Settings says why.
+- Loading screens: the Home and News & Updates pictures are full Fortnite loading screens, picked at random, never shown twice on the same page, and swapped every 10 seconds. They come from a public Fortnite cosmetics API (fortnite-api.com), so they load straight away. If the API cannot be reached, the app falls back to the loading screen items in your game files (open the Files tab once so the file list exists). HUD tips and plain map art are never used. The Console in App Settings says what happened on lines that start with [loading screens].
 - News & Updates: the cards fill two full rows of three.
 
 

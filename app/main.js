@@ -1596,7 +1596,7 @@ ipcMain.handle('news:images', async () => [])
 
 let screenNotes = 0
 function screenNote(msg) {
-  if (screenNotes >= 12) return
+  if (screenNotes >= 40) return
   screenNotes++
   send('engine:log', '[loading screens] ' + msg + '\n')
 }
@@ -1687,7 +1687,60 @@ async function loadingScreenTexture(p) {
   return tex
 }
 
-ipcMain.handle('home:screens', () => gameScreens())
+// Real loading screens from a public Fortnite cosmetics API. Each item has a background picture and two smaller ones;
+// the page checks the size and shape of every picture it downloads and skips the ones that are not wide loading screens.
+const SCREEN_API = 'https://fortnite-api.com/v2/cosmetics/br/search/all?type=loadingscreen'
+function mixed(a) {
+  a = a.slice()
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+async function apiScreens() {
+  const dir = path.join(root, 'cache', 'screens')
+  const file = path.join(dir, 'loadingscreens-api.json')
+  let saved = null
+  let fresh = false
+  try {
+    saved = JSON.parse(await fs.promises.readFile(file, 'utf8'))
+    fresh = Date.now() - (await fs.promises.stat(file)).mtimeMs < 24 * 3600 * 1000
+  } catch (e) {}
+  const usable = o => o && Array.isArray(o.bg) && Array.isArray(o.ft) && Array.isArray(o.ic) && o.bg.length + o.ft.length + o.ic.length > 0
+  let lists = usable(saved) && fresh ? saved : null
+  if (!lists) {
+    try {
+      const r = await fetch(SCREEN_API, { signal: AbortSignal.timeout(30000), headers: { 'User-Agent': 'FortniteUnityConverter' } })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      const j = await r.json()
+      const o = { bg: [], ft: [], ic: [] }
+      const web = u => typeof u === 'string' && /^https:\/\//.test(u)
+      for (const it of (j && j.data) || []) {
+        const im = (it && it.images) || {}
+        if (web(im.other && im.other.background)) o.bg.push(im.other.background)
+        if (web(im.featured)) o.ft.push(im.featured)
+        if (web(im.icon)) o.ic.push(im.icon)
+      }
+      if (!usable(o)) throw new Error('the answer had no pictures')
+      await fs.promises.mkdir(dir, { recursive: true })
+      await fs.promises.writeFile(file, JSON.stringify(o))
+      lists = o
+      screenNote('the picture list came from the API: ' + o.bg.length + ' loading screens')
+    } catch (e) {
+      lists = usable(saved) ? saved : null
+      screenNote('could not get the picture list from the API (' + (e && e.message || e) + ')' + (lists ? '; using the saved list' : ''))
+    }
+  }
+  if (!lists) return []
+  return mixed(lists.bg).concat(mixed(lists.ft), mixed(lists.ic))
+}
+
+ipcMain.handle('home:screens', async () => {
+  const web = await apiScreens().catch(() => [])
+  if (web.length) return web.concat(fileIndex ? await gameScreens().catch(() => []) : [])
+  return gameScreens()
+})
 ipcMain.handle('home:fetchimg', async (_e, u) => {
   if (typeof u !== 'string' || !/^https:\/\//.test(u)) return null
   try {
