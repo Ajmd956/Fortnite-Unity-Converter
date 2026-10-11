@@ -37,7 +37,8 @@ function createUpdater(opts) {
       headers: Object.assign({ Accept: 'application/vnd.github+json', 'User-Agent': 'FortniteUnityConverter-Updater' }, auth()),
       signal: AbortSignal.timeout(15000)
     })
-    if (!res.ok) return null
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error('Update check failed (' + res.status + ').')
     const rel = await res.json()
     if (!rel || rel.draft || rel.prerelease || !rel.tag_name) return null
     if (compareVersions(rel.tag_name, opts.currentVersion) <= 0) return null
@@ -49,7 +50,9 @@ function createUpdater(opts) {
       size: asset.size || 0,
       url: auth().Authorization ? asset.url || asset.browser_download_url : asset.browser_download_url,
       digest: /^sha256:([0-9a-f]{64})$/i.test(asset.digest || '') ? asset.digest.slice(7).toLowerCase() : '',
-      page: rel.html_url || ''
+      page: rel.html_url || '',
+      notes: String(rel.body || '').replace(/\r/g, '').trim().slice(0, 1200),
+      published: rel.published_at || ''
     }
     return state.offered
   }

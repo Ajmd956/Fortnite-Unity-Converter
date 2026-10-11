@@ -71,6 +71,8 @@ contextBridge.exposeInMainWorld('api', {
   onDone: cb => listen('convert:done', cb),
   updatePending: () => ipcRenderer.invoke('update:pending'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  appVersion: () => ipcRenderer.invoke('app:version'),
   onUpdate: cb => listen('update:available', cb),
   onUpdateProgress: cb => listen('update:progress', cb)
 })

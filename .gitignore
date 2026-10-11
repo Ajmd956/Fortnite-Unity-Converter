@@ -7,3 +7,4 @@ app/helper/.dotnet/
 app/helper/FileLister/bin/
 app/helper/FileLister/obj/
 release/
+__pycache__/

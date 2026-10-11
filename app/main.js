@@ -634,26 +634,42 @@ function initUpdater() {
   return updater
 }
 
-async function runUpdateCheck() {
-  if (settings.checkUpdates === false || !updateExePath()) return
+function offerPayload(o) {
+  return { version: o.version, name: o.name, size: o.size, notes: o.notes, published: o.published, current: app.getVersion() }
+}
+
+let updateRetries = 0
+
+async function runUpdateCheck(manual) {
+  if (!updateExePath()) return { status: 'unsupported' }
+  if (!manual && settings.checkUpdates === false) return { status: 'off' }
   try {
     const found = await initUpdater().check()
-    if (found && (!updateOffered || updateOffered.version !== found.version)) {
-      updateOffered = found
-      send('update:available', { version: found.version, name: found.name })
+    updateRetries = 0
+    if (!found) return { status: 'latest', current: app.getVersion() }
+    const isNew = !updateOffered || updateOffered.version !== found.version
+    updateOffered = found
+    if (isNew || manual) send('update:available', Object.assign({ manual: !!manual }, offerPayload(found)))
+    return { status: 'available', version: found.version, current: app.getVersion() }
+  } catch (e) {
+    if (!manual && updateRetries < 3) {
+      updateRetries++
+      setTimeout(() => runUpdateCheck(false), 5 * 60 * 1000)
     }
-  } catch (e) {}
+    return { status: 'error', current: app.getVersion() }
+  }
 }
 
 function startUpdateChecks() {
   const exe = updateExePath()
   if (exe) fs.promises.rm(path.join(path.dirname(exe), path.basename(exe, '.exe') + '.update.exe'), { force: true }).catch(() => {})
-  setTimeout(runUpdateCheck, 6000)
-  if (!updateTimer) updateTimer = setInterval(runUpdateCheck, 6 * 60 * 60 * 1000)
+  setTimeout(() => runUpdateCheck(false), 6000)
+  if (!updateTimer) updateTimer = setInterval(() => runUpdateCheck(false), 6 * 60 * 60 * 1000)
 }
 
-ipcMain.handle('update:pending', () => (updateOffered ? { version: updateOffered.version, name: updateOffered.name } : null))
-ipcMain.handle('update:check', async () => { await runUpdateCheck(); return updateOffered ? { version: updateOffered.version } : null })
+ipcMain.handle('update:pending', () => (updateOffered ? offerPayload(updateOffered) : null))
+ipcMain.handle('update:check', () => runUpdateCheck(true))
+ipcMain.handle('app:version', () => ({ version: app.getVersion(), canUpdate: !!updateExePath() }))
 
 ipcMain.handle('update:download', async () => {
   const u = initUpdater()
@@ -1578,19 +1594,59 @@ ipcMain.handle('files:thumb', async (_e, p) => {
 // Home cards: the app no longer fetches pictures from another service, so the cards keep their plain look
 ipcMain.handle('news:images', async () => [])
 
-// Home cards: Fortnite loading screens from the game files, shuffled
 async function gameScreens() {
   if (!fileIndex && fs.existsSync(pathsFile)) await ensureIndex()
   if (!fileIndex) return []
-  const pool = []
+  const items = []
+  const loose = []
   for (const f of fileIndex) {
-    if (!/\.uasset$/i.test(f.p) || !/\/loading[_ ]?screens?\//i.test(f.p)) continue
+    if (!/\.uasset$/i.test(f.p)) continue
     const name = f.p.slice(f.p.lastIndexOf('/') + 1)
-    if (!/^T_/i.test(name) || /icon|thumb|small|mask|logo|_n\.|normal|button/i.test(name)) continue
-    pool.push(f.p)
+    if (/^LSID_/i.test(name)) { items.push(f.p); continue }
+    if (!/\/loading[_ ]?screens?\//i.test(f.p)) continue
+    if (!/^T_LS[_-]/i.test(name) || /icon|thumb|small|mask|logo|_n\.|normal|button/i.test(name)) continue
+    loose.push(f.p)
   }
-  return pool
+  return items.length ? items : loose
 }
+
+const lsidTextures = new Map()
+
+async function quietExport(kind, p) {
+  while (interactiveExports > 0) await new Promise(r => setTimeout(r, 120))
+  return previewExportInner(kind, p)
+}
+
+function texturePathFromRef(v) {
+  let s = v && typeof v === 'object' ? (v.ObjectPath || (v.AssetPathName && (v.AssetPathName.Text || v.AssetPathName)) || '') : v
+  s = String(s || '').replace(/\\/g, '/').trim()
+  if (!s || s === 'None') return ''
+  const dot = s.lastIndexOf('.')
+  if (dot > s.lastIndexOf('/')) s = s.slice(0, dot)
+  if (!s.startsWith('/')) s = '/' + s
+  if (s.startsWith('/Game/')) return '/FortniteGame/Content/' + s.slice(6)
+  if (/^\/(FortniteGame|Engine)\//.test(s)) return s
+  const m = s.match(/^\/([^/]+)\/(.+)$/)
+  return m ? '/FortniteGame/Plugins/GameFeatures/' + m[1] + '/Content/' + m[2] : ''
+}
+
+async function loadingScreenTexture(p) {
+  if (lsidTextures.has(p)) return lsidTextures.get(p)
+  let tex = ''
+  try {
+    const r = await quietExport('json', p)
+    if (r.ok) {
+      const data = JSON.parse(await fs.promises.readFile(r.file, 'utf8'))
+      for (const e of Array.isArray(data) ? data : [data]) {
+        const ref = e && e.Properties && e.Properties.BackgroundImage
+        if (ref) { tex = texturePathFromRef(ref); if (tex) break }
+      }
+    }
+  } catch (e) {}
+  lsidTextures.set(p, tex)
+  return tex
+}
+
 ipcMain.handle('home:screens', async () => {
   const pool = await gameScreens()
   for (let i = pool.length - 1; i > 0; i--) {
@@ -1622,10 +1678,14 @@ ipcMain.handle('home:fetchimg', async (_e, u) => {
   } catch (e) { return null }
 })
 ipcMain.handle('home:screenimg', async (_e, p) => {
-  const pp = packagePath(p)
+  let pp = packagePath(p)
   if (!pp) return null
   try {
     if (!(await startTypeServer())) return null
+    if (/\/LSID_[^/]+$/i.test(pp)) {
+      pp = await loadingScreenTexture(pp)
+      if (!pp) return null
+    }
     const r = await previewExport('banner', pp)
     if (!r.ok) return null
     return 'data:image/png;base64,' + (await fs.promises.readFile(r.file)).toString('base64')

@@ -463,6 +463,8 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .upd-sub{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.4;}
 .upd-btns{display:flex;justify-content:flex-end;gap:8px;}
 .upd-btns .btn{min-width:84px;justify-content:center;border-radius:20px;}
+.upd-meta{font-size:12px;color:var(--muted);margin:-10px 0 12px;}
+.upd-notes{max-height:140px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.5;color:var(--muted);background:var(--sel);border-radius:8px;padding:10px 12px;margin:0 0 16px;}
 .upd-bar{height:6px;border-radius:3px;background:var(--sel);overflow:hidden;margin:2px 0 4px;}
 .upd-fill{height:100%;width:0;background:var(--primary);transition:width .15s linear;}
 .done-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:#3ddc9722;border:1px solid #3ddc9755;color:var(--ok);font-size:22px;font-weight:800;}
@@ -706,6 +708,8 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
         <div class="row-card"><div class="rc-text"><div class="rc-title">Default Export Location</div><div class="rc-desc">The default export location used on startup.</div></div><div class="rc-ctl"><div class="dd" id="ddDest"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="sec-head">Other</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Show Developer Settings</div><div class="rc-desc">Enables the developer settings tab.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setDev"><span class="trk"></span><span class="lbl" data-for="setDev">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Check for Updates</div><div class="rc-desc">Checks for a new version when the app starts and every few hours.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setCheckUpd"><span class="trk"></span><span class="lbl" data-for="setCheckUpd">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc"><span id="updVersion">Fortnite Unity Converter</span></div></div><div class="rc-ctl"><button class="btn sm" id="updCheckBtn">Check now</button></div></div>
         <div class="sec-head">Files</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Double-Click Action</div><div class="rc-desc">What double-clicking a file in the Files tab does. Folders always open.</div></div><div class="rc-ctl"><div class="dd" id="ddDbl"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4H8V6H6V8H4V4M20,4V8H18V6H16V4H20M4,20V16H6V18H8V20H4M20,20H16V18H18V16H20V20M12,7L16,9.2V13.8L12,16L8,13.8V9.2L12,7Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Grid Item Size</div><div class="rc-desc">How large the folders and files are in the grid view.</div></div><div class="rc-ctl"><div class="dd" id="ddGrid"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
@@ -775,6 +779,8 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
   <div class="panel upd-panel">
     <h2 id="updTitle">Update</h2>
     <div class="upd-sub" id="updBody">A new version of Fortnite Unity Converter is out.</div>
+    <div class="upd-meta" id="updMeta" hidden></div>
+    <div class="upd-notes" id="updNotes" hidden></div>
     <div class="upd-bar" id="updBar" hidden><div class="upd-fill" id="updFill"></div></div>
     <div class="upd-btns" id="updBtns">
       <button class="btn" id="updCancel">Cancel</button>
@@ -1093,29 +1099,82 @@ async function runCheck(paths) {
 }
 
 let updShown = ''
+let updBusy = false
+
+function fmtSize(n) {
+  if (!n) return ''
+  return n >= 1048576 ? (n / 1048576).toFixed(n >= 104857600 ? 0 : 1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'
+}
+
 function showUpdate(u) {
-  if (updShown === u.version || $('updBar').hidden === false) return
+  if (updBusy) return
+  if (!u.manual && updShown === u.version) return
   updShown = u.version
   $('updTitle').textContent = 'Update ' + u.version
   $('updBody').textContent = 'A new version of Fortnite Unity Converter is out.'
+  const meta = [u.current ? 'You have ' + u.current : '', fmtSize(u.size)].filter(Boolean).join(' \u00b7 ')
+  $('updMeta').textContent = meta
+  $('updMeta').hidden = !meta
+  $('updNotes').textContent = u.notes || ''
+  $('updNotes').hidden = !u.notes
+  $('updBar').hidden = true
   $('updBtns').hidden = false
   $('updGo').disabled = false
+  $('updGo').textContent = 'Download'
   $('updateOverlay').classList.add('open')
 }
-$('updCancel').onclick = () => $('updateOverlay').classList.remove('open')
+
+function closeUpdate() {
+  if (updBusy) return
+  $('updateOverlay').classList.remove('open')
+}
+
+$('updCancel').onclick = closeUpdate
+$('updateOverlay').addEventListener('mousedown', e => { if (e.target === $('updateOverlay')) closeUpdate() })
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('updateOverlay').classList.contains('open')) closeUpdate() })
+
+let updWarned = false
 $('updGo').onclick = async () => {
+  if (running && !updWarned) {
+    updWarned = true
+    $('updBody').textContent = 'A conversion is still running. Updating restarts the app and stops it.'
+    $('updGo').textContent = 'Update anyway'
+    return
+  }
+  updWarned = false
+  updBusy = true
   $('updGo').disabled = true
   $('updBtns').hidden = true
+  $('updMeta').hidden = true
+  $('updNotes').hidden = true
   $('updBar').hidden = false
   $('updFill').style.width = '0'
   $('updBody').textContent = 'Downloading...'
   const r = await window.api.updateDownload()
   if (r && r.ok) return
+  updBusy = false
   $('updBar').hidden = true
   $('updBtns').hidden = false
   $('updGo').disabled = false
   $('updGo').textContent = 'Try again'
   $('updBody').textContent = (r && r.error) || 'The update failed.'
+}
+
+let updCheckInfo = { version: '', canUpdate: true }
+
+function paintVersion(extra) {
+  $('updVersion').textContent = 'Fortnite Unity Converter ' + (updCheckInfo.version || '') + (extra ? ' \u00b7 ' + extra : '')
+}
+
+$('setCheckUpd').onchange = () => saveSetting({ checkUpdates: $('setCheckUpd').checked })
+$('updCheckBtn').onclick = async () => {
+  const b = $('updCheckBtn')
+  b.disabled = true
+  paintVersion('Checking...')
+  const r = await window.api.updateCheck().catch(() => ({ status: 'error' }))
+  b.disabled = false
+  const msg = { available: 'Version ' + (r.version || '') + ' is available', latest: 'You are up to date', error: 'Could not check. Try again later', unsupported: 'Updates only work in the built app' }
+  paintVersion(msg[r.status] || '')
 }
 
 let noticeRetry = null
@@ -1281,6 +1340,7 @@ function fillSettings() {
   $('setAutoFnp').checked = !!settings.autoStartFnp
   $('setMinFnp').checked = !!settings.minimizeFnp
   $('setTransitions').checked = settings.tabTransitions !== false
+  $('setCheckUpd').checked = settings.checkUpdates !== false
   $('setUseExports').checked = !!settings.useExportsPath
   $('setExports').value = settings.exportsPath || ''
   $('setExports').disabled = $('browseExports').disabled = !settings.useExportsPath
@@ -1329,6 +1389,7 @@ async function init() {
   window.api.onNotice(showNotice)
   window.api.onUpdate(showUpdate)
   window.api.updatePending().then(u => { if (u) showUpdate(u) }).catch(() => {})
+  window.api.appVersion().then(v => { updCheckInfo = v; paintVersion('') }).catch(() => {})
   window.api.onUpdateProgress(p => {
     if (p.done) { $('updBody').textContent = 'Restarting...'; $('updFill').style.width = '100%'; return }
     if (p.total) {
@@ -1355,8 +1416,10 @@ const NEWS_DATE = 'Oct 10'
 const NEWS_FEATURED = { title: 'Release ' + NEWS_VERSION, sub: 'Faster downloads and a smoother app', date: NEWS_DATE }
 const NEWS = [
   { tag: 'Performance', title: 'Faster and smoother', sub: 'Quicker texture downloads, no freezing.', body: 'Textures now download and convert several at a time, so converting a shader with many textures finishes sooner. The app no longer reads files on its main thread, so it opens faster and does not freeze or show Not Responding while the Files list, shader list or previews load.' },
-  { tag: 'News', title: 'Rotating pictures', sub: 'Pictures change every 10 seconds.', body: 'The pictures on the Home cards and the News & Updates tab change every 10 seconds, show the whole loading screen, and are positioned so faces and heads stay in view.' },
+  { tag: 'News', title: 'Rotating pictures', sub: 'Pictures change every 10 seconds.', body: 'The pictures on the Home cards and the News & Updates tab are real Fortnite loading screens picked at random. They change every 10 seconds, never repeat on screen at the same time, and are positioned so faces and heads stay in view.' },
   { tag: 'Files', title: 'Icons', sub: 'Icons keep loading and meshes get a picture.', body: 'Texture and model icons in the Files tab that failed to load are tried again automatically. Static and skeletal meshes show a rendered picture of the mesh as their icon.' },
+  { tag: 'Updates', title: 'Updates inside the app', sub: 'Update without leaving the app.', body: 'When a new version is out, a popup shows what changed, how big it is and which version you have. The update downloads inside the app with a progress bar, is checked, and the app restarts into the new version. If a conversion is running you are warned first.' },
+  { tag: 'Settings', title: 'Check for updates', sub: 'Turn checks on or off, or check now.', body: 'App Settings has a Check for Updates switch and a Check now button that tells you if you are up to date. A check that fails, for example when you are offline, is tried again a few minutes later.' },
   { tag: 'Model Viewer', title: 'Meshes and textures', sub: 'Meshes open with their textures.', body: 'A mesh that used to fail with "Mesh has no LOD data" now opens. Meshes open with their diffuse, normal and specular textures for every material layer, and slots with no texture use default values.' }
 ]
 let screensP = null
@@ -1540,13 +1603,38 @@ const badPics = new Set()
 let scannerOn = false
 let scanPos = 0
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+const picSigs = []
+function sigOf(im) {
+  const cv = document.createElement('canvas')
+  cv.width = 9; cv.height = 8
+  const cx = cv.getContext('2d', { willReadFrequently: true })
+  cx.drawImage(im, 0, 0, 9, 8)
+  const d = cx.getImageData(0, 0, 9, 8).data
+  const bits = []
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+    const i = (y * 9 + x) * 4, j = i + 4
+    bits.push(d[i] + d[i + 1] + d[i + 2] > d[j] + d[j + 1] + d[j + 2] ? 1 : 0)
+  }
+  return bits
+}
+function sameSig(a, b) {
+  let diff = 0
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++
+  return diff <= 5
+}
 async function validPic(p) {
   const u = await picUrl(p)
   if (!u) return false
   const im = new Image()
   im.src = u
   try { await im.decode() } catch (e) { return false }
-  return im.naturalWidth >= 1000
+  if (im.naturalWidth < 1000) return false
+  const ratio = im.naturalWidth / im.naturalHeight
+  if (ratio < 1.4 || ratio > 2.4) return false
+  const sig = sigOf(im)
+  if (picSigs.some(o => sameSig(o, sig))) return false
+  picSigs.push(sig)
+  return true
 }
 async function scanWorker(list) {
   while (true) {
@@ -1567,29 +1655,45 @@ async function ensureScanner() {
   scanWorker(list)
   scanWorker(list)
 }
+const recentPics = []
+function claimedPics() {
+  const set = new Set()
+  document.querySelectorAll('[data-pic]').forEach(b => set.add(b.dataset.pic))
+  document.querySelectorAll('[data-pending]').forEach(b => set.add(b.dataset.pending))
+  return set
+}
+function choosePic(box) {
+  const taken = claimedPics()
+  const own = box.dataset.pic
+  let cand = goodPics.filter(p => !taken.has(p))
+  const fresh = cand.filter(p => !recentPics.includes(p))
+  if (fresh.length) cand = fresh
+  if (!cand.length) cand = goodPics.filter(p => p !== own && p !== box.dataset.pending && !Array.from(document.querySelectorAll('[data-pic]')).some(b => b !== box && b.dataset.pic === p))
+  return cand.length ? cand[Math.floor(Math.random() * cand.length)] : ''
+}
 function rotator(getBoxes, visible, dw, dh) {
-  const recent = []
   let busy = false
   async function tick() {
     if (busy) return
     busy = true
     try {
       await ensureScanner()
-      const shown = new Set(Array.from(document.querySelectorAll('[data-pic]')).map(b => b.dataset.pic))
       for (const box of getBoxes()) {
-        const free = goodPics.filter(p => !shown.has(p))
-        const fresh = free.filter(p => !recent.includes(p))
-        const cand = fresh.length ? fresh : free
-        if (!cand.length) continue
-        const p = cand[Math.floor(Math.random() * cand.length)]
-        const u = await picUrl(p)
-        if (u && await showPic(box, u, dw, dh)) {
-          if (box.dataset.pic) shown.delete(box.dataset.pic)
-          box.dataset.pic = p
-          shown.add(p)
-          recent.push(p)
-          if (recent.length > 16) recent.shift()
-        }
+        const p = choosePic(box)
+        if (!p) continue
+        box.dataset.pending = p
+        try {
+          const u = await picUrl(p)
+          if (u && await showPic(box, u, dw, dh)) {
+            box.dataset.pic = p
+            recentPics.push(p)
+            if (recentPics.length > 24) recentPics.shift()
+          } else {
+            const i = goodPics.indexOf(p)
+            if (i >= 0) goodPics.splice(i, 1)
+            badPics.add(p)
+          }
+        } finally { delete box.dataset.pending }
       }
     } finally { busy = false }
   }
@@ -1597,7 +1701,7 @@ function rotator(getBoxes, visible, dw, dh) {
   const fast = setInterval(() => {
     tick()
     const boxes = getBoxes()
-    if (++warm > 60 || (boxes.length && boxes.every(b => b.dataset.pic))) clearInterval(fast)
+    if (++warm > 90 || (boxes.length && boxes.every(b => b.dataset.pic))) clearInterval(fast)
   }, 3000)
   tick()
   setInterval(() => { if (!document.hidden && visible()) tick() }, 10000)
