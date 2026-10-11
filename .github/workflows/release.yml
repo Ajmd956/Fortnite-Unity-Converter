@@ -66,10 +66,11 @@ jobs:
 
       - name: Build the app
         working-directory: app
-        shell: cmd
+        shell: bash
         run: |
           npm install --no-audit --no-fund --loglevel=error
           npm run pack
+          ls -la dist
 
       - name: Publish the release
         shell: bash
