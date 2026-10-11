@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('pv', {
   multiJob: id => ipcRenderer.invoke('pvm:job', id),
   materials: id => ipcRenderer.invoke('pvm:materials', id),
   openProps: p => ipcRenderer.invoke('pvm:open-props', p),
+  openMaterial: p => ipcRenderer.invoke('pvm:open-material', p),
+  thumb: p => ipcRenderer.invoke('pvm:thumb', p),
   onAdd: cb => ipcRenderer.on('pvm:add', (_e, p) => cb(p)),
   onReset: cb => ipcRenderer.on('pvm:reset', () => cb()),
   win: {

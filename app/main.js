@@ -1236,12 +1236,14 @@ function previewClass(c, p) {
     if (/Texture/.test(c)) return 'texture'
     if (c === 'StaticMesh' || c === 'SkeletalMesh') return 'model'
     if (c === 'SoundWave') return 'sound'
+    if (c === 'Material' || /^MaterialFunction/.test(c)) return 'material'
     return 'json'
   }
   const t = typeOf(p)
   if (t === 'Texture') return 'texture'
   if (t === 'Mesh') return 'model'
   if (t === 'Sound') return 'sound'
+  if (t === 'Material' || t === 'MaterialFunction') return 'material'
   return 'json'
 }
 
@@ -1289,6 +1291,7 @@ function pickPreviewFile(dir, kind) {
     meshthumb: ['.mesh'],
     model: ['.glb', '.gltf'],
     json: ['.json'],
+    material: ['.json'],
     sound: ['.ogg', '.wav', '.mp3', '.opus', '.flac']
   }[kind] || []
   for (const ext of order) {
@@ -1329,7 +1332,7 @@ async function previewExportInner(kind, p) {
   const job = (async () => {
     try { fs.rmSync(dir, { recursive: true, force: true }) } catch (e) {}
     fs.mkdirSync(dir, { recursive: true })
-    const r = await askExport(kind, p, dir)
+    const r = await askExport(kind === 'material' ? 'matgraph' : kind, p, dir)
     if (!r.ok) return { ok: false, kind, error: r.error || 'export failed' }
     let file = pickPreviewFile(dir, kind)
     if (!file && r.file && fs.existsSync(r.file)) file = r.file
@@ -1379,13 +1382,14 @@ function openPreviewWindow(p, force) {
   w.loadFile(path.join(__dirname, 'src', 'preview.html'))
 }
 
-const multi = { texture: null, sound: null, json: null, model: null }
+const multi = { texture: null, sound: null, json: null, model: null, material: null }
 let multiSeq = 0
 const MULTI_SPEC = {
   texture: { page: 'texture-viewer.html', title: 'Texture Viewer', size: { width: 1280, height: 720, minWidth: 560, minHeight: 380 } },
   sound: { page: 'sound-viewer.html', title: 'Sound Viewer', size: { width: 540, height: 96, minWidth: 360, minHeight: 96, maxHeight: 96, useContentSize: true } },
   model: { page: 'model-viewer.html', title: 'Model Viewer', size: { width: 1280, height: 720, minWidth: 700, minHeight: 420 } },
-  json: { page: 'properties-viewer.html', title: 'Properties Viewer', size: { width: 1280, height: 720, minWidth: 560, minHeight: 380 } }
+  json: { page: 'properties-viewer.html', title: 'Properties Viewer', size: { width: 1280, height: 720, minWidth: 560, minHeight: 380 } },
+  material: { page: 'material-viewer.html', title: 'Material Viewer', size: { width: 1280, height: 720, minWidth: 700, minHeight: 420 } }
 }
 
 function linkCandidates(stem) {
@@ -1480,6 +1484,19 @@ ipcMain.handle('pvm:open-props', (_e, raw) => {
   const index = /^\d+$/.test(tail) ? parseInt(tail, 10) : -1
   const cands = linkCandidates(stem)
   openMulti('json', cands[0], { name: stem.slice(stem.lastIndexOf('/') + 1), index, cands })
+  return true
+})
+
+// A material function call node opens the function's own graph in a new tab of the material viewer
+ipcMain.handle('pvm:open-material', (e, raw) => {
+  if (!multiFor(e)) return false
+  let t = String(raw || '').trim().replace(/\\/g, '/')
+  if (!t || t.length > 600) return false
+  const cut = t.lastIndexOf('.')
+  if (cut > t.lastIndexOf('/')) t = t.slice(0, cut)
+  if (!t.startsWith('/')) t = '/' + t
+  const cands = linkCandidates(t)
+  openMulti('material', cands[0], { name: t.slice(t.lastIndexOf('/') + 1), cands })
   return true
 })
 
@@ -1924,15 +1941,27 @@ ipcMain.handle('home:screenimg', async (_e, p) => {
 ipcMain.handle('preview:open', async (_e, payload) => {
   const paths = Array.from(new Set(((payload && payload.paths) || []).map(packagePath).filter(Boolean)))
   if (!paths.length) return { ok: false, error: 'no paths' }
-  const force = payload && ['json', 'texture', 'model', 'sound'].includes(payload.kind) ? payload.kind : ''
+  const force = payload && ['json', 'texture', 'model', 'sound', 'material'].includes(payload.kind) ? payload.kind : ''
   let firstModel = true
   for (const p of paths.slice(0, PREVIEW_MAX)) {
     const kind = force || await previewKindFor(p)
     if (kind === 'model') { openMulti(kind, p, { reset: firstModel }); firstModel = false }
-    else if (kind === 'texture' || kind === 'sound' || kind === 'json') openMulti(kind, p)
+    else if (kind === 'texture' || kind === 'sound' || kind === 'json' || kind === 'material') openMulti(kind, p)
     else openPreviewWindow(p, kind)
   }
   return { ok: true, opened: Math.min(paths.length, PREVIEW_MAX), total: paths.length }
+})
+
+// The material viewer's texture nodes ask for a small picture of their texture
+ipcMain.handle('pvm:thumb', async (e, p) => {
+  if (!multiFor(e)) return null
+  const pp = packagePath(String(p || '').replace(/\.\d+$/, ''))
+  if (!pp || thumbBlocked(pp)) return null
+  try {
+    const r = await previewExport('thumb', pp)
+    if (!r.ok) { thumbFail(pp, r.error); return null }
+    return 'data:image/png;base64,' + (await fs.promises.readFile(r.file)).toString('base64')
+  } catch (err) { thumbFail(pp); return null }
 })
 
 ipcMain.handle('pv:job', async e => {
