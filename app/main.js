@@ -85,10 +85,88 @@ function findArchiveNow() {
       if (fs.existsSync(paks)) return paks
     }
   } catch (e) {}
+  for (const root of programRoots()) {
+    for (const rel of [['Epic Games', 'Fortnite'], ['Fortnite']]) {
+      const paks = path.join(root, ...rel, 'FortniteGame', 'Content', 'Paks')
+      if (fs.existsSync(paks)) return paks
+    }
+  }
   return ''
 }
 
-const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+// Program Files folders on the system drive first, then the same folders on the other drives
+function programRoots() {
+  const out = []
+  const add = p => { if (p && !out.includes(p)) out.push(p) }
+  add(process.env.ProgramFiles)
+  add(process.env['ProgramFiles(x86)'])
+  add('C:\\Program Files')
+  for (let c = 68; c <= 90; c++) {
+    const d = String.fromCharCode(c) + ':\\'
+    add(d + 'Program Files')
+    add(d + 'Epic Games')
+    add(d + 'Games')
+  }
+  return out.filter(p => { try { return fs.existsSync(p) } catch (e) { return false } })
+}
+
+const PREFERRED_UNITY = '2022.3.22f1'
+
+function versionKey(v) {
+  const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)([a-z])(\d+)/i)
+  return m ? [+m[1], +m[2], +m[3], m[4].toLowerCase().charCodeAt(0), +m[5]] : [0, 0, 0, 0, 0]
+}
+
+function compareVersions(a, b) {
+  const x = versionKey(a), y = versionKey(b)
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i]
+  return 0
+}
+
+function findUnityNow() {
+  const chosen = settings.unity
+  if (chosen && fs.existsSync(chosen)) return chosen
+  const found = []
+  const hubDirs = []
+  for (const root of programRoots()) {
+    hubDirs.push(path.join(root, 'Unity', 'Hub', 'Editor'))
+    hubDirs.push(path.join(root, 'Unity Hub', 'Editor'))
+    const single = path.join(root, 'Unity', 'Editor', 'Unity.exe')
+    if (fs.existsSync(single)) found.push({ v: '0', exe: single })
+  }
+  for (const dir of hubDirs) {
+    let names = []
+    try { names = fs.readdirSync(dir) } catch (e) { continue }
+    for (const n of names) {
+      const exe = path.join(dir, n, 'Editor', 'Unity.exe')
+      if (fs.existsSync(exe)) found.push({ v: n, exe })
+    }
+  }
+  if (!found.length) return ''
+  const want = found.find(f => f.v === PREFERRED_UNITY)
+  if (want) return want.exe
+  found.sort((a, b) => compareVersions(b.v, a.v))
+  return found[0].exe
+}
+
+// Fill in the Fortnite and Unity locations on its own when they are empty or no longer exist
+function autoDetectPaths() {
+  let changed = false
+  try {
+    if (!settings.fortniteArchive || !fs.existsSync(settings.fortniteArchive)) {
+      const a = findArchiveNow()
+      if (a && a !== settings.fortniteArchive) { settings.fortniteArchive = a; changed = true }
+    }
+    if (!settings.unity || !fs.existsSync(settings.unity)) {
+      const u = findUnityNow()
+      if (u && u !== settings.unity) { settings.unity = u; changed = true }
+    }
+  } catch (e) {}
+  if (changed) { try { store.save(settingsFile, settings) } catch (e) {} }
+  return changed
+}
+
+const collator =new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
 function typeOf(p) {
   const n = p.slice(p.lastIndexOf('/') + 1).split('.')[0].toLowerCase()
@@ -769,6 +847,7 @@ if (!gotLock) {
         try { store.save(settingsFile, settings) } catch (e) {}
       }
     }
+    autoDetectPaths()
     // The app never needs camera, microphone, location or similar access, so refuse any request for it
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false))
     createWindow()
