@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Work out the version
         id: ver
@@ -81,6 +82,19 @@ jobs:
           npm run pack
           ls -la dist
 
+      - name: Write the release notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          PREV="$( (git tag --list 'v[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n 1) || true)"
+          if [ -n "$PREV" ]; then RANGE="$PREV..HEAD"; else RANGE="-n 15"; fi
+          # one line per change: the title of each commit since the previous release
+          (git log --no-merges --format='%s' $RANGE | grep -viE '^(readme|merge|workflow|ci[: ])' | sed 's/^/- /' > release-notes.txt) || true
+          if [ ! -s release-notes.txt ]; then echo "- Small fixes and improvements" > release-notes.txt; fi
+          cat release-notes.txt
+
       - name: Publish the release
         shell: bash
         env:
@@ -95,7 +109,7 @@ jobs:
             exit 1
           fi
           echo "Publishing $FILE as $TAG"
-          if OUT=$(gh release create "$TAG" "$FILE" --title "$TAG" --notes "Fortnite Unity Converter $TAG" --target "${GITHUB_SHA}" 2>&1); then
+          if OUT=$(gh release create "$TAG" "$FILE" --title "$TAG" --notes-file release-notes.txt --target "${GITHUB_SHA}" 2>&1); then
             echo "$OUT"
           else
             echo "::warning::release create failed: $(echo "$OUT" | tr '\n' ' ')"

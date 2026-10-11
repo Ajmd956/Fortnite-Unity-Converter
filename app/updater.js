@@ -23,6 +23,14 @@ function compareVersions(a, b) {
   return x.pre.localeCompare(y.pre, 'en', { numeric: true })
 }
 
+// Did the app just start on a newer version than the one that ran last time?
+// A copy that has never recorded a version but already has settings was updated from an older build.
+function wasUpdated(o) {
+  if (!o || !o.packaged) return false
+  if (o.prev) return compareVersions(o.cur, o.prev) > 0
+  return !!o.hadSettings
+}
+
 function createUpdater(opts) {
   const api = (opts.apiBase || 'https://api.github.com').replace(/\/$/, '')
   const state = { offered: null, downloading: false, ready: null }
@@ -55,6 +63,29 @@ function createUpdater(opts) {
       published: rel.published_at || ''
     }
     return state.offered
+  }
+
+  // What changed: the notes of every release after "from", up to and including "to" (newest first)
+  async function notesSince(from, to) {
+    if (!opts.repo || !/^[\w.-]+\/[\w.-]+$/.test(opts.repo)) return []
+    const res = await fetch(api + '/repos/' + opts.repo + '/releases?per_page=30', {
+      headers: Object.assign({ Accept: 'application/vnd.github+json', 'User-Agent': 'FortniteUnityConverter-Updater' }, auth()),
+      signal: AbortSignal.timeout(10000)
+    })
+    if (!res.ok) throw new Error('Could not load the release notes (' + res.status + ').')
+    const list = await res.json()
+    const out = []
+    for (const r of Array.isArray(list) ? list : []) {
+      if (!r || r.draft || r.prerelease || !r.tag_name) continue
+      if (compareVersions(r.tag_name, to) > 0) continue
+      if (from ? compareVersions(r.tag_name, from) <= 0 : compareVersions(r.tag_name, to) !== 0) continue
+      const notes = String(r.body || '').replace(/\r/g, '').trim()
+      // older releases only said their own name; there is nothing to show for those
+      if (!notes || /^Fortnite Unity Converter v?[\d.]+$/i.test(notes)) continue
+      out.push({ version: r.tag_name, notes: notes.slice(0, 1500) })
+      if (out.length >= 15) break
+    }
+    return out
   }
 
   async function download(onProgress) {
@@ -139,7 +170,7 @@ function createUpdater(opts) {
     return script
   }
 
-  return { check, download, applyScript, state }
+  return { check, download, applyScript, notesSince, state }
 }
 
-module.exports = { createUpdater, compareVersions }
+module.exports = { createUpdater, compareVersions, wasUpdated }

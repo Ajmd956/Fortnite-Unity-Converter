@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('api', {
   stop: () => ipcRenderer.invoke('engine:stop'),
   shaders: () => ipcRenderer.invoke('shaders:list'),
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
+  updatedInfo: () => ipcRenderer.invoke('app:updated'),
+  releaseNotes: () => ipcRenderer.invoke('app:releasenotes'),
   open: p => ipcRenderer.invoke('shell:open', p),
   external: url => ipcRenderer.invoke('shell:external', url),
   relaunch: () => ipcRenderer.invoke('app:relaunch'),

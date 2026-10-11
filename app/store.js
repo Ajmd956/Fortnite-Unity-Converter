@@ -19,7 +19,10 @@ const defaults = {
   fix: true,
   useUnity: true,
   checkUpdates: true,
-  updateToken: ''
+  updateToken: '',
+  lastVersion: '',
+  pendingNotes: '',
+  pendingFor: ''
 }
 
 function load(file) {

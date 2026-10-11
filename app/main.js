@@ -6,7 +6,7 @@ const fs = require('fs')
 const net = require('net')
 const { spawn, spawnSync } = require('child_process')
 const store = require('./store')
-const { createUpdater } = require('./updater')
+const { createUpdater, wasUpdated } = require('./updater')
 
 const appDir = app.isPackaged ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath)) : __dirname
 const root = path.join(app.getPath('documents'), 'Fortnite Unity Converter')
@@ -670,6 +670,28 @@ function startUpdateChecks() {
   if (!updateTimer) updateTimer = setInterval(() => runUpdateCheck(false), 6 * 60 * 60 * 1000)
 }
 
+// Set at startup when this is the first run after an update; the page asks for it once and then it is gone
+let justUpdated = null
+let updatedMeta = null
+
+ipcMain.handle('app:updated', () => {
+  const j = justUpdated
+  justUpdated = null
+  if (j) updatedMeta = j
+  return j ? { version: j.version, from: j.from } : null
+})
+
+ipcMain.handle('app:releasenotes', async () => {
+  const j = updatedMeta
+  if (!j) return { ok: false }
+  try {
+    const list = await initUpdater().notesSince(j.from, j.version)
+    if (list.length) return { ok: true, list }
+  } catch (e) {}
+  if (j.notes) return { ok: true, list: [{ version: 'v' + j.version, notes: j.notes }] }
+  return { ok: false }
+})
+
 ipcMain.handle('update:pending', () => (updateOffered ? offerPayload(updateOffered) : null))
 ipcMain.handle('update:check', () => runUpdateCheck(true))
 ipcMain.handle('app:version', () => ({ version: app.getVersion(), canUpdate: !!updateExePath() }))
@@ -679,6 +701,12 @@ ipcMain.handle('update:download', async () => {
   try {
     const file = await u.download(p => send('update:progress', p))
     send('update:progress', { done: true })
+    // keep the notes of this update so the new version can show them even when it starts offline
+    if (updateOffered && updateOffered.notes) {
+      settings.pendingNotes = String(updateOffered.notes).slice(0, 1500)
+      settings.pendingFor = String(updateOffered.version || '').replace(/^v/i, '')
+      try { store.save(settingsFile, settings) } catch (e) {}
+    }
     const script = u.applyScript(file, updateExePath())
     spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
     setTimeout(() => app.quit(), 600)
@@ -726,7 +754,21 @@ if (!gotLock) {
   app.whenReady().then(() => {
     migrateOldData()
     ensureFolders()
+    const hadSettings = fs.existsSync(settingsFile)
     settings = store.load(settingsFile)
+    {
+      const cur = app.getVersion()
+      const prev = String(settings.lastVersion || '')
+      if (wasUpdated({ packaged: app.isPackaged, prev, cur, hadSettings })) {
+        justUpdated = { version: cur, from: prev, notes: settings.pendingFor === cur ? String(settings.pendingNotes || '') : '' }
+      }
+      if (prev !== cur || settings.pendingNotes || settings.pendingFor) {
+        settings.lastVersion = cur
+        settings.pendingNotes = ''
+        settings.pendingFor = ''
+        try { store.save(settingsFile, settings) } catch (e) {}
+      }
+    }
     // The app never needs camera, microphone, location or similar access, so refuse any request for it
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false))
     createWindow()
@@ -768,7 +810,7 @@ ipcMain.handle('startup:check', () => {
 ipcMain.handle('app:relaunch', () => { app.relaunch(); app.exit(0) })
 
 ipcMain.handle('app:reset', () => {
-  settings = Object.assign({}, store.defaults)
+  settings = Object.assign({}, store.defaults, { lastVersion: app.getVersion() })
   store.save(settingsFile, settings)
   app.relaunch()
   app.exit(0)

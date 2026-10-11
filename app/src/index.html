@@ -475,6 +475,14 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 #updateOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
 .upd-meta{font-size:12px;color:var(--muted);margin:-10px 0 12px;}
 .upd-notes{max-height:140px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.5;color:var(--muted);background:var(--sel);border-radius:8px;padding:10px 12px;margin:0 0 16px;}
+#updatedOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
+#updDoneNotesBtn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
+#updDoneNotesBtn:hover{background:#2a2733;}
+#updDoneNotesBtn:active{background:#1a1822;}
+#updDoneOk{background:var(--primary);color:var(--on-primary);}
+#updDoneOk:hover{background:#a355fa;}
+#updDoneOk:active{background:#8531e0;}
+.upd-notes.big{max-height:min(320px,45vh);user-select:text;}
 .upd-bar{height:6px;border-radius:3px;background:var(--sel);overflow:hidden;margin:2px 0 4px;}
 .upd-fill{height:100%;width:0;background:var(--primary);transition:width .15s linear;}
 .done-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:#3ddc9722;border:1px solid #3ddc9755;color:var(--ok);font-size:22px;font-weight:800;}
@@ -795,6 +803,18 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
     <div class="upd-btns" id="updBtns">
       <button class="btn" id="updCancel">Cancel</button>
       <button class="btn primary" id="updGo">Download</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="updatedOverlay">
+  <div class="panel upd-panel">
+    <h2>Updated successfully</h2>
+    <div class="upd-sub" id="updDoneBody"></div>
+    <div class="upd-notes big" id="updDoneNotes" hidden></div>
+    <div class="upd-btns">
+      <button class="btn" id="updDoneNotesBtn">Release notes</button>
+      <button class="btn primary" id="updDoneOk">OK</button>
     </div>
   </div>
 </div>
@@ -1170,6 +1190,41 @@ $('updGo').onclick = async () => {
   $('updGo').disabled = false
   $('updGo').textContent = 'Try again'
   $('updBody').textContent = (r && r.error) || 'The update failed.'
+}
+
+// First start after an update: "Updated successfully", with the release notes one click away
+let doneNotesText = null
+function closeUpdated() { $('updatedOverlay').classList.remove('open') }
+async function showUpdatedIfAny() {
+  let u = null
+  try { u = await window.api.updatedInfo() } catch (e) {}
+  if (!u) return
+  doneNotesText = null
+  $('updDoneBody').textContent = 'Fortnite Unity Converter is now on version ' + u.version + '.'
+  $('updDoneNotes').hidden = true
+  $('updDoneNotesBtn').textContent = 'Release notes'
+  $('updDoneNotesBtn').disabled = false
+  $('updatedOverlay').classList.add('open')
+}
+$('updDoneOk').onclick = closeUpdated
+$('updatedOverlay').addEventListener('mousedown', e => { if (e.target === $('updatedOverlay')) closeUpdated() })
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('updatedOverlay').classList.contains('open')) closeUpdated() })
+$('updDoneNotesBtn').onclick = async () => {
+  const box = $('updDoneNotes'), btn = $('updDoneNotesBtn')
+  if (!box.hidden) { box.hidden = true; btn.textContent = 'Release notes'; return }
+  if (doneNotesText === null) {
+    btn.disabled = true
+    btn.textContent = 'Loading...'
+    let r = null
+    try { r = await window.api.releaseNotes() } catch (e) {}
+    btn.disabled = false
+    doneNotesText = r && r.ok && r.list && r.list.length
+      ? r.list.map(x => x.version + '\n' + x.notes).join('\n\n')
+      : 'There are no release notes for this version.'
+  }
+  box.textContent = doneNotesText
+  box.hidden = false
+  btn.textContent = 'Hide notes'
 }
 
 let updCheckInfo = { version: '', canUpdate: true }
@@ -3289,12 +3344,14 @@ async function runStartup() {
   await wait(Math.max(400, SPLASH_MIN_MS - (Date.now() - t0)))
   $('splash').classList.add('gone')
   pollBridge()
+  showUpdatedIfAny()
 }
 
 $('spRetry').onclick = runStartup
 $('spSkip').onclick = () => {
   $('splash').classList.add('gone')
   pollBridge()
+  showUpdatedIfAny()
 }
 
 init().then(runStartup)
