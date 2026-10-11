@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Model Viewer</title>
+<style>
+@font-face{font-family:'SF Pro Text';font-weight:400;src:url('../assets/fonts/SF-Pro-Text-Regular.otf');}
+@font-face{font-family:'SF Pro Text';font-weight:500;src:url('../assets/fonts/SF-Pro-Text-Medium.otf');}
+@font-face{font-family:'SF Pro Text';font-weight:600;src:url('../assets/fonts/SF-Pro-Text-Semibold.otf');}
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{--bg:#0D0C12;--content:#09080D;--btn:#1D1B24;--btn-hover:#252332;--sel:#252332;--sel-hover:#2E2B3C;--bright:#322F40;--border:#1F1D2A;--text:#E2DFF0;--muted:#A8A4C0;--accent:#953bf8;--shadow:inset 0 3px 2px -2px #ffffff10,inset 0 10px 25px #ffffff05,inset 0 0 0 1.5px #ffffff0a,0 4px 8px #00000020,0 8px 12px #00000010;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);font-family:'SF Pro Text','Segoe UI',system-ui,sans-serif;font-size:14px;display:flex;flex-direction:column;overflow:hidden;user-select:none;box-shadow:inset 0 0 0 1px #3D3C42;}
+button{font-family:inherit;outline:none;border:none;color:inherit;background:none;}
+#tb{flex:0 0 35px;height:35px;position:relative;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;-webkit-app-region:drag;}
+#tb .logo{justify-self:end;width:20px;height:20px;margin-right:6px;}
+#tb .ttl{font-weight:600;font-size:14px;}
+.winctl{position:absolute;top:0;right:1px;display:flex;-webkit-app-region:no-drag;}
+.winctl button{width:35px;height:35px;display:flex;align-items:center;justify-content:center;color:#b9b5c9;cursor:pointer;border-radius:4px;}
+.winctl button:hover{background:#ffffff0a;color:#fff;}
+.winctl .wc-close:hover{background:#FF0022;color:#fff;}
+#content{flex:1;min-height:0;background:var(--content);border-top:2px solid var(--border);padding:8px;position:relative;}
+#grid{height:100%;display:grid;grid-template-columns:3fr 8px 1fr;min-height:0;}
+#view{grid-column:1;position:relative;overflow:hidden;min-width:0;}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none;}
+#side{grid-column:3;display:none;flex-direction:column;min-height:0;min-width:0;}
+#side.on{display:flex;}
+#cards{flex:1;min-height:0;overflow-y:auto;}
+#cards::-webkit-scrollbar{width:0;}
+.card{border-radius:16px;background:linear-gradient(180deg,#181620,#16141E);box-shadow:var(--shadow);padding:12px;display:grid;grid-template-columns:auto 1fr;grid-template-rows:1fr 1fr;align-items:center;}
+.card .ic{grid-row:1/3;grid-column:1;width:48px;height:48px;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.card .ic img{width:48px;height:48px;object-fit:contain;}
+.card .nm{grid-row:1;grid-column:2;margin-left:12px;align-self:end;font-weight:600;font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card .cl{grid-row:2;grid-column:2;margin-left:12px;align-self:start;font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#btns{flex:0 0 auto;margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+.btn{height:32px;border-radius:16px;background:var(--btn);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--text);cursor:pointer;transition:background-color .12s;}
+.btn:hover{background:var(--btn-hover);}
+.btn:active{background:#232130;}
+.btn:disabled{opacity:.5;cursor:default;background:var(--btn);}
+.btn svg{width:18px;height:18px;}
+#msg{position:absolute;inset:8px;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;background:var(--content);z-index:2;}
+#msg h3{font-size:17px;color:#f5b942;font-weight:600;}
+#msg p{font-size:13px;color:var(--muted);max-width:520px;line-height:1.5;user-select:text;overflow-wrap:anywhere;}
+.ring{width:42px;height:42px;border-radius:50%;border:4px solid #ffffff12;border-top-color:var(--accent);animation:spin .9s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div id="tb"><img class="logo" src="../assets/logo.png"><div class="ttl">Model Viewer</div><div></div>
+  <div class="winctl">
+    <button id="wMin"><svg width="15" height="15" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+    <button id="wMax"><svg id="wMaxIc" width="18" height="18" viewBox="0 0 12 12" fill="none"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" stroke="currentColor" stroke-width="1.3"/></svg></button>
+    <button id="wClose" class="wc-close"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+  </div>
+</div>
+<div id="content">
+  <div id="grid">
+    <div id="view"><canvas id="gl" tabindex="0"></canvas></div>
+    <div id="side">
+      <div id="cards"></div>
+      <div id="btns"><button class="btn" id="anim" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,20H4C2.89,20 2,19.1 2,18V6C2,4.89 2.89,4 4,4H10L12,6H19A2,2 0 0,1 21,8H21L4,8V18L6.14,10H23.21L20.93,18.5C20.7,19.37 19.92,20 19,20Z"/></svg>Select Animation</button></div>
+    </div>
+  </div>
+  <div id="msg"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id)
+const utf8 = b => new TextDecoder().decode(b)
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+let SET = {}
+
+function applyTheme(s) {
+  const t = (s && s.theme) || {}
+  const r = document.documentElement.style
+  const map = { accent: '--accent', btn: '--btn', btnHover: '--btn-hover', bg: '--bg', content: '--content', border: '--border', text: '--text', muted: '--muted', sel: '--sel', selHover: '--sel-hover', btnBright: '--bright' }
+  Object.keys(map).forEach(k => { if (typeof t[k] === 'string' && /^#[0-9a-fA-F]{6,8}$/.test(t[k])) r.setProperty(map[k], t[k]) })
+}
+
+const M4 = {
+  id: () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
+  mul(a, b) { const o = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s } return o },
+  trs(t, q, s) {
+    const [x, y, z, w] = q, [sx, sy, sz] = s
+    const xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, wx = w * x, wy = w * y, wz = w * z
+    return [(1 - 2 * (yy + zz)) * sx, (2 * (xy + wz)) * sx, (2 * (xz - wy)) * sx, 0,
+            (2 * (xy - wz)) * sy, (1 - 2 * (xx + zz)) * sy, (2 * (yz + wx)) * sy, 0,
+            (2 * (xz + wy)) * sz, (2 * (yz - wx)) * sz, (1 - 2 * (xx + yy)) * sz, 0,
+            t[0], t[1], t[2], 1]
+  },
+  persp(fov, asp, n, f) { const t = 1 / Math.tan(fov / 2); return [t / asp,0,0,0, 0,t,0,0, 0,0,(f + n) / (n - f),-1, 0,0,2 * f * n / (n - f),0] },
+  look(e, c, u) {
+    let zx = e[0] - c[0], zy = e[1] - c[1], zz = e[2] - c[2]; let l = Math.hypot(zx, zy, zz) || 1; zx /= l; zy /= l; zz /= l
+    let xx = u[1] * zz - u[2] * zy, xy = u[2] * zx - u[0] * zz, xz = u[0] * zy - u[1] * zx; l = Math.hypot(xx, xy, xz) || 1; xx /= l; xy /= l; xz /= l
+    const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx
+    return [xx, yx, zx, 0, xy, yy, zy, 0, xz, yz, zz, 0, -(xx * e[0] + xy * e[1] + xz * e[2]), -(yx * e[0] + yy * e[1] + yz * e[2]), -(zx * e[0] + zy * e[1] + zz * e[2]), 1]
+  }
+}
+
+async function loadGltf(file) {
+  const bytes = await pv.read(file)
+  if (!bytes) throw new Error('could not read ' + file)
+  const dir = file.replace(/[^\\/]*$/, '')
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let json, bin = null
+  if (bytes.byteLength > 12 && dv.getUint32(0, true) === 0x46546C67) {
+    let off = 12
+    while (off + 8 <= bytes.byteLength) {
+      const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true)
+      const data = bytes.subarray(off + 8, off + 8 + len)
+      if (type === 0x4E4F534A) json = JSON.parse(utf8(data))
+      else if (type === 0x004E4942 && !bin) bin = data
+      off += 8 + len
+    }
+  } else json = JSON.parse(utf8(bytes))
+  if (!json) throw new Error('not a glTF file')
+  const fromUri = async uri => {
+    if (uri.startsWith('data:')) { const s = atob(uri.slice(uri.indexOf(',') + 1)); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a }
+    return pv.read(dir + decodeURIComponent(uri))
+  }
+  const buffers = await Promise.all((json.buffers || []).map(async b => b.uri === undefined ? bin : await fromUri(b.uri)))
+  return { json, buffers, fromUri }
+}
+
+function accessor(g, idx, asIndex) {
+  const a = g.json.accessors[idx], bv = g.json.bufferViews[a.bufferView]
+  const buf = g.buffers[bv.buffer]
+  if (!buf) throw new Error('missing buffer')
+  const comps = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }[a.type]
+  const CT = { 5120: Int8Array, 5121: Uint8Array, 5122: Int16Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array }[a.componentType]
+  const bp = CT.BYTES_PER_ELEMENT
+  const start = buf.byteOffset + (bv.byteOffset || 0) + (a.byteOffset || 0)
+  const stride = bv.byteStride || comps * bp
+  const n = a.count
+  const out = asIndex ? new Uint32Array(n * comps) : new Float32Array(n * comps)
+  const norm = a.normalized ? { 5120: 127, 5121: 255, 5122: 32767, 5123: 65535 }[a.componentType] : 0
+  if (stride === comps * bp && start % bp === 0) {
+    const v = new CT(buf.buffer, start, n * comps)
+    for (let i = 0; i < v.length; i++) out[i] = norm ? Math.max(v[i] / norm, -1) : v[i]
+  } else {
+    const dv = new DataView(buf.buffer)
+    const get = { 5120: 'getInt8', 5121: 'getUint8', 5122: 'getInt16', 5123: 'getUint16', 5125: 'getUint32', 5126: 'getFloat32' }[a.componentType]
+    for (let i = 0; i < n; i++) for (let c = 0; c < comps; c++) { const v = dv[get](start + i * stride + c * bp, true); out[i * comps + c] = norm ? Math.max(v / norm, -1) : v }
+  }
+  return out
+}
+
+function buildTangents(pos, nrm, uv, idx, nv) {
+  const acc = new Float32Array(nv * 3)
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2]
+    const e1x = pos[b * 3] - pos[a * 3], e1y = pos[b * 3 + 1] - pos[a * 3 + 1], e1z = pos[b * 3 + 2] - pos[a * 3 + 2]
+    const e2x = pos[c * 3] - pos[a * 3], e2y = pos[c * 3 + 1] - pos[a * 3 + 1], e2z = pos[c * 3 + 2] - pos[a * 3 + 2]
+    const du1 = uv[b * 2] - uv[a * 2], dv1 = uv[b * 2 + 1] - uv[a * 2 + 1]
+    const du2 = uv[c * 2] - uv[a * 2], dv2 = uv[c * 2 + 1] - uv[a * 2 + 1]
+    const d = du1 * dv2 - du2 * dv1
+    const r = Math.abs(d) < 1e-12 ? 0 : 1 / d
+    const tx = (e1x * dv2 - e2x * dv1) * r, ty = (e1y * dv2 - e2y * dv1) * r, tz = (e1z * dv2 - e2z * dv1) * r
+    for (const k of [a, b, c]) { acc[k * 3] += tx; acc[k * 3 + 1] += ty; acc[k * 3 + 2] += tz }
+  }
+  for (let i = 0; i < nv; i++) {
+    const nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2]
+    let x = acc[i * 3], y = acc[i * 3 + 1], z = acc[i * 3 + 2]
+    const d = x * nx + y * ny + z * nz
+    x -= d * nx; y -= d * ny; z -= d * nz
+    let l = Math.hypot(x, y, z)
+    if (l < 1e-8) {
+      if (Math.abs(nx) < 0.9) { x = 0; y = -nz; z = ny } else { x = nz; y = 0; z = -nx }
+      l = Math.hypot(x, y, z) || 1
+    }
+    acc[i * 3] = x / l; acc[i * 3 + 1] = y / l; acc[i * 3 + 2] = z / l
+  }
+  return acc
+}
+
+function buildScene(g) {
+  const J = g.json
+  const batches = []
+  const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }
+  const nodes = J.nodes || []
+  const seen = new Set()
+  function local(n) { return n.matrix ? n.matrix.slice() : M4.trs(n.translation || [0, 0, 0], n.rotation || [0, 0, 0, 1], n.scale || [1, 1, 1]) }
+  function addMesh(mesh, m) {
+    for (const prim of mesh.primitives || []) {
+      if (prim.mode !== undefined && prim.mode !== 4) continue
+      if (prim.attributes.POSITION === undefined) continue
+      const p0 = accessor(g, prim.attributes.POSITION)
+      const nv = p0.length / 3
+      const pos = new Float32Array(p0.length)
+      for (let i = 0; i < nv; i++) {
+        const x = p0[i * 3], y = p0[i * 3 + 1], z = p0[i * 3 + 2]
+        const X = m[0] * x + m[4] * y + m[8] * z + m[12], Y = m[1] * x + m[5] * y + m[9] * z + m[13], Z = m[2] * x + m[6] * y + m[10] * z + m[14]
+        pos[i * 3] = X; pos[i * 3 + 1] = Y; pos[i * 3 + 2] = Z
+        if (X < bb.min[0]) bb.min[0] = X; if (Y < bb.min[1]) bb.min[1] = Y; if (Z < bb.min[2]) bb.min[2] = Z
+        if (X > bb.max[0]) bb.max[0] = X; if (Y > bb.max[1]) bb.max[1] = Y; if (Z > bb.max[2]) bb.max[2] = Z
+      }
+      let idx = prim.indices !== undefined ? accessor(g, prim.indices, true) : null
+      if (!idx) { idx = new Uint32Array(nv); for (let i = 0; i < nv; i++) idx[i] = i }
+      let nrm
+      if (prim.attributes.NORMAL !== undefined) {
+        const n0 = accessor(g, prim.attributes.NORMAL)
+        nrm = new Float32Array(n0.length)
+        for (let i = 0; i < nv; i++) {
+          const x = n0[i * 3], y = n0[i * 3 + 1], z = n0[i * 3 + 2]
+          const X = m[0] * x + m[4] * y + m[8] * z, Y = m[1] * x + m[5] * y + m[9] * z, Z = m[2] * x + m[6] * y + m[10] * z
+          const l = Math.hypot(X, Y, Z) || 1
+          nrm[i * 3] = X / l; nrm[i * 3 + 1] = Y / l; nrm[i * 3 + 2] = Z / l
+        }
+      } else {
+        nrm = new Float32Array(nv * 3)
+        for (let t = 0; t + 2 < idx.length; t += 3) {
+          const a = idx[t], b = idx[t + 1], c = idx[t + 2]
+          const ux = pos[b * 3] - pos[a * 3], uy = pos[b * 3 + 1] - pos[a * 3 + 1], uz = pos[b * 3 + 2] - pos[a * 3 + 2]
+          const vx = pos[c * 3] - pos[a * 3], vy = pos[c * 3 + 1] - pos[a * 3 + 1], vz = pos[c * 3 + 2] - pos[a * 3 + 2]
+          const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+          for (const k of [a, b, c]) { nrm[k * 3] += nx; nrm[k * 3 + 1] += ny; nrm[k * 3 + 2] += nz }
+        }
+        for (let i = 0; i < nv; i++) { const l = Math.hypot(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]) || 1; nrm[i * 3] /= l; nrm[i * 3 + 1] /= l; nrm[i * 3 + 2] /= l }
+      }
+      const uv = prim.attributes.TEXCOORD_0 !== undefined ? accessor(g, prim.attributes.TEXCOORD_0) : new Float32Array(nv * 2)
+      let tan
+      if (prim.attributes.TANGENT !== undefined) {
+        const t0 = accessor(g, prim.attributes.TANGENT)
+        tan = new Float32Array(nv * 3)
+        for (let i = 0; i < nv; i++) {
+          const x = t0[i * 4], y = t0[i * 4 + 1], z = t0[i * 4 + 2]
+          const X = m[0] * x + m[4] * y + m[8] * z, Y = m[1] * x + m[5] * y + m[9] * z, Z = m[2] * x + m[6] * y + m[10] * z
+          const l = Math.hypot(X, Y, Z) || 1
+          tan[i * 3] = X / l; tan[i * 3 + 1] = Y / l; tan[i * 3 + 2] = Z / l
+        }
+      } else tan = buildTangents(pos, nrm, uv, idx, nv)
+      const lay = new Float32Array(nv)
+      if (prim.attributes.TEXCOORD_1 !== undefined) {
+        const u1 = accessor(g, prim.attributes.TEXCOORD_1)
+        for (let i = 0; i < nv; i++) lay[i] = u1[i * 2]
+      }
+      const det = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2])
+      const mat = prim.material !== undefined ? (J.materials || [])[prim.material] : null
+      const pbr = (mat && mat.pbrMetallicRoughness) || {}
+      let tex = -1
+      if (pbr.baseColorTexture && (J.textures || [])[pbr.baseColorTexture.index]) tex = J.textures[pbr.baseColorTexture.index].source
+      batches.push({ pos, nrm, tan, uv, lay, idx, tex: tex === undefined ? -1 : tex, matName: (mat && mat.name) || '', matIndex: prim.material === undefined ? -1 : prim.material, mirror: det < 0 ? -1 : 1 })
+    }
+  }
+  function walk(i, parent) {
+    if (seen.has(i) || !nodes[i]) return
+    seen.add(i)
+    const n = nodes[i]
+    const m = M4.mul(parent, local(n))
+    if (n.mesh !== undefined && (J.meshes || [])[n.mesh]) addMesh(J.meshes[n.mesh], m)
+    ;(n.children || []).forEach(c => walk(c, m))
+  }
+  const scene = (J.scenes || [])[J.scene || 0]
+  let roots = scene && scene.nodes
+  if (!roots) { const kids = new Set(); nodes.forEach(n => (n.children || []).forEach(c => kids.add(c))); roots = nodes.map((_, i) => i).filter(i => !kids.has(i)) }
+  roots.forEach(r => walk(r, M4.id()))
+  if (!batches.length && (J.meshes || []).length) J.meshes.forEach(mesh => addMesh(mesh, M4.id()))
+  return { batches, bb }
+}
+
+
+const cv = $('gl')
+const gl = cv.getContext('webgl2', { antialias: true, alpha: false })
+let items = []
+let pending = 0
+let scene = { ready: false, center: [0, 0, 0] }
+const cam = { pos: [5, 5, 5], yaw: 0, pitch: 0, speed: 5, fov: 70, near: 0.1, far: 10000 }
+const keys = new Set()
+
+function showMsg(html) { const m = $('msg'); m.innerHTML = html; m.style.display = 'flex' }
+function hideMsg() { $('msg').style.display = 'none' }
+
+let prog = null, gprog = null, U = {}, GU = {}, gridVao = null, defaults = []
+function sh(t, s) { const x = gl.createShader(t); gl.shaderSource(x, s); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x }
+function link(vs, fs) {
+  const p = gl.createProgram()
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs))
+  gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aNrm'); gl.bindAttribLocation(p, 2, 'aUV'); gl.bindAttribLocation(p, 3, 'aTan'); gl.bindAttribLocation(p, 4, 'aLayer')
+  gl.linkProgram(p)
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p))
+  return p
+}
+function initGL() {
+  const VS = '#version 300 es\nin vec3 aPos;in vec3 aNrm;in vec2 aUV;in vec3 aTan;in float aLayer;uniform mat4 uView;uniform mat4 uProj;out vec3 fP;out vec3 fN;out vec3 fT;out vec2 fUV;out float fL;void main(){fP=aPos;fN=aNrm;fT=aTan;fUV=aUV;fL=aLayer;gl_Position=uProj*uView*vec4(aPos,1.);}'
+  const FS = `#version 300 es
+precision highp float;
+in vec3 fP;in vec3 fN;in vec3 fT;in vec2 fUV;in float fL;
+uniform vec3 uCam;uniform float uMirror;uniform bool uUseLayers;uniform int uMaxLayer;
+uniform sampler2D diffuse0;uniform sampler2D diffuse1;uniform sampler2D diffuse2;uniform sampler2D diffuse3;
+uniform sampler2D normal0;uniform sampler2D normal1;uniform sampler2D normal2;uniform sampler2D normal3;
+uniform sampler2D specular0;uniform sampler2D specular1;uniform sampler2D specular2;uniform sampler2D specular3;
+out vec4 FragColor;
+const float PI=3.14159265359;
+vec3 getDiffuse(int l){switch(l){case 0:return texture(diffuse0,fUV).rgb;case 1:return texture(diffuse1,fUV).rgb;case 2:return texture(diffuse2,fUV).rgb;case 3:return texture(diffuse3,fUV).rgb;default:return vec3(0.);}}
+vec3 getNormal(int l){switch(l){case 0:return texture(normal0,fUV).rgb;case 1:return texture(normal1,fUV).rgb;case 2:return texture(normal2,fUV).rgb;case 3:return texture(normal3,fUV).rgb;default:return vec3(0.);}}
+vec3 getSpecular(int l){switch(l){case 0:return texture(specular0,fUV).rgb;case 1:return texture(specular1,fUV).rgb;case 2:return texture(specular2,fUV).rgb;case 3:return texture(specular3,fUV).rgb;default:return vec3(0.);}}
+vec3 calculateNormals(vec3 nm){
+  nm.y=1.-nm.y;nm=normalize(nm*2.-1.);
+  vec3 N=normalize(fN);vec3 T=normalize(fT);T=normalize(T-dot(T,N)*N);vec3 B=cross(N,T)*uMirror;
+  mat3 TBN=mat3(T,B,N);return normalize(TBN*nm);
+}
+vec3 fresnelSchlick(float c,vec3 F0){return F0+(1.-F0)*pow(clamp(1.-c,0.,1.),5.);}
+float DistributionGGX(vec3 N,vec3 H,float r){float a=r*r;float a2=a*a;float nh=max(dot(N,H),0.);float nh2=nh*nh;float d=(nh2*(a2-1.)+1.);d=PI*d*d;return a2/d;}
+float GeometrySchlickGGX(float nv,float r){float rr=r+1.;float k=(rr*rr)/8.;return nv/(nv*(1.-k)+k);}
+float GeometrySmith(vec3 N,vec3 V,vec3 L,float r){return GeometrySchlickGGX(max(dot(N,V),0.),r)*GeometrySchlickGGX(max(dot(N,L),0.),r);}
+void main(){
+  int layer=uUseLayers?int(fL+.0001):0;
+  if(layer>=uMaxLayer)layer=0;
+  vec3 albedo=pow(getDiffuse(layer),vec3(2.2));
+  vec3 N=calculateNormals(getNormal(layer));
+  vec3 sm=getSpecular(layer);
+  float metallic=sm.g;float roughness=clamp(sm.b,.04,1.);
+  vec3 V=normalize(uCam-fP);
+  vec3 Vh=normalize(vec3(V.x,0.,V.z));
+  vec3 cr=normalize(cross(Vh,vec3(0.,1.,0.)));vec3 cu=vec3(0.,1.,0.);
+  vec3 L1=normalize(Vh+cr*.8+cu*1.2);vec3 L2=normalize(Vh-cr*.5+cu*.3);
+  vec3 H1=normalize(V+L1);
+  vec3 F0=mix(vec3(.04),albedo,metallic);
+  float NDF=DistributionGGX(N,H1,roughness);float G=GeometrySmith(N,V,L1,roughness);vec3 F=fresnelSchlick(max(dot(H1,V),0.),F0);
+  vec3 kD=(vec3(1.)-F)*(1.-metallic);
+  vec3 spec=(NDF*G*F)/(4.*max(dot(N,V),0.)*max(dot(N,L1),0.)+.0001);
+  vec3 Lo1=(kD*albedo/PI+spec)*vec3(2.5)*max(dot(N,L1),0.);
+  vec3 Lo2=(albedo/PI)*vec3(.4)*max(dot(N,L2),0.);
+  vec3 c=vec3(.02)*albedo+Lo1+Lo2;
+  c=c/(c+vec3(1.));c=pow(c,vec3(1./2.2));
+  FragColor=vec4(c,1.);
+}`
+  prog = link(VS, FS)
+  const GV = `#version 300 es
+in vec3 aPos;
+uniform mat4 u_Proj;uniform mat4 u_View;
+out vec3 nearPoint;out vec3 farPoint;
+vec3 unproject(vec2 xy,float z){vec4 p=inverse(u_View)*inverse(u_Proj)*vec4(xy,z,1.);return p.xyz/p.w;}
+void main(){nearPoint=unproject(aPos.xy,0.);farPoint=unproject(aPos.xy,1.);gl_Position=vec4(aPos,1.);}`
+  const GF = `#version 300 es
+precision highp float;
+in vec3 nearPoint;in vec3 farPoint;
+uniform mat4 u_Proj;uniform mat4 u_View;uniform vec3 u_CameraPos;
+uniform float u_GridScale1;uniform float u_GridScale2;uniform vec3 u_GridColor1;uniform vec3 u_GridColor2;uniform float u_FadeStart;uniform float u_FadeEnd;
+out vec4 FragColor;
+vec4 grid(vec3 fragPos,float scale,vec3 color,float baseOpacity){
+  vec2 coord=fragPos.xz*scale;vec2 derivative=fwidth(coord);
+  vec2 gridUV=abs(fract(coord-.5)-.5)/derivative;float line=min(gridUV.x,gridUV.y);
+  float opacity=(1.-min(line,1.))*baseOpacity;
+  float xAxis=1.-min(abs(coord.y)/derivative.y,1.);float zAxis=1.-min(abs(coord.x)/derivative.x,1.);
+  vec3 axisColor=color;
+  if(xAxis>0.)axisColor=vec3(1.,0.,0.);else if(zAxis>0.)axisColor=vec3(.15,.3,1.);
+  float axisAlpha=max(xAxis,zAxis)*baseOpacity;
+  vec3 finalColor=mix(color,axisColor,axisAlpha);float finalAlpha=max(opacity,axisAlpha);
+  return vec4(finalColor,finalAlpha);
+}
+float computeDepth(vec3 pos){vec4 c=u_Proj*u_View*vec4(pos,1.);return(c.z/c.w)*.5+.5;}
+void main(){
+  float t=-nearPoint.y/(farPoint.y-nearPoint.y);
+  if(t<0.)discard;
+  vec3 fragPos3D=nearPoint+t*(farPoint-nearPoint);
+  float depth=computeDepth(fragPos3D);
+  if(depth>=1.)discard;
+  gl_FragDepth=depth;
+  float dist=length(fragPos3D-u_CameraPos);
+  float fadeFactor=1.-smoothstep(u_FadeStart,u_FadeEnd,dist);
+  if(fadeFactor<=0.)discard;
+  vec4 g1=grid(fragPos3D,u_GridScale1,u_GridColor1,.8*fadeFactor);
+  vec4 g2=grid(fragPos3D,u_GridScale2,u_GridColor2,.6*fadeFactor);
+  vec4 comb=g1+g2*(1.-g1.a);
+  comb.a*=fadeFactor;
+  if(comb.a<.01)discard;
+  FragColor=comb;
+}`
+  gprog = link(GV, GF)
+  const u = (p, n) => gl.getUniformLocation(p, n)
+  U = { view: u(prog, 'uView'), proj: u(prog, 'uProj'), cam: u(prog, 'uCam'), mirror: u(prog, 'uMirror'), useLayers: u(prog, 'uUseLayers'), maxLayer: u(prog, 'uMaxLayer') }
+  gl.useProgram(prog)
+  ;['diffuse', 'normal', 'specular'].forEach((n, k) => { for (let l = 0; l < 4; l++) gl.uniform1i(u(prog, n + l), k * 4 + l) })
+  defaults = [[178, 178, 178, 255], [128, 128, 255, 255], [0, 0, 255, 255]].map(px => {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(px))
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    return t
+  })
+  GU = { view: u(gprog, 'u_View'), proj: u(gprog, 'u_Proj'), cam: u(gprog, 'u_CameraPos'), s1: u(gprog, 'u_GridScale1'), s2: u(gprog, 'u_GridScale2'), c1: u(gprog, 'u_GridColor1'), c2: u(gprog, 'u_GridColor2'), fs: u(gprog, 'u_FadeStart'), fe: u(gprog, 'u_FadeEnd') }
+  gridVao = gl.createVertexArray(); gl.bindVertexArray(gridVao)
+  const gb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, gb)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, 1, 1, 0, -1, 1, 0, -1, -1, 0]), gl.STATIC_DRAW)
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0)
+  gl.bindVertexArray(null)
+}
+
+function mkBuf(target, data, m) { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); m.gpu.push(b); return b }
+function upload(m) {
+  m.gpu = []
+  m.batches.forEach(b => {
+    b.vao = gl.createVertexArray(); gl.bindVertexArray(b.vao)
+    mkBuf(gl.ARRAY_BUFFER, b.pos, m); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0)
+    mkBuf(gl.ARRAY_BUFFER, b.nrm, m); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0)
+    mkBuf(gl.ARRAY_BUFFER, b.uv, m); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0)
+    mkBuf(gl.ARRAY_BUFFER, b.tan, m); gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 0, 0)
+    mkBuf(gl.ARRAY_BUFFER, b.lay, m); gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 1, gl.FLOAT, false, 0, 0)
+    b.ibo = mkBuf(gl.ELEMENT_ARRAY_BUFFER, b.idx, m)
+  })
+  gl.bindVertexArray(null)
+}
+function makeTex(bmp) {
+  const t = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, t)
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp)
+  gl.generateMipmap(gl.TEXTURE_2D)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+  return t
+}
+async function decode(bytes, mime) {
+  return createImageBitmap(new Blob([bytes], { type: mime || 'image/png' }), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
+}
+function pickEntry(m, b) {
+  const list = m.matInfo || []
+  let e = null
+  if (b.matName) e = list.find(x => x.name && x.name.toLowerCase() === b.matName.toLowerCase())
+  if (!e && b.matIndex >= 0) e = list[b.matIndex]
+  return e || null
+}
+async function loadTextures(m) {
+  m.tex = new Map()
+  const g = m.g
+  const images = g.json.images || []
+  const want = new Map()
+  m.batches.forEach(b => {
+    const e = pickEntry(m, b)
+    b.set = { d: [null, null, null, null], n: [null, null, null, null], s: [null, null, null, null], useLayers: false, maxLayer: 0 }
+    if (e) {
+      b.set.useLayers = !!e.useLayers
+      b.set.maxLayer = e.maxLayer | 0
+      ;[['d', 'diffuse'], ['n', 'normal'], ['s', 'specular']].forEach(([k, name]) => {
+        for (let l = 0; l < 4; l++) if (e[name][l]) { b.set[k][l] = 'f:' + e[name][l]; want.set('f:' + e[name][l], { file: e[name][l] }) }
+      })
+    }
+    if (!b.set.d[0] && b.tex >= 0 && images[b.tex]) { b.set.d[0] = 'g:' + b.tex; want.set('g:' + b.tex, { img: b.tex }) }
+  })
+  await Promise.all([...want.entries()].map(async ([key, w]) => {
+    try {
+      let bytes, mime
+      if (w.file) bytes = await pv.read(w.file)
+      else {
+        const im = images[w.img]; mime = im.mimeType
+        if (im.uri) bytes = await g.fromUri(im.uri)
+        else if (im.bufferView !== undefined) { const bv = g.json.bufferViews[im.bufferView], bf = g.buffers[bv.buffer]; bytes = bf.subarray(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength) }
+      }
+      if (!bytes) return
+      m.tex.set(key, makeTex(await decode(bytes, mime)))
+    } catch (e) {}
+  }))
+}
+
+function fwd() { const cp = Math.cos(cam.pitch); return [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp] }
+function rgt() { return [Math.cos(cam.yaw), 0, Math.sin(cam.yaw)] }
+function lookAt(t) {
+  const dx = t[0] - cam.pos[0], dy = t[1] - cam.pos[1], dz = t[2] - cam.pos[2], l = Math.hypot(dx, dy, dz) || 1
+  cam.yaw = Math.atan2(dx, -dz)
+  cam.pitch = Math.asin(Math.max(-1, Math.min(1, dy / l)))
+}
+function frameBounds(bb) {
+  const c = [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2]
+  const ext = [(bb.max[0] - bb.min[0]) / 2, (bb.max[1] - bb.min[1]) / 2, (bb.max[2] - bb.min[2]) / 2]
+  const radius = Math.hypot(ext[0], ext[1], ext[2])
+  const dist = radius / Math.tan(cam.fov * Math.PI / 360) * 0.8 // 1.5 in the Fortnite Porting code, but its viewer sits ~1.8x closer on screen (measured on SM_FlyingOrb_Body)
+  const k = dist / Math.sqrt(3)
+  cam.pos = [c[0] + k, c[1] + k, c[2] + k]
+  lookAt(c)
+}
+
+let queued = false, last = 0, looking = false
+function kick() { if (!queued) { queued = true; requestAnimationFrame(loop) } }
+function loop(t) {
+  queued = false
+  const dt = last ? Math.min(0.1, (t - last) / 1000) : 0.016
+  last = t
+  const f = fwd(), r = rgt()
+  let mx = 0, my = 0, mz = 0
+  if (keys.has('KeyW')) mz += 1
+  if (keys.has('KeyS')) mz -= 1
+  if (keys.has('KeyD')) mx += 1
+  if (keys.has('KeyA')) mx -= 1
+  if (keys.has('KeyE')) my += 1
+  if (keys.has('KeyQ')) my -= 1
+  const moving = mx || my || mz
+  if (moving) {
+    const v = cam.speed * dt
+    for (let i = 0; i < 3; i++) cam.pos[i] += (f[i] * mz + r[i] * mx) * v
+    cam.pos[1] += my * v
+  }
+  render()
+  if (moving) { queued = true; requestAnimationFrame(loop) } else last = 0
+}
+
+function render() {
+  const dpr = window.devicePixelRatio || 1
+  const w = Math.max(1, Math.floor(cv.clientWidth * dpr)), h = Math.max(1, Math.floor(cv.clientHeight * dpr))
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h }
+  gl.viewport(0, 0, w, h)
+  gl.clearColor(36 / 255, 36 / 255, 36 / 255, 1)
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL)
+  const f = fwd(), p = cam.pos
+  const view = M4.look(p, [p[0] + f[0], p[1] + f[1], p[2] + f[2]], [0, 1, 0])
+  const proj = M4.persp(cam.fov * Math.PI / 180, w / h, cam.near, cam.far)
+  gl.useProgram(prog)
+  gl.uniformMatrix4fv(U.view, false, view); gl.uniformMatrix4fv(U.proj, false, proj)
+  gl.uniform3f(U.cam, p[0], p[1], p[2])
+  for (const m of items) {
+    if (m.state !== 'ok') continue
+    for (const b of m.batches) {
+      gl.bindVertexArray(b.vao)
+      const set = b.set || { d: [], n: [], s: [], useLayers: false, maxLayer: 0 }
+      ;[['d', 0], ['n', 1], ['s', 2]].forEach(([k, kind]) => {
+        for (let l = 0; l < 4; l++) {
+          gl.activeTexture(gl.TEXTURE0 + kind * 4 + l)
+          gl.bindTexture(gl.TEXTURE_2D, (set[k][l] && m.tex && m.tex.get(set[k][l])) || defaults[kind])
+        }
+      })
+      gl.uniform1f(U.mirror, b.mirror)
+      gl.uniform1i(U.useLayers, set.useLayers ? 1 : 0)
+      gl.uniform1i(U.maxLayer, set.maxLayer)
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b.ibo)
+      gl.drawElements(gl.TRIANGLES, b.idx.length, gl.UNSIGNED_INT, 0)
+    }
+  }
+  gl.activeTexture(gl.TEXTURE0)
+  gl.useProgram(gprog)
+  gl.uniformMatrix4fv(GU.view, false, view); gl.uniformMatrix4fv(GU.proj, false, proj)
+  gl.uniform3f(GU.cam, p[0], p[1], p[2])
+  gl.uniform1f(GU.s1, 0.25); gl.uniform1f(GU.s2, 1.0)
+  gl.uniform3f(GU.c1, 67 / 255, 67 / 255, 67 / 255); gl.uniform3f(GU.c2, 0, 0, 0)
+  gl.uniform1f(GU.fs, 0); gl.uniform1f(GU.fe, 250)
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false)
+  gl.bindVertexArray(gridVao)
+  gl.drawArrays(gl.TRIANGLES, 0, 6)
+  gl.bindVertexArray(null)
+  gl.depthMask(true); gl.disable(gl.BLEND)
+}
+
+function disposeItem(m) {
+  if (m.gpu) m.gpu.forEach(b => gl.deleteBuffer(b))
+  if (m.tex) m.tex.forEach(t => gl.deleteTexture(t))
+  m.batches.forEach(b => { if (b.vao) gl.deleteVertexArray(b.vao) })
+  m.removed = true
+}
+
+function resetScene() {
+  items.forEach(disposeItem)
+  items = []
+  pending = 0
+  $('side').classList.remove('on')
+  $('cards').innerHTML = ''
+  kick()
+}
+
+function setLoading() { showMsg('<div class="ring"></div><div style="color:var(--muted);font-size:13px">Loading Assets</div>') }
+
+async function loadItem(m) {
+  try {
+    const job = await pv.multiJob(m.id)
+    if (m.removed) return
+    if (!job.ok || job.kind !== 'model') throw { title: 'Could not preview this', text: job.note || job.error || 'unknown error' }
+    m.cls = job.cls || m.cls || 'StaticMesh'
+    m.g = await loadGltf(job.file)
+    try { m.matInfo = await pv.materials(m.id) } catch (e) { m.matInfo = [] }
+    const sc = buildScene(m.g)
+    const tris = sc.batches.reduce((s, b) => s + b.idx.length / 3, 0)
+    if (!tris) throw { title: 'Nothing to draw', text: 'This export has no triangle geometry.' }
+    m.batches = sc.batches
+    m.bb = sc.bb
+    const rad = Math.hypot(m.bb.max[0] - m.bb.min[0], m.bb.max[1] - m.bb.min[1], m.bb.max[2] - m.bb.min[2]) / 2
+    m.rawRad = rad
+    m.scaled = false // never rescale: the exported size matches how Fortnite Porting looks (SM_FlyingOrb_Close)
+    if (m.scaled) {
+      m.batches.forEach(b => { for (let i = 0; i < b.pos.length; i++) b.pos[i] *= 0.01 })
+      for (let i = 0; i < 3; i++) { m.bb.min[i] *= 0.01; m.bb.max[i] *= 0.01 }
+    }
+    m.batches.forEach(b => { b.base = b.pos })
+    m.bb0 = { min: m.bb.min.slice(), max: m.bb.max.slice() }
+    m.state = 'ok'
+  } catch (e) {
+    m.state = 'error'
+    m.error = e && e.title ? e : { title: 'The viewer hit an error', text: String(e && e.message || e) }
+  }
+}
+
+async function finalize() {
+  const ok = items.filter(m => m.state === 'ok')
+  if (!ok.length) {
+    const bad = items.find(m => m.state === 'error')
+    const e = bad ? bad.error : { title: 'Nothing to show', text: 'No model was loaded.' }
+    showMsg('<h3>' + esc(e.title) + '</h3><p>' + esc(e.text) + '</p>')
+    $('side').classList.remove('on')
+    return
+  }
+  let off = 0
+  const all = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }
+  for (const m of ok) {
+    const w = m.bb0.max[0] - m.bb0.min[0]
+    m.batches.forEach(b => {
+      if (b.vao) gl.deleteVertexArray(b.vao)
+      b.pos = b.base
+      if (off) { b.pos = new Float32Array(b.base); for (let i = 0; i < b.pos.length; i += 3) b.pos[i] += off }
+    })
+    if (m.gpu) m.gpu.forEach(x => gl.deleteBuffer(x))
+    m.bb = { min: m.bb0.min.slice(), max: m.bb0.max.slice() }
+    m.bb.min[0] += off; m.bb.max[0] += off
+    off += w + 1
+    for (let i = 0; i < 3; i++) { all.min[i] = Math.min(all.min[i], m.bb.min[i]); all.max[i] = Math.max(all.max[i], m.bb.max[i]) }
+    upload(m)
+    if (!m.tex) await loadTextures(m)
+  }
+  if (items.some(m => m.removed)) return
+  frameBounds(all)
+  const primary = ok.find(m => m.cls === 'SkeletalMesh') || ok[0]
+  const icon = primary.cls === 'SkeletalMesh' ? 'SkeletalMesh' : 'StaticMesh'
+  $('cards').innerHTML = '<div class="card"><div class="ic"><img src="../assets/icons/' + icon + '_64x.png" draggable="false" alt=""></div><div class="nm">' + esc(primary.name) + '</div><div class="cl">' + esc(primary.cls || 'StaticMesh') + '</div></div>'
+  $('side').classList.add('on')
+  hideMsg()
+  kick()
+}
+
+function addModel(p) {
+  const m = { id: p.id, name: p.name, path: p.path, cls: p.cls || '', state: 'loading', batches: [], error: null }
+  items.push(m)
+  pending++
+  setLoading()
+  loadItem(m).then(() => { if (m.removed) return; pending--; if (!pending) finalize() })
+}
+
+let lookId = 0
+function endLook() { looking = false; try { if (document.pointerLockElement === cv) document.exitPointerLock() } catch (e) {} }
+cv.addEventListener('contextmenu', e => e.preventDefault())
+cv.addEventListener('pointerdown', e => {
+  if (e.button !== 0 && e.button !== 2) return
+  cv.focus()
+  if (!looking) { looking = true; lookId = 0; try { cv.requestPointerLock() } catch (err) {} }
+  try { cv.setPointerCapture(e.pointerId) } catch (err) {}
+  lookId++
+})
+cv.addEventListener('pointerup', e => { if (!(e.buttons & 3)) endLook() })
+cv.addEventListener('pointercancel', endLook)
+cv.addEventListener('pointermove', e => {
+  if (!looking || !(e.buttons & 3)) return
+  if (lookId === 1) { lookId = 2; if (document.pointerLockElement === cv) return }
+  const k = 0.5 * 0.5 * 0.01
+  cam.yaw += e.movementX * k
+  const np = Math.max(-1.5, Math.min(1.5, cam.pitch - e.movementY * k))
+  if (Math.abs(Math.sin(np)) < 0.99) cam.pitch = np
+  kick()
+})
+cv.addEventListener('wheel', e => {
+  e.preventDefault()
+  cam.speed = Math.max(3, Math.min(150, cam.speed + (e.deltaY < 0 ? 1 : -1) * 2))
+}, { passive: false })
+window.addEventListener('keydown', e => {
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE'].includes(e.code)) { keys.add(e.code); kick() }
+})
+window.addEventListener('keyup', e => keys.delete(e.code))
+window.addEventListener('blur', () => { keys.clear(); endLook() })
+new ResizeObserver(kick).observe($('view'))
+
+$('wMin').onclick = () => pv.win.minimize()
+$('wMax').onclick = () => pv.win.toggleMaximize()
+$('wClose').onclick = () => pv.win.close()
+const MAX_IC = '<rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" stroke="currentColor" stroke-width="1.3"/>'
+const RESTORE_IC = '<path d="M4 2.2h5a1.4 1.4 0 0 1 1.4 1.4v5M2.2 4.3h5.1a.9.9 0 0 1 .9.9v5.1a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9V5.2a.9.9 0 0 1 .9-.9z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>'
+
+async function main() {
+  try { SET = (await pv.settings()) || {}; applyTheme(SET) } catch (e) {}
+  if (!gl) { showMsg('<h3>WebGL 2 is not available</h3><p>The model viewer needs WebGL 2. Update your graphics driver.</p>'); return }
+  try { initGL() } catch (e) { showMsg('<h3>Could not start the 3D view</h3><p>' + esc(e.message || e) + '</p>'); return }
+  pv.onAdd(addModel)
+  pv.onReset(resetScene)
+  const list = await pv.multiInit()
+  list.forEach(addModel)
+  kick()
+}
+main()
+</script>
+</body>
+</html>

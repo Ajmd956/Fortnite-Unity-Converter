@@ -1,0 +1,9 @@
+node_modules/
+app/dist/
+app/engine/bin/
+app/build_py/
+app/helper/CUE4Parse/
+app/helper/.dotnet/
+app/helper/FileLister/bin/
+app/helper/FileLister/obj/
+release/

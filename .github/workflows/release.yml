@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, for example 1.0.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then V="${{ github.event.inputs.version }}"; else V="${GITHUB_REF_NAME}"; fi
+          V="${V#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set the app version
+        working-directory: app
+        shell: bash
+        run: npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Build the engine
+        working-directory: app
+        shell: cmd
+        run: |
+          python -m pip install -q pyinstaller
+          python -m PyInstaller --noconfirm --clean --log-level WARN --onefile --console --name FortniteUnityPorter --distpath engine\bin --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib engine\FortniteUnityPorter.py
+
+      - name: Build the file helper
+        working-directory: app
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File helper\build-helper.ps1
+
+      - name: Build the app
+        working-directory: app
+        shell: cmd
+        run: |
+          npm install --no-audit --no-fund --loglevel=error
+          npm run pack
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          gh release create "$TAG" "app/dist/Fortnite Unity Converter.exe" --title "$TAG" --notes "Fortnite Unity Converter $TAG" --target "${GITHUB_SHA}" || gh release upload "$TAG" "app/dist/Fortnite Unity Converter.exe" --clobber
