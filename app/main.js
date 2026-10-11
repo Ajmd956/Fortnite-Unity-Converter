@@ -2024,18 +2024,37 @@ ipcMain.handle('export:run', async (_e, payload) => {
     const up = await startTypeServer()
     if (!up) return { ok: false, error: 'no-helper' }
     const base = payload.dir && typeof payload.dir === 'string' && path.isAbsolute(payload.dir) ? payload.dir : exportDirNow()
-    const out = payload.direct ? base : path.join(base, EXPORT_DIRS[kind])
-    fs.mkdirSync(out, { recursive: true })
+    // Custom folder: every file goes straight into the chosen folder.
+    // Regular export: each file goes into the same folder path it has in the game files.
+    const outFor = p => {
+      if (payload.direct) return base
+      const segs = p.split('/').filter(s => s && s !== '.' && s !== '..' && !/[<>:"|?*]/.test(s))
+      segs.pop()
+      return path.join(base, ...segs)
+    }
+    const dirs = []
+    fs.mkdirSync(base, { recursive: true })
     const results = []
     for (let i = 0; i < paths.length; i++) {
       if (exportStop) break
+      const out = outFor(paths[i])
+      fs.mkdirSync(out, { recursive: true })
       send('export:progress', { kind, i: i + 1, n: paths.length, path: paths[i] })
       const r = await askExport(kind === 'model' ? 'modelexport' : kind, paths[i], out)
+      if (r && r.ok) dirs.push(out)
       results.push(Object.assign({ path: paths[i] }, r))
       send('export:item', Object.assign({ kind, path: paths[i] }, r))
     }
-    send('export:done', { kind, results, dir: out })
-    return { ok: true, results, dir: out }
+    // Report the deepest folder that holds everything exported
+    let shown = dirs.length ? dirs[0] : base
+    for (const d of dirs) {
+      const a = shown.split(path.sep), b = d.split(path.sep)
+      let n = 0
+      while (n < a.length && n < b.length && a[n].toLowerCase() === b[n].toLowerCase()) n++
+      shown = a.slice(0, n).join(path.sep) || base
+    }
+    send('export:done', { kind, results, dir: shown })
+    return { ok: true, results, dir: shown }
   } finally {
     exporting = false
   }
