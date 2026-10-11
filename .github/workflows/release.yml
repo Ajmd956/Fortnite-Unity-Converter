@@ -77,9 +77,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v${{ steps.ver.outputs.version }}"
-          FILE="$(ls app/dist/*.exe 2>/dev/null | grep -v -i -E 'setup|installer|uninstall' | head -n 1)"
+          FILE="$( (ls app/dist/*.exe 2>/dev/null || true) | (grep -v -i -E 'setup|installer|uninstall' || true) | head -n 1)"
           if [ -z "$FILE" ]; then
-            echo "::error::No exe was built. app/dist has: $(ls -la app/dist 2>&1 | tr '\n' ' ')"
+            FOUND="$( (find app -maxdepth 3 \( -name '*.exe' -o -name 'dist' \) -not -path '*/node_modules/*' 2>&1 || true) | tr '\n' ' ')"
+            DIST="$( (ls -la app/dist 2>&1 || true) | tr '\n' ' ')"
+            echo "::error::No exe in app/dist. Found: $FOUND || dist: $DIST"
             exit 1
           fi
           echo "Publishing $FILE as $TAG"
