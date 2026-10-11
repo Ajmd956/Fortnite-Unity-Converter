@@ -1443,7 +1443,7 @@ async function picUrl(p) {
   try { u = web ? await window.api.homeFetchImg(p) : await window.api.homeScreenImg(p) } catch (e) {}
   if (!u && web) return p
   if (u) {
-    if (picCache.size >= 8) picCache.delete(picCache.keys().next().value)
+    if (picCache.size >= 14) picCache.delete(picCache.keys().next().value)
     picCache.set(p, u)
   }
   return u
@@ -1535,26 +1535,70 @@ async function showPic(box, url, dw, dh) {
   if (cur) cur.classList.remove('on')
   return true
 }
-function rotator(getBoxes, visible, dw, dh, startAt) {
-  let cursor = startAt
-  async function nextUrl(list) {
-    for (let tries = 0; tries < 8; tries++) {
-      const p = list[cursor++ % list.length]
-      const u = await picUrl(p)
-      if (u) return u
-    }
-    return ''
+const goodPics = []
+const badPics = new Set()
+let scannerOn = false
+let scanPos = 0
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+async function validPic(p) {
+  const u = await picUrl(p)
+  if (!u) return false
+  const im = new Image()
+  im.src = u
+  try { await im.decode() } catch (e) { return false }
+  return im.naturalWidth >= 1000
+}
+async function scanWorker(list) {
+  while (true) {
+    if (goodPics.length >= 60 || scanPos >= list.length) { if (scanPos >= list.length) return; await sleep(20000); continue }
+    const p = list[scanPos++]
+    if (badPics.has(p) || goodPics.includes(p)) continue
+    let ok = false
+    try { ok = await validPic(p) } catch (e) {}
+    if (ok) goodPics.push(p)
+    else badPics.add(p)
   }
+}
+async function ensureScanner() {
+  if (scannerOn) return
+  const list = (await screenList()) || []
+  if (!list.length) return
+  scannerOn = true
+  scanWorker(list)
+  scanWorker(list)
+}
+function rotator(getBoxes, visible, dw, dh) {
+  const recent = []
+  let busy = false
   async function tick() {
-    const list = (await screenList()) || []
-    if (!list.length) return
-    for (const box of getBoxes()) {
-      for (let t = 0; t < 12; t++) {
-        const u = await nextUrl(list)
-        if (u && await showPic(box, u, dw, dh)) break
+    if (busy) return
+    busy = true
+    try {
+      await ensureScanner()
+      const shown = new Set(Array.from(document.querySelectorAll('[data-pic]')).map(b => b.dataset.pic))
+      for (const box of getBoxes()) {
+        const free = goodPics.filter(p => !shown.has(p))
+        const fresh = free.filter(p => !recent.includes(p))
+        const cand = fresh.length ? fresh : free
+        if (!cand.length) continue
+        const p = cand[Math.floor(Math.random() * cand.length)]
+        const u = await picUrl(p)
+        if (u && await showPic(box, u, dw, dh)) {
+          if (box.dataset.pic) shown.delete(box.dataset.pic)
+          box.dataset.pic = p
+          shown.add(p)
+          recent.push(p)
+          if (recent.length > 16) recent.shift()
+        }
       }
-    }
+    } finally { busy = false }
   }
+  let warm = 0
+  const fast = setInterval(() => {
+    tick()
+    const boxes = getBoxes()
+    if (++warm > 60 || (boxes.length && boxes.every(b => b.dataset.pic))) clearInterval(fast)
+  }, 3000)
   tick()
   setInterval(() => { if (!document.hidden && visible()) tick() }, 10000)
 }
@@ -1563,14 +1607,14 @@ async function fillNewsPics() {
   if (!list.length) { await new Promise(r => setTimeout(r, 20000)); list = await screenList(true) }
   if (!list.length) return
   const upd = $('page-updates')
-  rotator(() => [$('nwFeat')].concat(Array.from(document.querySelectorAll('#nwGrid .nw-pic'))), () => upd && upd.offsetParent, 380, 150, Math.floor(list.length / 2))
+  rotator(() => [$('nwFeat')].concat(Array.from(document.querySelectorAll('#nwGrid .nw-pic'))), () => upd && upd.offsetParent, 380, 150)
 }
 async function startHomeScreens(attempt) {
   let list = []
   try { list = (await screenList(!!attempt)) || [] } catch (e) {}
   if (!list.length) { if ((attempt || 0) < 6) setTimeout(() => startHomeScreens((attempt || 0) + 1), 20000); return }
   const home = $('page-home')
-  rotator(() => Array.from(document.querySelectorAll('#page-home .news-card .news-img')), () => home && home.offsetParent, 380, 150, 0)
+  rotator(() => Array.from(document.querySelectorAll('#page-home .news-card .news-img')), () => home && home.offsetParent, 380, 150)
 }
 renderNews()
 startHomeScreens(0)

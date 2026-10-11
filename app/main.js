@@ -1597,7 +1597,7 @@ ipcMain.handle('home:screens', async () => {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]]
   }
-  return pool.slice(0, 60)
+  return pool.slice(0, 600)
 })
 ipcMain.handle('home:fetchimg', async (_e, u) => {
   if (typeof u !== 'string' || !/^https:\/\//.test(u)) return null
