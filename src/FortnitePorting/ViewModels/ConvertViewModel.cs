@@ -180,6 +180,8 @@ public partial class ConvertViewModel : ViewModelBase
 
     private static (string Command, string[] Pre)? FindEngine()
     {
+        if (Dependencies.EngineFile.Exists) return (Dependencies.EngineFile.FullName, []);
+
         var dir = Path.Combine(AppContext.BaseDirectory, "Engine");
         var exe = Path.Combine(dir, "FortniteUnityPorter.exe");
         if (File.Exists(exe)) return (exe, []);

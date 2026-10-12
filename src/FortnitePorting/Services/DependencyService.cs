@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using Avalonia.Platform;
 using FortnitePorting.Shared.Extensions;
+using Serilog;
 
 namespace FortnitePorting.Services;
 
@@ -14,6 +15,8 @@ public class DependencyService : IService
     public readonly FileInfo RadaDecoderFile = new(Path.Combine(App.DataFolder.FullName, "rada", "radadec.exe"));
     public readonly FileInfo VgmStreamFile = new(Path.Combine(App.DataFolder.FullName, "vgmstream", "vgmstream-cli.exe"));
     
+    public readonly FileInfo EngineFile = new(Path.Combine(App.DataFolder.FullName, "engine", "FortniteUnityPorter.exe"));
+
     public readonly DirectoryInfo VgmStreamFolder = new(Path.Combine(App.DataFolder.FullName, "vgmstream"));
 
     public void Ensure()
@@ -23,6 +26,7 @@ public class DependencyService : IService
             EnsureResource("Assets/Dependencies/binkadec.exe", BinkaDecoderFile);
             EnsureResource("Assets/Dependencies/radadec.exe", RadaDecoderFile);
             EnsureVgmStream();
+            EnsureEngine();
             FinishedEnsuring = true;
         });
     }
@@ -35,6 +39,18 @@ public class DependencyService : IService
         targetFile.Directory?.Create();
         targetFile.Delete();
         File.WriteAllBytes(targetFile.FullName, assetStream.ReadToEnd());
+    }
+
+    private void EnsureEngine()
+    {
+        try
+        {
+            EnsureResource("Assets/Dependencies/FortniteUnityPorter.exe", EngineFile);
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "Conversion engine is not embedded in this build");
+        }
     }
 
     private void EnsureVgmStream()

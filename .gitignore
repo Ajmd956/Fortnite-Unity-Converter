@@ -404,3 +404,5 @@ FodyWeavers.xsd
 # UEFormat plugins copied from external/UEFormat at build time
 plugins/Blender/fortnite_porting/ueformat/
 plugins/Unreal/UEFormat/
+src/FortnitePorting/Assets/Dependencies/FortniteUnityPorter.exe
+build_py/

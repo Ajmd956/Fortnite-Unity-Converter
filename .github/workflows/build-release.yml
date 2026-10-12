@@ -1,52 +1,73 @@
 name: Build Release
-run-name: Release ${{ github.ref_name }}
+run-name: Release v${{ github.event.inputs.version }}
 
 on:
-  push:
-    tags:
-      - '*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, for example 2.0.0. It must be higher than the latest published release.'
+        required: true
+      publish:
+        description: 'Publish the release immediately so installed apps update. Leave off to create a draft first.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: GIT Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
-      - name: Fetch Submodules Recursively
-        run: git submodule update --init --recursive
+      - name: Check the version
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::The version must look like 2.0.0"
+            exit 1
+          fi
 
-      - name: .NET 10 Setup
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build the conversion engine
+        shell: cmd
+        run: |
+          python -m pip install -q pyinstaller
+          python -m PyInstaller --noconfirm --clean --log-level WARN --onefile --console --name FortniteUnityPorter --distpath src\FortnitePorting\Assets\Dependencies --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib src\FortnitePorting\Engine\FortniteUnityPorter.py
+          if not exist src\FortnitePorting\Assets\Dependencies\FortniteUnityPorter.exe exit /b 1
+
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: .NET Restore
-        run: dotnet restore ./src/FortnitePorting
-
-      - name: Get Version
-        shell: bash
-        run: echo "FP_VERSION=$(echo '${{ github.ref_name }}' | sed 's/^v//')" >> $GITHUB_ENV
-
-      - name: .NET Publish
+      - name: Publish the app
+        shell: pwsh
         run: |
+          dotnet restore ./src/FortnitePorting
           dotnet publish ./src/FortnitePorting -c Release --self-contained -r win-x64 -o "./Release" `
             -p:PublishSingleFile=true `
             -p:DebugType=None `
             -p:DebugSymbols=false `
             -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:Version=${{ env.FP_VERSION }}
+            -p:Version=${{ github.event.inputs.version }}
+          Copy-Item ./Release/FortnitePorting.exe "./Release/Fortnite Unity Converter.exe"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "FortnitePorting ${{ github.ref_name }}"
-          files: ./Release/FortnitePorting.exe
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+      - name: Create the release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.inputs.version }}
+          PUBLISH: ${{ github.event.inputs.publish }}
+        run: |
+          FLAGS="--draft"
+          if [ "$PUBLISH" = "true" ]; then FLAGS=""; fi
+          gh release create "v$VERSION" "./Release/Fortnite Unity Converter.exe" --title "v$VERSION" --generate-notes --target "$GITHUB_SHA" $FLAGS
