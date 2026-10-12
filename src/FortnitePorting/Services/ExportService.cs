@@ -282,9 +282,13 @@ public class ExportService(
 
     private async Task<bool> TryEnsurePluginServerRunningAsync(EExportServerType serverType, ExportDataMeta metaData)
     {
-        var launchPath = appSettings.Plugin.ExportAutoLaunchPath(serverType.LocationType);
-        if (string.IsNullOrWhiteSpace(launchPath) || !File.Exists(launchPath))
-            return false;
+        // Blender/Unreal auto-launch removed; replaced by the Unity export step.
+        await Task.CompletedTask;
+        return false;
+    }
+
+    private async Task<bool> UnusedLaunchAsync(EExportServerType serverType, ExportDataMeta metaData, string launchPath)
+    {
 
         var serverName = serverType.Description;
         const string messageId = "ExportLaunch";

@@ -194,16 +194,6 @@ public class AppService : IService
             AppSettings.Installation.Profiles.FirstOrDefault()?.IsSelected = true;
         }
 
-        if (AppSettings.Plugin.Blender.DefaultInstallation is null && AppSettings.Plugin.Blender.Installations.Count > 0)
-        {
-            AppSettings.Plugin.Blender.Installations[0].IsDefault = true;
-        }
-        
-        if (AppSettings.Plugin.Blender.AutomaticallySync && Dependencies.FinishedEnsuring)
-        {
-            TaskService.Run(async () => await AppSettings.Plugin.Blender.SyncInstallations(verbose: false));
-        }
-        
         if (AppSettings.Installation.FinishedSetup)
         {
             Navigation.App.Open<HomeView>();
