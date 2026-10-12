@@ -41,6 +41,8 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="{ext:Space 1}" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="{ext:Space 1}" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button Grid.Column="0" HorizontalAlignment="Stretch" Command="{Binding PropertiesCommand}">
@@ -61,6 +63,13 @@
                     <StackPanel Orientation="Horizontal">
                         <material:MaterialIcon Kind="Export" Margin="{ext:Space 0, 0, 1, 0}" />
                         <TextBlock Text="Export to Unity" />
+                    </StackPanel>
+                </Button>
+
+                <Button Grid.Column="6" Command="{Binding RefreshCommand}" ToolTip.Tip="Re-read the Fortnite install">
+                    <StackPanel Orientation="Horizontal">
+                        <material:MaterialIcon Kind="Refresh" Margin="{ext:Space 0, 0, 1, 0}" />
+                        <TextBlock Text="Refresh" />
                     </StackPanel>
                 </Button>
             </Grid>

@@ -349,6 +349,19 @@
             </controls:ContentCard>
         </Grid>
 
+        <Grid Grid.Row="0" Grid.RowSpan="2" IsVisible="{Binding SplashVisible}"
+              Background="{DynamicResource WindowBackgroundBrush}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+                <Image Source="/Assets/UnityConverterLogo.png" Width="96" Height="96" HorizontalAlignment="Center" />
+                <TextBlock HorizontalAlignment="Center" FontSize="28" FontWeight="SemiBold">
+                    <Run Text="Fortnite" /><Run Text=" Unity" FontWeight="Bold" /><Run Text=" Converter" />
+                </TextBlock>
+                <ProgressBar IsIndeterminate="True" Width="220" HorizontalAlignment="Center" />
+                <TextBlock HorizontalAlignment="Center" Text="{Binding SplashStatus}"
+                           Classes="BodyTextBlockStyle TextFillColorSecondaryBrush" />
+            </StackPanel>
+        </Grid>
+
         <controls:WindowTitleBar Grid.Row="0"/>
     </Grid>
 </Window>

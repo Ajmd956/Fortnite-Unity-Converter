@@ -312,6 +312,20 @@ public partial class FilesViewModel(
     }
 
     [RelayCommand]
+    public async Task Refresh()
+    {
+        if (_ueParse.Provider is null || Files.IsLoading) return;
+
+        await TaskService.RunDispatcherAsync(() =>
+        {
+            Files.Reset();
+            Reset();
+        });
+        await Files.Initialize();
+        await TaskService.RunDispatcherAsync(() => Context.Initialize());
+    }
+
+    [RelayCommand]
     public async Task Export()
     {
         var paths = GetSelectedFilePaths();
@@ -333,16 +347,25 @@ public partial class FilesViewModel(
 
         if (materials.Count == 0)
         {
-            _info.Message("Export to Unity", "Not available for Unity yet. Only materials and shaders can be exported.", InfoBarSeverity.Warning);
+            ShowNotAvailable(0);
             return;
         }
 
-        if (unsupported > 0)
-            _info.Message("Export to Unity", $"Skipped {unsupported} item(s): not available for Unity yet.", closeTime: 5);
-
         ConvertVM.AddToQueue(materials);
         _navigation.App.Open<ConvertView>();
+        if (unsupported > 0)
+            ShowNotAvailable(unsupported);
+
         if (ConvertVM.ConvertCommand.CanExecute(null))
             await ConvertVM.ConvertCommand.ExecuteAsync(null);
+    }
+
+    private void ShowNotAvailable(int skipped)
+    {
+        var body = skipped > 0
+            ? $"{skipped} of the selected files can't be converted to Unity and were skipped. "
+            : string.Empty;
+        body += "This currently is not available for a conversion to Unity. This will be added in future updates.";
+        _info.Dialog("Not available for Unity yet", body, buttons: [new DialogButton { Text = "OK", IsPrimary = true }]);
     }
 }

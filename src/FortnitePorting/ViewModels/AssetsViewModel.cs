@@ -20,6 +20,7 @@ using FortnitePorting.Models.Assets.Asset;
 using FortnitePorting.Models.Assets.Base;
 using FortnitePorting.Models.Assets.Custom;
 using FortnitePorting.Models.Assets.Filters;
+using FortnitePorting.Models.Information;
 using FortnitePorting.Services;
 using FortnitePorting.Shared.Extensions;
 using FortnitePorting.Views;
@@ -104,7 +105,7 @@ public partial class AssetsViewModel(
     [RelayCommand]
     public async Task Export()
     {
-        _info.Message("Export to Unity", "Not available for Unity yet. Only materials and shaders can be exported, use the Files tab.", InfoBarSeverity.Warning);
+        _info.Dialog("Not available for Unity yet", "This currently is not available for a conversion to Unity. This will be added in future updates.", buttons: [new DialogButton { Text = "OK", IsPrimary = true }]);
     }
 
     [RelayCommand]

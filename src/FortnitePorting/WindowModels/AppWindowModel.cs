@@ -40,8 +40,32 @@ public partial class AppWindowModel(
     [ObservableProperty] private SetupView? _setupViewContent;
     [ObservableProperty] private AppUpdate? _updateVersion;
 
+    [ObservableProperty] private bool _splashVisible = true;
+    [ObservableProperty] private string _splashStatus = "Loading dependencies...";
+
+    private const int SplashMinMs = 4000;
+
+    private Task SetSplash(string status) => TaskService.RunDispatcherAsync(() => SplashStatus = status);
+
+    private async Task RunSplash()
+    {
+        var started = Environment.TickCount64;
+        await SetSplash("Loading dependencies...");
+        await Task.Delay(900);
+        await SetSplash("Getting everything ready...");
+        await Task.Delay(900);
+        await SetSplash("Starting the API...");
+        await Task.Delay(900);
+        await SetSplash("All set. Let's go!");
+        var remaining = SplashMinMs - (int) (Environment.TickCount64 - started);
+        await Task.Delay(Math.Max(400, remaining));
+        await TaskService.RunDispatcherAsync(() => SplashVisible = false);
+    }
+
     public override async Task Initialize()
     {
+        await RunSplash();
+
         if (!_settings.Installation.FinishedSetup)
         {
             await TaskService.RunDispatcherAsync(() =>
