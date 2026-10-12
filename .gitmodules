@@ -1,9 +1,0 @@
-[submodule "external/CUE4Parse"]
-	path = external/CUE4Parse
-	url = https://github.com/h4lfheart/CUE4Parse
-[submodule "external/FluentAvalonia.BreadcrumbBar"]
-	path = external/FluentAvalonia.BreadcrumbBar
-	url = https://github.com/h4lfheart/FluentAvalonia.BreadcrumbBar
-[submodule "external/UEFormat"]
-	path = external/UEFormat
-	url = https://github.com/h4lfheart/UEFormat

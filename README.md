@@ -18,14 +18,6 @@ and you can update with one click. You can turn update checks off, or check
 manually, under App Settings.
 
 
-## Building from source
-
-Run Build.bat. It checks for Python, Node.js and the .NET 10 SDK and downloads
-whatever is missing into the app folder (nothing is installed system-wide and
-no admin rights are needed), then builds the app. The file helper's source
-(CUE4Parse) is downloaded the same way.
-
-
 ## What it does
 
 - Files: browse your Fortnite files, preview textures, meshes and more, and
@@ -41,6 +33,16 @@ removes them.
 
 Not everything converts exactly. Some Unreal features have no Unity
 equivalent, so the app uses a stand-in and tells you when it does.
+
+
+## License
+
+Fortnite Unity Converter is distributed under the [GNU General Public License
+v3.0](LICENSE), the same license as FortnitePorting, which this project builds
+on.
+
+You are free to use, share and modify it, as long as any version you distribute
+stays under the same license and keeps its source available.
 
 
 ## Credits
