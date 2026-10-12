@@ -6,7 +6,6 @@ using CUE4Parse.Utils;
 using FortnitePorting.Models.API.Base;
 using FortnitePorting.Models.API.Requests;
 using FortnitePorting.Models.API.Responses;
-using FortnitePorting.Models.Map;
 using Mapster;
 using RestSharp;
 

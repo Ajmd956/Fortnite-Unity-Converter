@@ -6,7 +6,6 @@ using CUE4Parse.Utils;
 using FortnitePorting.Models.API.Base;
 using FortnitePorting.Models.API.Requests;
 using FortnitePorting.Models.API.Responses;
-using FortnitePorting.Models.Map;
 using Mapster;
 using RestSharp;
 
@@ -115,13 +114,5 @@ public class FortnitePortingAPI(RestClient client) : APIBase(client)
     // Maps
     public async Task<MapResponse> Maps() => await ExecuteAsync<MapResponse>("maps");
     
-    public async Task<string?> CreateMap(MapInfo mapInfo) => await ExecuteAsync<string>($"maps", Method.Post, verbose: false,
-        body: mapInfo.Adapt<MapResponseEntry>()
-    );
-    
-    public async Task UpdateMap(MapInfo mapInfo) => await ExecuteAsync($"maps/{mapInfo.Id}", Method.Put, verbose: false,
-        body: mapInfo.Adapt<MapResponseEntry>()
-    );
-
     public async Task DeleteMap(string id) => await ExecuteAsync($"maps/{id}", Method.Delete, verbose: false);
 }
