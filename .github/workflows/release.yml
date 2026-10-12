@@ -114,12 +114,17 @@ jobs:
             echo "::error::No exe in app/dist. Found: $FOUND || dist: $DIST"
             exit 1
           fi
+          # GitHub turns spaces in an uploaded file name into dots, so upload it with dashes instead
+          # and show the spaced name as the label on the release page
+          cp "$FILE" "app/dist/Fortnite-Unity-Converter.exe"
+          FILE="app/dist/Fortnite-Unity-Converter.exe"
+          ASSET="$FILE#Fortnite Unity Converter.exe"
           echo "Publishing $FILE as $TAG"
-          if OUT=$(gh release create "$TAG" "$FILE" --title "$TAG" --notes-file release-notes.txt --target "${GITHUB_SHA}" 2>&1); then
+          if OUT=$(gh release create "$TAG" "$ASSET" --title "$TAG" --notes-file release-notes.txt --target "${GITHUB_SHA}" 2>&1); then
             echo "$OUT"
           else
             echo "::warning::release create failed: $(echo "$OUT" | tr '\n' ' ')"
-            if OUT2=$(gh release upload "$TAG" "$FILE" --clobber 2>&1); then
+            if OUT2=$(gh release upload "$TAG" "$ASSET" --clobber 2>&1); then
               echo "$OUT2"
             else
               echo "::error::release upload failed: $(echo "$OUT2" | tr '\n' ' ')"
