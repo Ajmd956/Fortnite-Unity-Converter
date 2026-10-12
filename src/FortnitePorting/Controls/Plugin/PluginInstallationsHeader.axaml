@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ext="clr-namespace:FortnitePorting.Extensions;assembly=FortnitePorting"
+             xmlns:controls="clr-namespace:FortnitePorting.Controls"
+             xmlns:plugin="clr-namespace:FortnitePorting.Controls.Plugin"
+             x:Class="FortnitePorting.Controls.Plugin.PluginInstallationsHeader"
+             x:CompileBindings="False">
+    <Grid HorizontalAlignment="Stretch">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="{ext:Space 1}" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="{ext:Space 1}" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0" Margin="{ext:Space 1, 0, 0, 0}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="{ext:Space 1}" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding Title, RelativeSource={RelativeSource AncestorType=plugin:PluginInstallationsHeader}}"
+                       Classes="SubtitleTextBlockStyle" />
+
+            <TextBlock Grid.Row="2"
+                       Text="{Binding Subtitle, RelativeSource={RelativeSource AncestorType=plugin:PluginInstallationsHeader}}"
+                       Classes="BodyTextBlockStyle TextFillColorSecondaryBrush" />
+        </Grid>
+
+        <Button Grid.Column="2"
+                Content="{Binding AddButtonContent, RelativeSource={RelativeSource AncestorType=plugin:PluginInstallationsHeader}}"
+                Command="{Binding AddInstallation}" />
+
+        <Button Grid.Column="4"
+                Command="{Binding SyncInstallations}"
+                IsEnabled="{Binding !!Installations.Count}"
+                VerticalAlignment="Center" HorizontalAlignment="Right"
+                Content="{controls:IconText 'Sync', Sync}" />
+    </Grid>
+</UserControl>
