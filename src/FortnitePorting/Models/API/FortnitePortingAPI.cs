@@ -29,16 +29,8 @@ public class FortnitePortingAPI(RestClient client) : APIBase(client)
         => await ExecuteAsync<FortniteVersionResponse>($"fortnite/versions/{version}");
 
     
-    // Auth
-    public async Task<AuthResponse?> AuthInfo() => await ExecuteAsync<AuthResponse?>("auth/info");
-    
     // Repository
     public async Task<RepositoryResponse?> Repository() => await ExecuteAsync<RepositoryResponse?>("repository");
-    
-    // Users
-    public async Task<UserInfoResponse?> UserInfo(string id) => await ExecuteAsync<UserInfoResponse>($"users/{id}", verbose: false);
-    
-    public async Task PatchUserPermissions(string id, UserPermissionPatchRequest req) => await ExecuteAsync($"users/{id}/permissions", Method.Patch, verbose: false, body: req);
     
     // Telemetry
     public async Task PostError(Exception exception) => await ExecuteAsync("telemetry/errors", Method.Post, verbose: false,

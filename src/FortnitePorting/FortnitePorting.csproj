@@ -46,7 +46,6 @@
         <PackageReference Include="RestSharp" />
         <PackageReference Include="RestSharp.Serializers.NewtonsoftJson" />
         <PackageReference Include="Serilog.Sinks.File" />
-        <PackageReference Include="Supabase" />
         <PackageReference Include="System.Security.Cryptography.ProtectedData" />
         <PackageReference Include="Tomlyn" />
         <PackageReference Include="VideoLAN.LibVLC.Windows" />

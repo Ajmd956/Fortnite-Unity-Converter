@@ -11,7 +11,6 @@ using DynamicData;
 using FluentAvalonia.UI.Controls;
 using FortnitePorting.Models.API.Responses;
 using FortnitePorting.Models.Information;
-using FortnitePorting.Models.Supabase.Tables;
 using FortnitePorting.Shared.Extensions;
 using FortnitePorting.Views;
 using Serilog;

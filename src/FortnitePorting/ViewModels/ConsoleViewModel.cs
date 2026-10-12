@@ -11,7 +11,6 @@ using FluentAvalonia.UI.Controls;
 using FortnitePorting.Controls;
 using FortnitePorting.Framework;
 using FortnitePorting.Models.Information;
-using FortnitePorting.Models.Supabase.Tables;
 
 using FortnitePorting.Services;
 using FortnitePorting.Shared.Extensions;
