@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FluentAvalonia.UI.Controls;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using FortnitePorting.Controls.Navigation.Sidebar;
@@ -44,37 +45,20 @@ public partial class AssetsViewModel(
     private readonly CUE4ParseService _ueParse = ueParse;
     private readonly AppService _app = app;
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsTastyRigApplyVisible))]
-    private EExportLocation _exportLocation = EExportLocation.Blender;
-
-    [ObservableProperty] private bool _isExporting;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowNamesIcon))] private bool _showNames;
     [ObservableProperty] private ObservableCollection<ISidebarItem> _sidebarItems = [];
 
-    private ExportDataMeta? _exportMeta;
-
-    public bool IsTastyRigApplyVisible => ExportLocation is EExportLocation.Blender && _assetLoader.ActiveLoader?.Type is EExportType.Outfit;
     public MaterialIconKind ShowNamesIcon => ShowNames ? MaterialIconKind.TextLong : MaterialIconKind.TextShort;
 
     public void Reset()
     {
         SidebarItems.Clear();
-        IsExporting = false;
-        _exportMeta?.Dispose();
-        _exportMeta = null;
         InvalidateInitialization();
     }
 
     public override async Task Initialize()
     {
-        _assetLoader.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(AssetLoaderService.ActiveLoader))
-                OnPropertyChanged(nameof(IsTastyRigApplyVisible));
-        };
-
         ShowNames = _settings.Application.ShowAssetNames;
-        ExportLocation = _settings.Application.DefaultExportLocation;
 
         await TaskService.RunDispatcherAsync(() =>
         {
@@ -118,37 +102,9 @@ public partial class AssetsViewModel(
     }
 
     [RelayCommand]
-    public async Task SetExportLocation(EExportLocation location)
-    {
-        ExportLocation = location;
-    }
-
-    [RelayCommand]
     public async Task Export()
     {
-        if (_assetLoader.ActiveLoader is null) return;
-
-        _exportMeta = _settings.ExportSettings.CreateExportMeta(ExportLocation);
-        IsExporting = true;
-
-        try
-        {
-            var exportedProperly = await _exporter.Export(
-                _assetLoader.ActiveLoader.SelectedAssetInfos,
-                _exportMeta);
-        }
-        finally
-        {
-            _exportMeta?.Dispose();
-            _exportMeta = null;
-            IsExporting = false;
-        }
-    }
-
-    [RelayCommand]
-    public void CancelExport()
-    {
-        _exportMeta?.Cancel();
+        _info.Message("Export to Unity", "Not available for Unity yet. Only materials and shaders can be exported, use the Files tab.", InfoBarSeverity.Warning);
     }
 
     [RelayCommand]
@@ -156,12 +112,6 @@ public partial class AssetsViewModel(
     {
         foreach (var assetInfo in _assetLoader.ActiveLoader.SelectedAssetInfos)
             assetInfo.Asset.Favorite();
-    }
-
-    [RelayCommand]
-    public async Task ExportTastyRig()
-    {
-        await _exporter.ExportTastyRig(_settings.ExportSettings.CreateExportMeta(ExportLocation));
     }
 
     private const string ExportIconsMessageId = "ExportAllIcons";
@@ -216,13 +166,6 @@ public partial class AssetsViewModel(
             _info.CloseMessage(ExportIconsMessageId);
             _info.Message("Icons Dumped", $"Exported {saved} assets in {sw.Elapsed.TotalSeconds:F3}s", closeTime: 6);
         });
-    }
-
-    [RelayCommand]
-    public async Task OpenSettings()
-    {
-        _navigation.App.Open<ExportSettingsView>();
-        _navigation.ExportSettings.Open(ExportLocation);
     }
 
     public void ChangeTab(EExportType assetType)

@@ -527,66 +527,12 @@
                 </controls:DynamicFadeScrollViewer>
 
                 <Grid Grid.Row="1" HorizontalAlignment="Stretch" Margin="{ext:Space 0, 1, 0, 0}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="{ext:Space 1}" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <SplitButton Grid.Column="0" HorizontalAlignment="Stretch" Command="{Binding ExportCommand}"
-                                 IsVisible="{Binding !IsExporting}">
-                        <SplitButton.Flyout>
-                            <MenuFlyout ItemsSource="{ext:EnumToItemsSource {x:Type fpExport:EExportLocation}}">
-                                <MenuFlyout.ItemContainerTheme>
-                                    <ControlTheme x:DataType="ext:EnumRecord" TargetType="MenuItem"
-                                                  BasedOn="{StaticResource {x:Type MenuItem}}">
-                                        <Setter Property="Header" Value="{Binding Description}" />
-                                        <Setter Property="IsEnabled" Value="{Binding !IsDisabled}" />
-                                        <Setter Property="Command"
-                                                Value="{Binding $parent[views:AssetsView].((viewModels:AssetsViewModel)DataContext).SetExportLocationCommand}" />
-                                        <Setter Property="CommandParameter" Value="{Binding Value}" />
-
-                                        <Setter Property="StaysOpenOnClick" Value="False" />
-                                        <Setter Property="Icon">
-                                            <Template>
-                                                <material:MaterialIcon Kind="{Binding Icon}" />
-                                            </Template>
-                                        </Setter>
-                                    </ControlTheme>
-                                </MenuFlyout.ItemContainerTheme>
-                            </MenuFlyout>
-                        </SplitButton.Flyout>
-                        <ContentControl Content="{Binding ExportLocation, Converter={StaticResource EnumToRecord}}">
-                            <ContentControl.ContentTemplate>
-                                <DataTemplate x:DataType="ext:EnumRecord">
-                                    <controls:IconText Text="{Binding Description, StringFormat='Export to {0}'}"
-                                                       Icon="{Binding Icon}" />
-                                </DataTemplate>
-                            </ContentControl.ContentTemplate>
-                        </ContentControl>
-                    </SplitButton>
-
-                    <Button Grid.Column="0" HorizontalAlignment="Stretch" Margin="{ext:Space 0, 0.25}"
-                            Command="{Binding CancelExportCommand}"
-                            IsVisible="{Binding IsExporting}">
+                    <Button HorizontalAlignment="Stretch" Command="{Binding ExportCommand}">
                         <StackPanel Orientation="Horizontal">
-                            <material:MaterialIcon Kind="Cancel" Margin="{ext:Space 0, 0, 1, 0}" />
-                            <TextBlock Text="Cancel" />
+                            <material:MaterialIcon Kind="Export" Margin="{ext:Space 0, 0, 1, 0}" />
+                            <TextBlock Text="Export to Unity" />
                         </StackPanel>
                     </Button>
-
-                    <Button Grid.Column="1" ToolTip.Tip="Apply Tasty Rig"
-                            Command="{Binding ExportTastyRigCommand}"
-                            Margin="{ext:Space 1, 0, 0, 0}"
-                            IsVisible="{Binding IsTastyRigApplyVisible}"
-                            RenderOptions.BitmapInterpolationMode="HighQuality" RenderOptions.EdgeMode="Antialias">
-                        <Image Width="16" Height="16" Source="/Assets/Icons/Tasty.png" />
-                    </Button>
-
-                    <Button Grid.Column="3" ToolTip.Tip="Export Settings" Content="{material:MaterialIconExt Settings}"
-                            Command="{Binding OpenSettingsCommand}" />
-
                 </Grid>
             </Grid>
         </Grid>

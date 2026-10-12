@@ -41,10 +41,6 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="{ext:Space 1}" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="{ext:Space 1}" />
-                    <ColumnDefinition Width="0.75*" />
-                    <ColumnDefinition Width="{ext:Space 1}" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button Grid.Column="0" HorizontalAlignment="Stretch" Command="{Binding PropertiesCommand}">
@@ -61,95 +57,12 @@
                     </StackPanel>
                 </Button>
 
-                <SplitButton Grid.Column="4" HorizontalAlignment="Stretch" Command="{Binding ExportCommand}"
-                             IsVisible="{Binding ShowAssetExportButton}">
-                    <SplitButton.Flyout>
-                        <MenuFlyout ItemsSource="{ext:EnumToItemsSource {x:Type fpExport:EExportLocation}}">
-                            <MenuFlyout.ItemContainerTheme>
-                                <ControlTheme x:DataType="ext:EnumRecord" TargetType="MenuItem"
-                                              BasedOn="{StaticResource {x:Type MenuItem}}">
-                                    <Setter Property="Header" Value="{Binding Description}" />
-                                    <Setter Property="IsEnabled" Value="{Binding !IsDisabled}" />
-                                    <Setter Property="Command"
-                                            Value="{Binding $parent[views:FilesView].((viewModels:FilesViewModel)DataContext).SetAssetExportLocation}" />
-                                    <Setter Property="CommandParameter" Value="{Binding Value}" />
-
-                                    <Setter Property="StaysOpenOnClick" Value="False" />
-                                    <Setter Property="Icon">
-                                        <Template>
-                                            <material:MaterialIcon Kind="{Binding Icon}" />
-                                        </Template>
-                                    </Setter>
-                                </ControlTheme>
-                            </MenuFlyout.ItemContainerTheme>
-                        </MenuFlyout>
-                    </SplitButton.Flyout>
-                    <ContentControl Content="{Binding AssetExportLocation, Converter={StaticResource EnumToRecord}}">
-                        <ContentControl.ContentTemplate>
-                            <DataTemplate x:DataType="ext:EnumRecord">
-                                <controls:IconText Text="{Binding Description, StringFormat='Export to {0}'}"
-                                                   Icon="{Binding Icon}" />
-                            </DataTemplate>
-                        </ContentControl.ContentTemplate>
-                    </ContentControl>
-                </SplitButton>
-
-                <SplitButton Grid.Column="4" HorizontalAlignment="Stretch" Command="{Binding ExportCommand}"
-                             IsVisible="{Binding ShowDataExportButton}">
-                    <SplitButton.Flyout>
-                        <MenuFlyout ItemsSource="{Binding FolderExportLocations}">
-                            <MenuFlyout.ItemContainerTheme>
-                                <ControlTheme x:DataType="ext:EnumRecord" TargetType="MenuItem"
-                                              BasedOn="{StaticResource {x:Type MenuItem}}">
-                                    <Setter Property="Header" Value="{Binding Description}" />
-                                    <Setter Property="IsEnabled" Value="{Binding !IsDisabled}" />
-                                    <Setter Property="Command"
-                                            Value="{Binding $parent[views:FilesView].((viewModels:FilesViewModel)DataContext).SetDataExportLocation}" />
-                                    <Setter Property="CommandParameter" Value="{Binding Value}" />
-
-                                    <Setter Property="StaysOpenOnClick" Value="False" />
-                                    <Setter Property="Icon">
-                                        <Template>
-                                            <material:MaterialIcon Kind="{Binding Icon}" />
-                                        </Template>
-                                    </Setter>
-                                </ControlTheme>
-                            </MenuFlyout.ItemContainerTheme>
-                        </MenuFlyout>
-                    </SplitButton.Flyout>
-                    <ContentControl Content="{Binding DataExportLocation, Converter={StaticResource EnumToRecord}}">
-                        <ContentControl.ContentTemplate>
-                            <DataTemplate x:DataType="ext:EnumRecord">
-                                <controls:IconText Text="{Binding Description, StringFormat='Export to {0}'}"
-                                                   Icon="{Binding Icon}" />
-                            </DataTemplate>
-                        </ContentControl.ContentTemplate>
-                    </ContentControl>
-                </SplitButton>
-
-                <Button Grid.Column="4" HorizontalAlignment="Stretch" Margin="{ext:Space 0, 0.25}"
-                        Command="{Binding CancelExportCommand}"
-                        IsVisible="{Binding IsExporting}">
+                <Button Grid.Column="4" HorizontalAlignment="Stretch" Command="{Binding ExportCommand}">
                     <StackPanel Orientation="Horizontal">
-                        <material:MaterialIcon Kind="Cancel" Margin="{ext:Space 0, 0, 1, 0}" />
-                        <TextBlock Text="Cancel" />
+                        <material:MaterialIcon Kind="Export" Margin="{ext:Space 0, 0, 1, 0}" />
+                        <TextBlock Text="Export to Unity" />
                     </StackPanel>
                 </Button>
-
-                <ComboBox Grid.Column="6" ItemsSource="{ext:EnumToItemsSource {x:Type fortnitePorting:EExportTarget}}"
-                          SelectedItem="{Binding ExportTarget, Converter={StaticResource EnumToRecord}}"
-                          HorizontalAlignment="Stretch">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate DataType="ext:EnumRecord">
-                            <controls:IconText Text="{Binding Description, StringFormat='Export as {0}'}"
-                                               Icon="{Binding Icon}" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-
-                <Button Grid.Column="8" ToolTip.Tip="Export Settings" Content="{material:MaterialIconExt Settings}"
-                        Command="{Binding OpenSettingsCommand}" />
-
             </Grid>
         </Grid>
         <loading:LoadingIndicator IsVisible="{Binding Files.IsLoading}"

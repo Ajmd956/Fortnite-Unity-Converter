@@ -61,27 +61,6 @@ public partial class FilesViewModel(
         IsDragDropEnabled = true
     };
 
-    [ObservableProperty] private EExportLocation _assetExportLocation = EExportLocation.Blender;
-    [ObservableProperty] private EExportLocation _dataExportLocation = EExportLocation.AssetsFolder;
-
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsAssetExportTarget)), NotifyPropertyChangedFor(nameof(ShowAssetExportButton)), NotifyPropertyChangedFor(nameof(ShowDataExportButton))]
-    private EExportTarget _exportTarget = EExportTarget.Asset;
-
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAssetExportButton)), NotifyPropertyChangedFor(nameof(ShowDataExportButton))]
-    private bool _isExporting;
-
-    public bool IsAssetExportTarget => ExportTarget == EExportTarget.Asset;
-    public bool ShowAssetExportButton => IsAssetExportTarget && !IsExporting;
-    public bool ShowDataExportButton => !IsAssetExportTarget && !IsExporting;
-
-    private ExportDataMeta? _exportMeta;
-
-    public EnumRecord[] FolderExportLocations =>
-        Enum.GetValues<EExportLocation>()
-            .Where(val => val.IsFolder)
-            .Select(val => val.ToEnumRecord())
-            .ToArray();
-
     public void Reset()
     {
         Context.Reset();
@@ -91,11 +70,6 @@ public partial class FilesViewModel(
 
     public override async Task Initialize()
     {
-        var defaultLocation = _settings.Application.DefaultExportLocation;
-        AssetExportLocation = defaultLocation;
-        if (defaultLocation.IsFolder)
-            DataExportLocation = defaultLocation;
-
         if (_ueParse.Provider is null) return;
         Context.Initialize();
     }
@@ -108,19 +82,6 @@ public partial class FilesViewModel(
     {
         Context.JumpTo(path);
     }
-
-    [RelayCommand]
-    public async Task OpenSettings()
-    {
-        _navigation.App.Open<ExportSettingsView>();
-        _navigation.ExportSettings.Open(AssetExportLocation);
-    }
-
-    [RelayCommand]
-    public async Task SetAssetExportLocation(EExportLocation location) => AssetExportLocation = location;
-
-    [RelayCommand]
-    public async Task SetDataExportLocation(EExportLocation location) => DataExportLocation = location;
 
     [RelayCommand]
     public async Task Properties()
@@ -332,218 +293,56 @@ public partial class FilesViewModel(
     private const string DefaultMannequinMeshPath =
         "FortniteGame/Content/Creative/Devices/Mannequin/Meshes/CP_Device_Mannequin";
 
+    private List<string> GetSelectedFilePaths()
+    {
+        var paths = Context.UseFlatView
+            ? Context.SelectedFlatViewItems.Select(x => x.Path).ToList()
+            : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.File).Select(x => x.FilePath).ToList();
+
+        var folders = Context.UseFlatView ? [] : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.Folder);
+        foreach (var folder in folders)
+        {
+            if (folder.SourceNode is null) continue;
+            paths.AddRange(Context.GetAllFileDescendants(folder.SourceNode, folder)
+                .Where(x => x.Type == ENodeType.File)
+                .Select(x => x.FilePath));
+        }
+
+        return paths;
+    }
+
     [RelayCommand]
     public async Task Export()
     {
-        var location = ExportTarget is EExportTarget.Asset ? AssetExportLocation : DataExportLocation;
-        _exportMeta = _settings.ExportSettings.CreateExportMeta(location);
-        IsExporting = true;
-
-        try
+        var paths = GetSelectedFilePaths();
+        if (paths.Count == 0)
         {
-            switch (ExportTarget)
-            {
-                case EExportTarget.Asset: await ExportAssets(_exportMeta); break;
-                case EExportTarget.Properties: await ExportProperties(_exportMeta); break;
-                case EExportTarget.RawData: await ExportRawData(_exportMeta); break;
-            }
-        }
-        finally
-        {
-            _exportMeta?.Dispose();
-            _exportMeta = null;
-            IsExporting = false;
-        }
-    }
-
-    [RelayCommand]
-    public void CancelExport()
-    {
-        _exportMeta?.Cancel();
-    }
-
-    private async Task ExportAssets(ExportDataMeta meta)
-    {
-        var unsupportedExportTypes = new HashSet<string>();
-
-        var paths = Context.UseFlatView
-            ? Context.SelectedFlatViewItems.Select(x => x.Path).ToList()
-            : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.File).Select(x => x.FilePath).ToList();
-
-        var folders = Context.UseFlatView ? [] : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.Folder);
-        foreach (var folder in folders)
-        {
-            if (folder.SourceNode is null) continue;
-            paths.AddRange(Context.GetAllFileDescendants(folder.SourceNode, folder)
-                .Where(x => x.Type == ENodeType.File)
-                .Select(x => x.FilePath));
+            _info.Message("Exporter", "Select a material to export.", InfoBarSeverity.Warning);
+            return;
         }
 
-        var exports = new List<ExportFileEntry>();
+        var materials = new List<string>();
+        var unsupported = 0;
         foreach (var path in paths)
         {
-            var basePath = _exporter.FixPath(path);
-            UObject? asset = null;
-            if (path.EndsWith(".umap"))
-            {
-                asset = await _ueParse.Provider.SafeLoadPackageObjectAsync(basePath);
-                if (asset is not UWorld)
-                {
-                    var package = await _ueParse.Provider.LoadPackageAsync(basePath);
-                    asset = package.GetExports().OfType<UWorld>().FirstOrDefault();
-                }
-            }
+            if (_ueParse.Provider.TryLoadObjectExports(path, out var exports) && exports.Any(x => x is UMaterialInterface))
+                materials.Add(path);
             else
-            {
-                asset = await _ueParse.Provider.SafeLoadPackageObjectAsync(basePath);
-                asset ??= await _ueParse.Provider.SafeLoadPackageObjectAsync(
-                    $"{basePath}.{basePath.SubstringAfterLast("/")}_C");
-            }
-
-            if (asset is null) continue;
-
-            var fileEntry = new ExportFileEntry
-            {
-                Object = asset
-            };
-
-            switch (asset)
-            {
-                case UVirtualTextureBuilder vtb:
-                    asset = vtb.Texture.Load<UVirtualTexture2D>();
-                    break;
-                case UPaperSprite sprite:
-                    asset = sprite.BakedSourceTexture.Load<UTexture2D>();
-                    break;
-                case UAnimSequence sequence:
-                    if (sequence.AdditiveAnimType is not EAdditiveAnimationType.AAT_None && sequence.RefPoseSeq is null)
-                    {
-                        if (await FilePickerWindow.OpenBrowserAsync(windowName: "Select Additive Base Sequence", startPath: _ueParse.Provider.FixPath(sequence.GetPathName())) is { Length: > 0 } selectedPaths
-                            && selectedPaths.FirstOrDefault() is { } selectedPath
-                            && _ueParse.Provider.TryLoadPackageObject<UAnimSequence>(_exporter.FixPath(selectedPath), out var baseSequence))
-                        {
-                            fileEntry.Meta = new ExportAdditiveAnimFileMeta
-                            {
-                                BaseSequence = baseSequence
-                            };
-                        }
-                        else
-                        {
-                            _info.Message("Additive Animation", "A valid base pose was not selected, animation export result may be inaccurate.");
-                        }
-                    }
-                    break;
-            }
-
-            var exportType = _exporter.DetermineExportType(asset);
-            if (exportType is EExportType.None)
-            {
-                unsupportedExportTypes.Add(asset.ExportType);
-                continue;
-            }
-            
-            fileEntry.Type = exportType;
-
-            exports.Add(fileEntry);
+                unsupported++;
         }
 
-        if (exports.Count == 0)
+        if (materials.Count == 0)
         {
-            _info.Message("Exporter",
-                unsupportedExportTypes.Count == 0
-                    ? "Failed to load any assets for export."
-                    : $"Assets with these types do not have exporters: {unsupportedExportTypes.CommaJoin()}.",
-                InfoBarSeverity.Warning);
+            _info.Message("Export to Unity", "Not available for Unity yet. Only materials and shaders can be exported.", InfoBarSeverity.Warning);
             return;
         }
 
-        meta.WorldFlags = EWorldFlags.Actors | EWorldFlags.Landscape | EWorldFlags.WorldPartitionGrids | EWorldFlags.HLODs;
-        if (meta.Settings.ImportInstancedFoliage)
-            meta.WorldFlags |= EWorldFlags.InstancedFoliage;
-        await _exporter.Export(exports, meta);
-    }
+        if (unsupported > 0)
+            _info.Message("Export to Unity", $"Skipped {unsupported} item(s): not available for Unity yet.", closeTime: 5);
 
-    private async Task ExportProperties(ExportDataMeta meta)
-    {
-        var paths = Context.UseFlatView
-            ? Context.SelectedFlatViewItems.Select(x => x.Path).ToList()
-            : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.File).Select(x => x.FilePath).ToList();
-
-        var folders = Context.UseFlatView ? [] : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.Folder);
-        foreach (var folder in folders)
-        {
-            if (folder.SourceNode is null) continue;
-            paths.AddRange(Context.GetAllFileDescendants(folder.SourceNode, folder)
-                .Where(x => x.Type == ENodeType.File)
-                .Select(x => x.FilePath));
-        }
-
-        if (paths.Count == 0)
-        {
-            _info.Message("Exporter", "Failed to load any assets for export.", InfoBarSeverity.Warning);
-            return;
-        }
-
-        if (meta.ExportLocation is EExportLocation.CustomFolder &&
-            await _app.BrowseFolderDialog() is { } customExportPath)
-            meta.CustomPath = customExportPath;
-
-        var context = new ExportContext(meta);
-        foreach (var path in paths)
-        {
-            if (!_ueParse.Provider.TryLoadObjectExports(path, out var exports)) continue;
-
-            var exportPath = context.BuildExportPath(
-                meta.CustomPath is not null
-                    ? path.SubstringAfterLast("/").SubstringBeforeLast(".")
-                    : path, "json");
-
-            Log.Information("Exporting Properties: {ExportPath}", exportPath);
-            var json = JsonConvert.SerializeObject(exports, Formatting.Indented);
-            await File.WriteAllTextAsync(exportPath, json);
-        }
-    }
-
-    private async Task ExportRawData(ExportDataMeta meta)
-    {
-        var paths = Context.UseFlatView
-            ? Context.SelectedFlatViewItems.Select(x => x.Path).ToList()
-            : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.File).Select(x => x.FilePath).ToList();
-
-        var folders = Context.UseFlatView ? [] : Context.SelectedFileViewItems.Where(x => x.Type == ENodeType.Folder);
-        foreach (var folder in folders)
-        {
-            if (folder.SourceNode is null) continue;
-            paths.AddRange(Context.GetAllFileDescendants(folder.SourceNode, folder)
-                .Where(x => x.Type == ENodeType.File)
-                .Select(x => x.FilePath));
-        }
-
-        if (paths.Count == 0)
-        {
-            _info.Message("Exporter", "Failed to load any assets for export.", InfoBarSeverity.Warning);
-            return;
-        }
-
-        if (meta.ExportLocation is EExportLocation.CustomFolder &&
-            await _app.BrowseFolderDialog() is { } customExportPath)
-            meta.CustomPath = customExportPath;
-
-        var exportContext = new ExportContext(meta);
-        foreach (var path in paths)
-        {
-            if (!_ueParse.Provider.TrySavePackage(path, out var assets)) continue;
-
-            foreach (var (assetPath, assetData) in assets)
-            {
-                var exportPath = exportContext.BuildExportPath(
-                    meta.CustomPath is not null
-                        ? assetPath.SubstringAfterLast("/").SubstringBeforeLast(".")
-                        : assetPath, assetPath.SubstringAfterLast("."));
-
-                Log.Information("Exporting Raw Data: {ExportPath}", exportPath);
-                await File.WriteAllBytesAsync(exportPath, assetData);
-            }
-        }
+        ConvertVM.AddToQueue(materials);
+        _navigation.App.Open<ConvertView>();
+        if (ConvertVM.ConvertCommand.CanExecute(null))
+            await ConvertVM.ConvertCommand.ExecuteAsync(null);
     }
 }

@@ -43,6 +43,7 @@ public static class AppServices
     // ViewModels
     public static AppWindowModel AppWM => Services.GetRequiredService<AppWindowModel>();
     public static FilesViewModel FilesVM => Services.GetRequiredService<FilesViewModel>();
+    public static ConvertViewModel ConvertVM => Services.GetRequiredService<ConvertViewModel>();
     
 }
 
