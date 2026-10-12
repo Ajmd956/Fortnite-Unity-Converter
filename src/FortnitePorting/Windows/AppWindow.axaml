@@ -79,6 +79,7 @@
                                                    IsEnabled="{Binding UEParse.FinishedLoading}" />
                         <sidebar:SidebarItemButton Text="Files" Icon="Folder" Tag="{x:Type views:FilesView}"
                                                    IsEnabled="{Binding UEParse.FinishedLoading}" />
+                        <sidebar:SidebarItemButton Text="Convert" Icon="SwapHorizontal" Tag="{x:Type views:ConvertView}" />
                         <sidebar:SidebarItemSeparator />
 
                         <sidebar:SidebarItemText Text="Settings" />
