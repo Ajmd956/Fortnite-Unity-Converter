@@ -140,6 +140,56 @@
             </controls:SettingsItem>
 
             
+            <TextBlock Text="Updates"
+                       Classes="SettingsSectionHeaderStyle TextFillColorTertiaryBrush"
+                       HorizontalAlignment="Left"
+                       Margin="{ext:Space 1, 1, 0, 0}"/>
+
+            <controls:SettingsItem Title="Check for Updates" Description="Look for a new version when the app starts and every few hours.">
+                <controls:SettingsItem.Footer>
+                    <ToggleSwitch IsChecked="{Binding CheckForUpdates}"/>
+                </controls:SettingsItem.Footer>
+            </controls:SettingsItem>
+
+            <controls:SettingsItem Title="Version" Description="{Binding VersionText}">
+                <controls:SettingsItem.Footer>
+                    <Button Content="Check now" Command="{Binding CheckNow}"/>
+                </controls:SettingsItem.Footer>
+            </controls:SettingsItem>
+
+            <TextBlock Text="Unity"
+                       Classes="SettingsSectionHeaderStyle TextFillColorTertiaryBrush"
+                       HorizontalAlignment="Left"
+                       Margin="{ext:Space 1, 1, 0, 0}"/>
+
+            <controls:SettingsItem Title="Unity Editor" Description="Used by Check Shaders to compile in Unity. Left empty, the app looks for an installed editor.">
+                <controls:SettingsItem.Footer>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox Text="{Binding UnityEditorPath}" Watermark="Ex. C:/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe" MinWidth="320"/>
+                        <Button Margin="4 0 0 0" Command="{Binding BrowseUnityEditor}">
+                            <avalonia:MaterialIcon Kind="Folder"/>
+                        </Button>
+                    </StackPanel>
+                </controls:SettingsItem.Footer>
+            </controls:SettingsItem>
+
+            <TextBlock Text="Locations"
+                       Classes="SettingsSectionHeaderStyle TextFillColorTertiaryBrush"
+                       HorizontalAlignment="Left"
+                       Margin="{ext:Space 1, 1, 0, 0}"/>
+
+            <controls:SettingsItem Title="Conversions Folder" Description="Each converted shader is saved in its own folder here.">
+                <controls:SettingsItem.Footer>
+                    <Button Content="Open" Command="{Binding OpenConversionsFolder}"/>
+                </controls:SettingsItem.Footer>
+            </controls:SettingsItem>
+
+            <controls:SettingsItem Title="Cache Folder" Description="Everything a conversion pulled in, filed under the shader's name.">
+                <controls:SettingsItem.Footer>
+                    <Button Content="Open" Command="{Binding OpenCacheFolder}"/>
+                </controls:SettingsItem.Footer>
+            </controls:SettingsItem>
+
             <TextBlock Text="Other"
                        Classes="SettingsSectionHeaderStyle TextFillColorTertiaryBrush"
                        HorizontalAlignment="Left"

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FluentAvalonia.UI.Controls;
@@ -39,6 +40,8 @@ public partial class AppWindowModel(
     [ObservableProperty] private int _unsubmittedPolls;
     [ObservableProperty] private SetupView? _setupViewContent;
     [ObservableProperty] private AppUpdate? _updateVersion;
+    [ObservableProperty] private bool _apiOnline;
+    [ObservableProperty] private string _apiStatus = "API: checking";
 
     [ObservableProperty] private bool _splashVisible = true;
     [ObservableProperty] private string _splashStatus = "Loading dependencies...";
@@ -62,8 +65,34 @@ public partial class AppWindowModel(
         await TaskService.RunDispatcherAsync(() => SplashVisible = false);
     }
 
+    [RelayCommand]
+    private void PollApi()
+    {
+        ApiOnline = ConversionBridge.IsRunning;
+        ApiStatus = ApiOnline ? "API: ready" : "API: not running";
+    }
+
+    [RelayCommand]
+    private void OpenLog()
+    {
+        TaskService.Run(async () =>
+        {
+            Navigation.App.Open<SettingsView>();
+            await Task.Delay(250);
+            Navigation.Settings.Open<ConsoleView>();
+        });
+    }
+
     public override async Task Initialize()
     {
+        await TaskService.RunDispatcherAsync(() =>
+        {
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            timer.Tick += (_, _) => PollApi();
+            timer.Start();
+            PollApi();
+        });
+
         await RunSplash();
 
         if (!_settings.Installation.FinishedSetup)
@@ -95,9 +124,9 @@ public partial class AppWindowModel(
             _info.Message("Update", "The update could not be downloaded. Try again later.", InfoBarSeverity.Warning);
     }
 
-    public async Task CheckForUpdate()
+    public async Task CheckForUpdate(bool manual = false)
     {
-        if (Globals.IsDevBuild) return;
+        if (!manual && (Globals.IsDevBuild || !_settings.Application.CheckForUpdates)) return;
 
         try
         {
@@ -106,10 +135,17 @@ public partial class AppWindowModel(
         catch (Exception e)
         {
             Log.Warning(e, "Update check failed");
+            if (manual)
+                _info.Message("Updates", "The update check failed. Are you online?", InfoBarSeverity.Warning);
             return;
         }
 
-        if (UpdateVersion is null) return;
+        if (UpdateVersion is null)
+        {
+            if (manual)
+                _info.Message("Updates", "You are up to date.", InfoBarSeverity.Success);
+            return;
+        }
 
         _info.Dialog($"Update {UpdateVersion.Version}", "A new version is available.", buttons: [
             new DialogButton

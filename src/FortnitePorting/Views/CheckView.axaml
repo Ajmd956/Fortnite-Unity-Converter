@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:viewModels="clr-namespace:FortnitePorting.ViewModels"
+             xmlns:ext="clr-namespace:FortnitePorting.Extensions"
+             x:Class="FortnitePorting.Views.CheckView"
+             x:DataType="viewModels:CheckViewModel">
+    <Grid Margin="{ext:Space 2}" RowDefinitions="Auto,8,Auto,8,*,8,Auto" Background="Transparent">
+        <Border Grid.Row="0" Padding="16" CornerRadius="12" BorderThickness="1"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <TextBlock Text="Drop .shader files or folders here" HorizontalAlignment="Center" Opacity="0.7" />
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+            <Button Grid.Column="0" Content="Add files" Command="{Binding AddFilesCommand}" Margin="0,0,8,0" />
+            <Button Grid.Column="1" Content="Add folder" Command="{Binding AddFolderCommand}" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Clear" Command="{Binding ClearCommand}" HorizontalAlignment="Left" />
+            <CheckBox Grid.Column="3" Content="Fix problems" IsChecked="{Binding FixProblems}" Margin="0,0,16,0" />
+            <CheckBox Grid.Column="4" Content="Compile in Unity" IsChecked="{Binding CompileInUnity}" />
+        </Grid>
+
+        <Grid Grid.Row="4" ColumnDefinitions="300,8,*">
+            <ListBox Grid.Column="0" ItemsSource="{Binding Paths}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding}"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="Remove" Padding="6,2"
+                                    Command="{Binding $parent[ListBox].((viewModels:CheckViewModel)DataContext).RemoveCommand}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBox Grid.Column="2" Text="{Binding Output}" IsReadOnly="True" AcceptsReturn="True"
+                     TextWrapping="NoWrap" FontFamily="Consolas,Menlo,monospace" />
+        </Grid>
+
+        <Grid Grid.Row="6" ColumnDefinitions="*,Auto,Auto,Auto">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="The original is kept as a .bak file next to each shader that gets changed." Opacity="0.7" />
+                <TextBlock Text="{Binding Status}" Opacity="0.7" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Clear output" Command="{Binding ClearOutputCommand}" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Stop" IsEnabled="{Binding IsRunning}" Command="{Binding StopCommand}" Margin="0,0,8,0" />
+            <Button Grid.Column="3" Content="Check" Classes="accent" Command="{Binding CheckCommand}" />
+        </Grid>
+    </Grid>
+</UserControl>

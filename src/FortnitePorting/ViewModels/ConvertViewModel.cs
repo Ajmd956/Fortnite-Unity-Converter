@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FortnitePorting.Framework;
 using FortnitePorting.Models.Information;
+using FortnitePorting.Services;
 using Serilog;
 
 namespace FortnitePorting.ViewModels;
@@ -26,6 +27,29 @@ public partial class ConvertViewModel : ViewModelBase
     [ObservableProperty, NotifyCanExecuteChangedFor(nameof(ConvertCommand))] private bool _isRunning;
     [ObservableProperty] private string _status = "Add shaders from the Files tab, then press Convert.";
     [ObservableProperty] private string _output = string.Empty;
+    [ObservableProperty] private string _shaderName = string.Empty;
+    [ObservableProperty] private string _materialPaths = string.Empty;
+
+    partial void OnMaterialPathsChanged(string value) => ConvertCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private async Task PasteMaterials()
+    {
+        var text = await App.Clipboard.GetTextAsync();
+        if (string.IsNullOrWhiteSpace(text)) return;
+        MaterialPaths = string.IsNullOrWhiteSpace(MaterialPaths) ? text.Trim() : MaterialPaths.TrimEnd() + "\n" + text.Trim();
+    }
+
+    [RelayCommand]
+    private void ClearMaterials() => MaterialPaths = string.Empty;
+
+    [RelayCommand]
+    private void OpenCacheFolder()
+    {
+        Directory.CreateDirectory(CacheFolder);
+        App.Launch(CacheFolder);
+    }
+
 
     private Process? _current;
     private bool _stopped;
@@ -89,7 +113,7 @@ public partial class ConvertViewModel : ViewModelBase
         try { _current?.Kill(true); } catch { /* already finished */ }
     }
 
-    private bool CanConvert() => !IsRunning && Queue.Count > 0;
+    private bool CanConvert() => !IsRunning && (Queue.Count > 0 || !string.IsNullOrWhiteSpace(MaterialPaths));
 
     [RelayCommand(CanExecute = nameof(CanConvert))]
     private async Task Convert()
@@ -109,6 +133,8 @@ public partial class ConvertViewModel : ViewModelBase
             return;
         }
 
+        AddToQueue(MaterialPaths.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        MaterialPaths = string.Empty;
         var materials = Queue.ToList();
         IsRunning = true;
         _stopped = false;
@@ -131,6 +157,12 @@ public partial class ConvertViewModel : ViewModelBase
                     "--out", ConversionsFolder,
                     "--cache", CacheFolder
                 };
+
+                if (materials.Count == 1 && !string.IsNullOrWhiteSpace(ShaderName))
+                {
+                    args.Add("--name");
+                    args.Add(ShaderName.Trim());
+                }
 
                 var output = await RunEngineAsync(engine.Value.Command, args);
                 var match = Regex.Match(output, @"wrote (.+?)\.shader");
@@ -178,7 +210,7 @@ public partial class ConvertViewModel : ViewModelBase
         ConvertCommand.NotifyCanExecuteChanged();
     }
 
-    private static (string Command, string[] Pre)? FindEngine()
+    internal static (string Command, string[] Pre)? FindEngine()
     {
         if (Dependencies.EngineFile.Exists) return (Dependencies.EngineFile.FullName, []);
 
@@ -206,6 +238,8 @@ public partial class ConvertViewModel : ViewModelBase
         foreach (var arg in args) info.ArgumentList.Add(arg);
         info.Environment["PYTHONUNBUFFERED"] = "1";
         info.Environment["PYTHONIOENCODING"] = "utf-8";
+        var unity = UnityLocator.Find(AppSettings.Application.UnityEditorPath);
+        if (unity.Length > 0) info.Environment["UNITY_EDITOR"] = unity;
 
         var captured = new StringBuilder();
         void OnData(string? text)

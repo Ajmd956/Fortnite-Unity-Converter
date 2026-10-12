@@ -16,8 +16,6 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="{ext:Space 1}" />
             <RowDefinition Height="2*" />
-            <RowDefinition Height="{ext:Space 2}" />
-            <RowDefinition Height="2*" />
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0" VerticalAlignment="Center">
@@ -32,8 +30,8 @@
             <TextBlock Grid.Row="0"
                        FontFamily="{StaticResource SFDisplaySemibold}" FontSize="40"
                        HorizontalAlignment="Center">
-                <Run Text="Fortnite" Foreground="{DynamicResource FPTitleTextBrush}"/>
-                <Run Text="Porting" Foreground="{DynamicResource FPAccentBrush}" />
+                <Run Text="Fortnite " Foreground="{DynamicResource FPTitleTextBrush}"/>
+                <Run Text="Unity" Foreground="{DynamicResource FPAccentBrush}" />
             </TextBlock>
             
             <TextBlock Grid.Row="1" Text="{Binding UEParse.Status}" 
@@ -62,16 +60,8 @@
                         <Setter Property="Margin" Value="{ext:Space 0.5}" />
                     </Style>
                 </StackPanel.Styles>
-                <Button Content="{controls:ImageText 'Discord', /Assets/Icons/Discord.png}" Width="125"
-                        FontFamily="{StaticResource SFTextRegular}" Command="{Binding LaunchDiscord}"/>
-                <Button Content="{controls:IconText 'Twitter', Twitter}" Width="125"
-                        FontFamily="{StaticResource SFTextRegular}" Command="{Binding LaunchTwitter}"/>
                 <Button Content="{controls:IconText 'GitHub', Github}" Width="125"
                         FontFamily="{StaticResource SFTextRegular}" Command="{Binding LaunchGitHub}"/>
-                <Button Content="{controls:ImageText 'KoFi', /Assets/Icons/KoFi.png}" Width="125"
-                        FontFamily="{StaticResource SFTextRegular}" Command="{Binding LaunchKoFi}"/>
-                <Button Content="{controls:ImageText 'Website', /Assets/LogoRebrand.png}" Width="125"
-                        FontFamily="{StaticResource SFTextRegular}" Command="{Binding LaunchWebsite}"/>
             </StackPanel>
 
         </Grid>
@@ -173,78 +163,6 @@
                 </controls:CardCarousel.ItemTemplate>
             </controls:CardCarousel>
             
-
-        </Grid>
-        
-        <Grid Grid.Row="4" VerticalAlignment="Center">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="{ext:Space 2}" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <TextBlock Grid.Row="0" Text="Featured Art"
-                       FontFamily="{StaticResource SFDisplaySemibold}" FontSize="20"
-                       HorizontalAlignment="Center" />
-
-            <controls:CardCarousel Grid.Row="2"
-                                   ItemsSource="{Binding FeaturedArt}"
-                                   Loop="True"
-                                   VisibleCount="3"
-                                   AutoScrollInterval="0:0:10"
-                                   AutoScrollStep="3">
-                <controls:CardCarousel.ItemTemplate>
-                    <DataTemplate DataType="responses:FeaturedArtEntry">
-                         <controls:ContentCard Margin="{ext:Space 1}"
-                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="{ext:Space 2}"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="{ext:Space 2}"/>
-                                </Grid.RowDefinitions>
-                                
-                                <Border Grid.Row="0" 
-                                        CornerRadius="16 16 0 0"
-                                        ClipToBounds="True"
-                                        Height="175">
-                                    <Image asyncImageLoader:ImageLoader.Source="{Binding Image}"
-                                           Stretch="UniformToFill"/>
-                                </Border>
-                                
-                                <Grid Grid.Row="2" Margin="{ext:Space 2, 0}">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="{ext:Space 1}"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    
-                                    <TextBlock Grid.Row="0" Text="{Binding Title}" 
-                                               FontFamily="{StaticResource SFTextSemiBold}"
-                                               FontSize="16"/>
-                                    
-                                    <TextBlock Grid.Row="2" Text="{Binding Artist}" 
-                                               FontFamily="{StaticResource SFTextRegular}"
-                                               Classes="TextFillColorSecondaryBrush"
-                                               TextWrapping="Wrap"
-                                               MaxLines="3"/>
-                                </Grid>
-                                
-                                <Button Grid.Row="0" Grid.RowSpan="4" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="{ext:Space 2}"
-                                        Command="{Binding $parent[views:HomeView].((viewModels:HomeViewModel)DataContext).OpenFeaturedArt}" 
-                                        CommandParameter="{Binding}"
-                                        ToolTip.Tip="Open Post">
-                                    <material:MaterialIcon Kind="Link"/>
-                                </Button>
-
-
-                            </Grid>
-                        </controls:ContentCard>
-                    </DataTemplate>
-                </controls:CardCarousel.ItemTemplate>
-            </controls:CardCarousel>
-
 
         </Grid>
 

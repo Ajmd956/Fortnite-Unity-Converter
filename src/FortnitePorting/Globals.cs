@@ -41,8 +41,8 @@ public static class Globals
     
     public const string DISCORD_URL = "https://discord.gg/FortnitePorting";
     public const string TWITTER_URL = "https://twitter.com/FortnitePorting";
-    public const string GITHUB_URL = "https://github.com/h4lfheart/FortnitePorting";
+    public const string GITHUB_URL = "https://github.com/Ajmd956/Fortnite-Unity-Converter";
     public const string KOFI_URL = "https://ko-fi.com/h4lfheart";
     public const string WEBSITE_URL = "https://fortniteporting.app";
-    public const string DOCS_URL = "https://docs.fortniteporting.app";
+    public const string DOCS_URL = "https://github.com/Ajmd956/Fortnite-Unity-Converter";
 }

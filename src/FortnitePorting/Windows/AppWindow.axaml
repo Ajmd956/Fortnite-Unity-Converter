@@ -19,7 +19,7 @@
         WindowStartupLocation="CenterScreen" ClosingBehavior="OwnerAndChildWindows"
         ExtendClientAreaTitleBarHeightHint="35"
         Icon="/Assets/LogoRebrand.ico"
-        Title="Fortnite Porting">
+        Title="Fortnite Unity Converter">
 
     <Grid RowDefinitions="35, *" Margin="{Binding $parent[Window].OffScreenMargin}">
 
@@ -46,8 +46,8 @@
                                        FontSize="16" FontFamily="{StaticResource SFTextBold}"
                                        Classes="TextFillColorPrimaryBrush"
                                        VerticalAlignment="Center">
-                                <Run Text="Fortnite" Foreground="{DynamicResource FPTitleTextBrush}"/>
-                                <Run Text="Porting" Foreground="{DynamicResource FPAccentBrush}" />
+                                <Run Text="Fortnite " Foreground="{DynamicResource FPTitleTextBrush}"/>
+                                <Run Text="Unity" Foreground="{DynamicResource FPAccentBrush}" />
                             </TextBlock>
 
                             <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding VersionString}"
@@ -80,6 +80,8 @@
                         <sidebar:SidebarItemButton Text="Files" Icon="Folder" Tag="{x:Type views:FilesView}"
                                                    IsEnabled="{Binding UEParse.FinishedLoading}" />
                         <sidebar:SidebarItemButton Text="Convert" Icon="SwapHorizontal" Tag="{x:Type views:ConvertView}" />
+                        <sidebar:SidebarItemButton Text="My Shaders" Icon="Palette" Tag="{x:Type views:ShadersView}" />
+                        <sidebar:SidebarItemButton Text="Check Shaders" Icon="CheckCircleOutline" Tag="{x:Type views:CheckView}" />
                         <sidebar:SidebarItemSeparator />
 
                         <sidebar:SidebarItemText Text="Settings" />
@@ -114,12 +116,23 @@
 
                             <sidebar:SidebarItemSeparator Grid.Row="1" />
 
-                            <Grid Grid.Row="3" RowDefinitions="*,*">
-                                <Button Grid.Row="0"
-                                        Content="{controls:ImageText 'Sign In', 'avares://FortnitePorting/Assets/Icons/Discord.png'}"
-                                        HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                                        Command="{Binding SignInCommand}" />
-                            </Grid>
+                            <StackPanel Grid.Row="3" Spacing="{ext:Space 1}" VerticalAlignment="Bottom">
+                                <Button HorizontalAlignment="Stretch" Command="{Binding PollApiCommand}"
+                                        ToolTip.Tip="Click to check the connection">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Ellipse Width="10" Height="10" Fill="#3ddc84" IsVisible="{Binding ApiOnline}" />
+                                        <Ellipse Width="10" Height="10" Fill="#e5484d" IsVisible="{Binding !ApiOnline}" />
+                                        <TextBlock Text="{Binding ApiStatus}" />
+                                    </StackPanel>
+                                </Button>
+                                <Button HorizontalAlignment="Stretch" Command="{Binding OpenLogCommand}"
+                                        ToolTip.Tip="Open the console">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <material:MaterialIcon Kind="Console" />
+                                        <TextBlock Text="Log" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
                         </Grid>
                     </sidebar:Sidebar.Footer>
                 </sidebar:Sidebar>

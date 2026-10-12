@@ -60,6 +60,8 @@ public partial class ApplicationSettingsViewModel : SettingsViewModelBase
     [ObservableProperty] private bool _showVideoPreviews = true;
     [ObservableProperty] private float _assetScale = 1.0f;
     
+    [ObservableProperty] private bool _checkForUpdates = true;
+    [ObservableProperty] private string _unityEditorPath = string.Empty;
     [ObservableProperty] private bool _dontAskAboutKofi;
     [ObservableProperty] private DateTime _nextKofiAskDate = DateTime.Today;
     [ObservableProperty] private bool _showAssetNames;
@@ -86,6 +88,27 @@ public partial class ApplicationSettingsViewModel : SettingsViewModelBase
         if (await App.BrowseFolderDialog() is { } path) AppDataPath = path;
         
     }
+    public async Task BrowseUnityEditor()
+    {
+        if (await App.BrowseFileDialog("Unity.exe") is { } path) UnityEditorPath = path;
+    }
+
+    public async Task CheckNow() => await AppWM.CheckForUpdate(manual: true);
+
+    public void OpenConversionsFolder()
+    {
+        Directory.CreateDirectory(ConvertViewModel.ConversionsFolder);
+        App.Launch(ConvertViewModel.ConversionsFolder);
+    }
+
+    public void OpenCacheFolder()
+    {
+        Directory.CreateDirectory(ConvertViewModel.CacheFolder);
+        App.Launch(ConvertViewModel.CacheFolder);
+    }
+
+    [JsonIgnore] public string VersionText => Globals.VersionString;
+
     public async Task BrowseAssetsPath()
     {
         if (await App.BrowseFolderDialog() is { } path) AssetsPath = path;
