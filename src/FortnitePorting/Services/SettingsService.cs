@@ -13,7 +13,6 @@ public partial class SettingsService : ObservableObject, IService
     [ObservableProperty] private ExportSettingsViewModel _exportSettings = new();
     [ObservableProperty] private InstallationSettingsViewModel _installation = new();
     [ObservableProperty] private ApplicationSettingsViewModel _application = new();
-    [ObservableProperty] private AccountSettingsViewModel _account = new();
     [ObservableProperty] private PluginViewModel _plugin = new();
     [ObservableProperty] private DeveloperSettingsViewModel _developer = new();
 

@@ -282,7 +282,7 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
             return;
         }
         
-        BlackHole.Open(isMinigame: false);
+        Info.Message("Invalid Encryption Key", "The main encryption key did not unlock the game files.", severity: FluentAvalonia.UI.Controls.InfoBarSeverity.Error);
     }
     
     [LoadingStage("Removing Outdated Cache Files", stage: 2, weight: 1)]

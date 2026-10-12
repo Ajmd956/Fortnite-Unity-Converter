@@ -29,7 +29,6 @@ public class APIService : IService
         {
             UserAgent = $"FortnitePorting/{Globals.VersionString}",
             Timeout = TimeSpan.FromSeconds(AppSettings.Developer.RequestTimeoutSeconds),
-            Authenticator = new SupabaseAuthenticator(),
         }, configureSerialization: s => s.UseSerializer<JsonNetSerializer>());
         
         FortnitePorting = new FortnitePortingAPI(fpClient);

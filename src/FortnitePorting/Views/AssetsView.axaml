@@ -229,9 +229,6 @@
                                                     <MenuItem Header="Save Icon"
                                                               Icon="{material:MaterialIconExt ContentSave}"
                                                               Command="{Binding SaveIconCommand}" />
-                                                    <MenuItem Header="Send in Chat"
-                                                              Icon="{material:MaterialIconExt Send}"
-                                                              Command="{Binding SendToUserCommand}" />
                                                 </ContextMenu>
                                             </ContentControl.ContextMenu>
                                             <StackPanel

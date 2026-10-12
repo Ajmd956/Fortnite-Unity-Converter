@@ -31,10 +31,6 @@ public static class AppServices
     public static APIService Api => Services.GetRequiredService<APIService>();
     public static NavigationService Navigation => Services.GetRequiredService<NavigationService>();
     public static CUE4ParseService UEParse => Services.GetRequiredService<CUE4ParseService>();
-    public static SupabaseService SupaBase => Services.GetRequiredService<SupabaseService>();
-    public static ChatService Chat => Services.GetRequiredService<ChatService>();
-    public static DiscordService Discord => Services.GetRequiredService<DiscordService>();
-    public static BlackHoleService BlackHole => Services.GetRequiredService<BlackHoleService>();
     public static AssetLoaderService AssetLoading => Services.GetRequiredService<AssetLoaderService>();
     public static FilesService Files => Services.GetRequiredService<FilesService>();
     public static ExportClientService ExportClient => Services.GetRequiredService<ExportClientService>();
@@ -46,10 +42,6 @@ public static class AppServices
     // ViewModels
     public static AppWindowModel AppWM => Services.GetRequiredService<AppWindowModel>();
     public static FilesViewModel FilesVM => Services.GetRequiredService<FilesViewModel>();
-    public static ChatViewModel ChatVM => Services.GetRequiredService<ChatViewModel>();
-    public static MapViewModel MapVM => Services.GetRequiredService<MapViewModel>();
-    public static MusicViewModel MusicVM => Services.GetRequiredService<MusicViewModel>();
-    public static TimeWasterViewModel TimeWasterVM => Services.GetRequiredService<TimeWasterViewModel>();
     
 }
 

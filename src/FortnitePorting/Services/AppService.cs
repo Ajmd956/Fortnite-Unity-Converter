@@ -18,7 +18,6 @@ using FortnitePorting.Application;
 using FortnitePorting.Extensions;
 using FortnitePorting.Framework;
 using FortnitePorting.Models.Information;
-using FortnitePorting.Models.Leaderboard;
 using FortnitePorting.ViewModels;
 using FortnitePorting.Views;
 using FortnitePorting.Windows;
@@ -82,7 +81,6 @@ public class AppService : IService
             await TaskService.RunDispatcherAsync(() =>
             {
                 // TODO add caching service to handle this information
-                LeaderboardExport.ClearCache();
                 ImageExtensions.ClearCachedBitmaps();
             
                 WindowManager.CloseAllPreviews();
@@ -164,14 +162,6 @@ public class AppService : IService
 
             switch (path)
             {
-                case "auth/callback":
-                {
-                    var codeParameter = queryParameters.FirstOrDefault(param => param.Name?.Equals("code") ?? false);
-                    if (codeParameter?.Value is not string code) break;
-
-                    TaskService.Run(async () => await SupaBase.ExchangeCode(code));
-                    break;
-                }
                 case var _ when path.StartsWith("file/", StringComparison.OrdinalIgnoreCase):
                 {
                     var filePath = Uri.UnescapeDataString(path["file/".Length..]);
@@ -197,9 +187,6 @@ public class AppService : IService
 
     private void OnAppStart(object? sender, ControlledApplicationLifetimeStartupEventArgs e)
     {
-        if (AppSettings.Account.UseDiscordRichPresence)
-            Discord.Initialize();
-
         TaskService.Run(AppWM.Initialize);
 
         if (AppSettings.Installation is { FinishedSetup: true, CurrentProfile: null })

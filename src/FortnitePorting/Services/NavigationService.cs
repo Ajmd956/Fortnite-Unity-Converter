@@ -13,10 +13,8 @@ public class NavigationService : IService
     public readonly NavigatorContext App;
     public readonly NavigatorContext Setup;
     public readonly NavigatorContext Assets;
-    public readonly NavigatorContext Plugin;
     public readonly NavigatorContext Settings;
     public readonly NavigatorContext ExportSettings;
-    public readonly NavigatorContext Leaderboard;
     
     private readonly List<NavigatorContext> _contexts = [];
 
@@ -25,10 +23,8 @@ public class NavigationService : IService
         App = RegisterContext(string.Empty);
         Setup = RegisterContext("Setup");
         Assets = RegisterContext("Assets");
-        Plugin = RegisterContext("Plugin");
         Settings = RegisterContext("Settings");
         ExportSettings = RegisterContext("Export");
-        Leaderboard = RegisterContext("Leaderboard");
     }
 
     public void OpenRoute(string routePath)

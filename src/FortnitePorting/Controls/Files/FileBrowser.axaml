@@ -270,9 +270,6 @@
                                                             <MenuItem Header="Copy Path Without Extension"
                                                                       Command="{Binding CopyPathCommand}"
                                                                       CommandParameter="{x:True}" />
-                                                            <MenuItem Header="Send in Chat"
-                                                                      Icon="{material:MaterialIconExt Send}"
-                                                                      Command="{Binding SendToChatCommand}" />
                                                         </ContextMenu>
                                                     </StackPanel.ContextMenu>
                                                     <Grid Height="96">
@@ -412,9 +409,6 @@
                                                         <MenuItem Header="Copy Path Without Extension"
                                                                   Command="{Binding CopyPathCommand}"
                                                                   CommandParameter="{x:True}" />
-                                                        <MenuItem Header="Send in Chat"
-                                                                  Icon="{material:MaterialIconExt Send}"
-                                                                  Command="{Binding SendToChatCommand}" />
                                                     </ContextMenu>
                                                 </ContentControl.ContextMenu>
                                                 <Panel>

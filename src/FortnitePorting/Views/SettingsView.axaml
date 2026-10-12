@@ -22,7 +22,6 @@
                 <sidebar:SidebarItemText Text="App Settings"/>
                 <sidebar:SidebarItemButton Text="Application" Icon="ApplicationCog" Tag="{x:Type settings:ApplicationSettingsView}"/>
                 <sidebar:SidebarItemButton Text="Installation" Icon="Folder" Tag="{x:Type settings:InstallationSettingsView}"/>
-                <sidebar:SidebarItemButton Text="Account" Icon="User" Tag="{x:Type settings:AccountSettingsView}" IsVisible="{Binding SupaBase.IsLoggedIn}"/>
                 <sidebar:SidebarItemButton Text="Developer" Icon="Bug" Tag="{x:Type settings:DeveloperSettingsView}" IsVisible="{Binding Settings.Application.ShowDeveloperSettings}"/>
                 <sidebar:SidebarItemButton Text="Console" Icon="Console" Tag="{x:Type views:ConsoleView}"/>
             </sidebar:Sidebar.Items>

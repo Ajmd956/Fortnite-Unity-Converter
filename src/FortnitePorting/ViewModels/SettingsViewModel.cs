@@ -9,10 +9,9 @@ using FortnitePorting.Services;
 
 namespace FortnitePorting.ViewModels;
 
-public partial class SettingsViewModel(SettingsService settings, SupabaseService supabase) : ViewModelBase
+public partial class SettingsViewModel(SettingsService settings) : ViewModelBase
 {
     [ObservableProperty] private SettingsService _settings = settings;
-    [ObservableProperty] private SupabaseService _supaBase = supabase;
     
     public override async Task OnViewExited()
     {

@@ -568,7 +568,6 @@ public partial class AssetLoaderService : ObservableObject, IService, IResettabl
     
     public void Set(EExportType type)
     {
-        Discord.Update(type);
         ActiveLoader = Get(type);
         ActiveCollection = ActiveLoader.Filtered;
         ActiveLoader.UpdateFilterVisibility();

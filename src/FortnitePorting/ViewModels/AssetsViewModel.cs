@@ -33,9 +33,7 @@ public partial class AssetsViewModel(
     InfoService info,
     NavigationService navigation,
     CUE4ParseService ueParse,
-    AppService app,
-    DiscordService discord,
-    SupabaseService supabase) : ViewModelBase, IResettable
+    AppService app) : ViewModelBase, IResettable
 {
     [ObservableProperty] private AssetLoaderService _assetLoader = assetLoader;
 
@@ -45,8 +43,6 @@ public partial class AssetsViewModel(
     private readonly NavigationService _navigation = navigation;
     private readonly CUE4ParseService _ueParse = ueParse;
     private readonly AppService _app = app;
-    private readonly DiscordService _discord = discord;
-    private readonly SupabaseService _supaBase = supabase;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(IsTastyRigApplyVisible))]
     private EExportLocation _exportLocation = EExportLocation.Blender;
@@ -140,17 +136,6 @@ public partial class AssetsViewModel(
             var exportedProperly = await _exporter.Export(
                 _assetLoader.ActiveLoader.SelectedAssetInfos,
                 _exportMeta);
-            if (exportedProperly && _supaBase.IsLoggedIn)
-            {
-                await _supaBase.PostExports([
-                    .._assetLoader.ActiveLoader.SelectedAssetInfos
-                        .OfType<AssetInfo>()
-                        .Select(asset => asset.Asset.CreationData.Object.GetPathName()),
-                    .._assetLoader.ActiveLoader.SelectedAssetInfos
-                        .OfType<CustomAssetInfo>()
-                        .Select(asset => $"Custom/{asset.Asset.Asset.Name}"),
-                ]);
-            }
         }
         finally
         {
@@ -243,8 +228,6 @@ public partial class AssetsViewModel(
     public void ChangeTab(EExportType assetType)
     {
         if (_assetLoader.ActiveLoader?.Type == assetType) return;
-
-        _discord.Update(assetType);
 
         var loaders = _assetLoader.Categories.SelectMany(category => category.Loaders);
         foreach (var loader in loaders)

@@ -17,7 +17,6 @@ namespace FortnitePorting.ViewModels.Settings;
 
 public partial class InstallationSettingsViewModel : SettingsViewModelBase
 {
-    [JsonIgnore] public SupabaseService SupaBase => AppServices.SupaBase;
     [JsonIgnore] public CUE4ParseService UEParse => AppServices.UEParse;
     
     [ObservableProperty] private bool _finishedSetup;

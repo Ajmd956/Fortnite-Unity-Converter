@@ -7,7 +7,6 @@ using CommunityToolkit.Mvvm.Input;
 using CUE4Parse.Utils;
 using FortnitePorting.Exporting;
 using FortnitePorting.Extensions;
-using FortnitePorting.Models.Chat;
 using FortnitePorting.Services;
 using FortnitePorting.Views;
 using Newtonsoft.Json;
@@ -91,14 +90,5 @@ public partial class FlatItem : ObservableObject
         }
     }
 
-    [RelayCommand]
-    public async Task SendToChat()
-    {
-        var (icon, displayName, _) = await UEParse.ResolveGameFileAsync(Path);
-        await TaskService.RunDispatcherAsync(() =>
-        {
-            ChatVM.PendingGameFile = new PendingGameFileAttachment(Path, icon, displayName);
-            Navigation.App.Open<ChatView>();
-        });
-    }
+
 }

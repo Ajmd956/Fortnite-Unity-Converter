@@ -12,7 +12,6 @@ using FortnitePorting.CUE4Parse.Models.Fortnite.Styles;
 using FortnitePorting.Exporting;
 using FortnitePorting.Extensions;
 using FortnitePorting.Framework;
-using FortnitePorting.Models.Chat;
 using FortnitePorting.Models.Clipboard;
 using FortnitePorting.Services;
 using FortnitePorting.Views;
@@ -203,14 +202,5 @@ public class AssetItem : Base.BaseAssetItem
         }
     }
 
-    public override async Task SendToUser()
-    {
-        var path = CreationData.Object.GetPathName();
-        var (icon, displayName, _) = await UEParse.ResolveGameFileAsync(path);
-        TaskService.RunDispatcher(() =>
-        {
-            ChatVM.PendingGameFile = new PendingGameFileAttachment(path, icon, displayName);
-            Navigation.App.Open<ChatView>();
-        });
-    }
+
 }

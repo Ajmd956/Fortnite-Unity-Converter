@@ -317,11 +317,7 @@ public class ExportService(
         var serverName = serverType.Description;
         info.Message($"{serverName} Server", $"The {serverName} Plugin for Fortnite Porting is not currently installed or running.",
             severity: InfoBarSeverity.Error, closeTime: 3.0f,
-            useButton: true, buttonTitle: "Install Plugin", buttonCommand: () =>
-            {
-                navigation.App.Open<PluginView>();
-                navigation.Plugin.Open(exportLocation);
-            });
+            useButton: false);
     }
 
     private static ExportStyleBase[] ConvertStyles(BaseStyleData[] styles)

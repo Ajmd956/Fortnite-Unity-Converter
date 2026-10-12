@@ -54,7 +54,7 @@ public partial class InstallationSetupViewModel : ViewModelBase
     {
         AppSettings.Installation.Profiles.Add(Profile);
         
-        Navigation.Setup.Open<OnlineSetupView>();
+        Navigation.Setup.Open<FinishedSetupView>();
     }
 }
 

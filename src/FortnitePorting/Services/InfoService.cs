@@ -138,14 +138,7 @@ public partial class InfoService : ObservableObject, IService, ILogEventSink
         var exceptionString = e.ToString();
         Log.Error(exceptionString);
 
-#if RELEASE
-        if (SupaBase.IsLoggedIn)
-        {
-            TaskService.Run(async () => await Api.FortnitePorting.PostError(e));
-        }
-#endif
-        
-        Dialog("An unhandled exception has occurred", exceptionString, buttons: [
+Dialog("An unhandled exception has occurred", exceptionString, buttons: [
             new DialogButton
             {
                 Text = "Continue",

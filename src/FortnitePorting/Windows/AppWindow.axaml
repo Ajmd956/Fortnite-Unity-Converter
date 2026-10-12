@@ -115,68 +115,11 @@
 
                             <sidebar:SidebarItemSeparator Grid.Row="1" />
 
-                            <Grid Grid.Row="3" IsVisible="{Binding Settings.Account.SupaBase.IsLoggedIn}">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="{ext:Space 2}"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                
-                                <Grid Grid.Row="0" RowDefinitions="*,*">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="{ext:Space 2}" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <Grid Grid.Row="0" Grid.RowSpan="2" Grid.Column="0">
-                                        <Ellipse Height="48" Width="48" RenderOptions.BitmapInterpolationMode="HighQuality">
-                                            <Ellipse.Fill>
-                                                <ImageBrush
-                                                    asyncImageLoader:ImageBrushLoader.Source="{Binding SupaBase.UserInfo.AvatarUrl, FallbackValue='https://cdn.fortniteporting.app/images/avatar/default.png'}"
-                                                    Stretch="UniformToFill" />
-                                            </Ellipse.Fill>
-                                        </Ellipse>
-                                    </Grid>
-
-                                    <TextBlock Grid.Row="0" Grid.Column="2"
-                                               Text="{Binding SupaBase.UserInfo.DisplayName, FallbackValue='Anonymous'}"
-                                               FontFamily="{StaticResource SFTextSemiBold}"
-                                               Classes="TextFillColorPrimaryBrush" VerticalAlignment="Center" />
-
-                                    <TextBlock Grid.Row="1" Grid.Column="2"
-                                               Text="{Binding SupaBase.UserInfo.UserName, StringFormat='@{0}', FallbackValue='@anonymous'}"
-                                               FontFamily="{StaticResource SFTextRegular}"
-                                               Classes="TextFillColorSecondaryBrush" VerticalAlignment="Center" />
-                                </Grid>
-                                
-                                <Grid Grid.Row="2" Margin="{ext:Space 0.5, 0}">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*"/>
-                                        <RowDefinition Height="{ext:Space 1}"/>
-                                        <RowDefinition Height="*"/>
-                                    </Grid.RowDefinitions>
-                                    
-                                    <TextBlock Grid.Row="0" Text="{Binding SupaBase.LevelStats.Level, StringFormat='Level {0}'}" Classes="BodyStrongTextBlockStyle"
-                                               HorizontalAlignment="Left"/>
-                                    <TextBlock Grid.Row="0" Text="{Binding SupaBase.LevelStats.XPFractionText}" Classes="CaptionTextBlockStyle TextFillColorSecondaryBrush" 
-                                               HorizontalAlignment="Right"/>
-                                    
-                                    <ProgressBar Grid.Row="2" HorizontalAlignment="Stretch" VerticalAlignment="Center" 
-                                                 Height="8" MinWidth="0" Minimum="0"
-                                                 Value="{Binding SupaBase.LevelStats.XPIntoNextLevel}"
-                                                 Maximum="{Binding SupaBase.LevelStats.XPForNextLevel}">
-                                       
-                                    </ProgressBar>
-                                </Grid>
-                            </Grid>
-
-                            <Grid Grid.Row="3" RowDefinitions="*,*"
-                                  IsVisible="{Binding !Settings.Account.SupaBase.IsLoggedIn}">
+                            <Grid Grid.Row="3" RowDefinitions="*,*">
                                 <Button Grid.Row="0"
                                         Content="{controls:ImageText 'Sign In', 'avares://FortnitePorting/Assets/Icons/Discord.png'}"
                                         HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                                        Command="{Binding Settings.Account.SupaBase.SignIn}" />
+                                        Command="{Binding SignInCommand}" />
                             </Grid>
                         </Grid>
                     </sidebar:Sidebar.Footer>
@@ -194,12 +137,6 @@
 
         <ContentControl Grid.Row="0" Grid.RowSpan="2" Content="{Binding SetupViewContent}"
                         IsVisible="{Binding !Settings.Installation.FinishedSetup}" />
-
-        <TransitioningContentControl Grid.Row="0" Grid.RowSpan="2" Content="{Binding BlackHole.Content}">
-            <TransitioningContentControl.PageTransition>
-                <CrossFade Duration="0:00:00.25" />
-            </TransitioningContentControl.PageTransition>
-        </TransitioningContentControl>
 
         <ItemsControl Grid.Row="1" VerticalAlignment="Top" HorizontalAlignment="Right" Width="500"
                       Margin="{ext:Space 1}" ItemsSource="{Binding Info.Messages}" ClipToBounds="False">
@@ -412,10 +349,6 @@
                 </Grid>
             </controls:ContentCard>
         </Grid>
-        
-        <controls:LevelUpOverlay x:Name="LevelUpOverlay" 
-                                 Grid.Row="0" 
-                                 Grid.RowSpan="2" />
 
         <controls:WindowTitleBar Grid.Row="0"/>
     </Grid>

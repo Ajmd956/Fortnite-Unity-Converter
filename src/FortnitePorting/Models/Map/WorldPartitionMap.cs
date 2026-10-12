@@ -279,14 +279,6 @@ public partial class WorldPartitionMap : ObservableObject
                 map.Status = EWorldPartitionGridMapStatus.Finished;
             }
             
-            if (exportedProperly && SupaBase.IsLoggedIn)
-            {
-                await SupaBase.PostExports(
-                    SelectedMaps
-                        .Select(map => map.Path)
-                );
-            }
-            
             SelectedMaps.ForEach(map => map.Status = EWorldPartitionGridMapStatus.None);
             if (exportedProperly)
                 ClearSelectedMaps();

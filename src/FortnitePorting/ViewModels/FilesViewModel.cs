@@ -45,8 +45,6 @@ public partial class FilesViewModel(
     InfoService info,
     NavigationService navigation,
     SettingsService settings,
-    DiscordService discord,
-    SupabaseService supabase,
     AppService app) : ViewModelBase, IResettable
 {
     [ObservableProperty] private FilesService _files = files;
@@ -56,8 +54,6 @@ public partial class FilesViewModel(
     private readonly InfoService _info = info;
     private readonly NavigationService _navigation = navigation;
     private readonly SettingsService _settings = settings;
-    private readonly DiscordService _discord = discord;
-    private readonly SupabaseService _supaBase = supabase;
     private readonly AppService _app = app;
 
     [ObservableProperty] private FileBrowserContext _context = new()
@@ -106,7 +102,6 @@ public partial class FilesViewModel(
 
     public override async Task OnViewOpened()
     {
-        _discord.Update($"Browsing {_ueParse.Provider.Files.Count:N0} Files");
     }
 
     public void JumpTo(string path)
@@ -465,10 +460,7 @@ public partial class FilesViewModel(
         meta.WorldFlags = EWorldFlags.Actors | EWorldFlags.Landscape | EWorldFlags.WorldPartitionGrids | EWorldFlags.HLODs;
         if (meta.Settings.ImportInstancedFoliage)
             meta.WorldFlags |= EWorldFlags.InstancedFoliage;
-
-        var exportedProperly = await _exporter.Export(exports, meta);
-        if (exportedProperly && _supaBase.IsLoggedIn)
-            await _supaBase.PostExports(exports.Select(e => e.Object.GetPathName()));
+        await _exporter.Export(exports, meta);
     }
 
     private async Task ExportProperties(ExportDataMeta meta)
