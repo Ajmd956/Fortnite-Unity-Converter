@@ -79,25 +79,9 @@
                                                    IsEnabled="{Binding UEParse.FinishedLoading}" />
                         <sidebar:SidebarItemButton Text="Files" Icon="Folder" Tag="{x:Type views:FilesView}"
                                                    IsEnabled="{Binding UEParse.FinishedLoading}" />
-                        <sidebar:SidebarItemButton Text="Map" Icon="Map" Tag="{x:Type views:MapView}"
-                                                   IsEnabled="{Binding UEParse.FinishedLoading}" />
-                        <sidebar:SidebarItemButton Text="Music" Icon="Music" Tag="{x:Type views:MusicView}"
-                                                   IsEnabled="{Binding UEParse.FinishedLoading}" />
-
-                        <sidebar:SidebarItemSeparator />
-
-                        <sidebar:SidebarItemText Text="Online" />
-                        <sidebar:SidebarItemButton Text="Chat" Icon="Message" Tag="{x:Type views:ChatView}"
-                                                   IsEnabled="{Binding SupaBase.IsLoggedIn}"
-                                                   NotificationCount="{Binding Chat.UnseenMessageCount}"/>
-                        <sidebar:SidebarItemButton Text="Leaderboard" Icon="Trophy"
-                                                   Tag="{x:Type views:LeaderboardView}"
-                                                   IsEnabled="{Binding SupaBase.IsLoggedIn}"/>
-
                         <sidebar:SidebarItemSeparator />
 
                         <sidebar:SidebarItemText Text="Settings" />
-                        <sidebar:SidebarItemButton Text="Plugin" Icon="Plug" Tag="{x:Type views:PluginView}" />
                         <sidebar:SidebarItemButton Text="Export Options" Icon="FileCog"
                                                    Tag="{x:Type views:ExportSettingsView}" />
                         <sidebar:SidebarItemButton Text="App Settings" Icon="Settings"
