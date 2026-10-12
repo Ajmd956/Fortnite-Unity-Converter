@@ -97,6 +97,7 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
     private const EGame LATEST_GAME_VERSION = EGame.GAME_UE6_0;
 
     private FortniteVersionResponse? _resolvedVersion;
+    public string? ResolvedVersion => _resolvedVersion?.Version;
     
     public DirectoryInfo CacheFolder => new(Path.Combine(App.ApplicationDataFolder.FullName, ".cache"));
 
@@ -168,6 +169,7 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
         Progress = 0;
         Status = "Loading Files";
 
+        ConversionBridge.Stop();
         Provider?.Dispose();
         Provider = null;
         LiveManifest = null;
@@ -190,6 +192,8 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
         IsLoading = false;
 
         if (!FinishedLoading) return;
+
+        ConversionBridge.Start();
 
         if (AppSettings.Application.UseDefaultExportLoadType)
             await AssetLoading.Load(AppSettings.Application.DefaultExportLoadType);
