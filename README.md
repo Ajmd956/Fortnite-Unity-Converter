@@ -1,94 +1,28 @@
-<div align="center">
+Fortnite Unity Converter
+Fortnite Unity Converter turns Fortnite materials into Unity shaders. Pick a material, convert it, and drop the finished shader and its textures into your Unity project.
 
-# Fortnite Porting
+IMPORTANT: this converter can make mistakes. If a shader doesn't look right, you may have to edit it by hand. This will be improved in the future.
 
+Download
+Get the latest "Fortnite Unity Converter.exe" from the Releases page on the right. Run it. No setup is needed.
 
-[![Discord](https://img.shields.io/discord/866821077769781249?logo=discord&logoColor=white&label=Discord&color=7289da)](https://discord.gg/fortniteporting)
-[![Blender](https://img.shields.io/badge/Blender-4.2+-blue?logo=blender&logoColor=white&color=orange)](https://www.blender.org/download/)
-[![Unreal](https://img.shields.io/badge/Unreal-5.8-blue?logo=unreal-engine&logoColor=white&color=white)](https://www.unrealengine.com/en-US/download)
-[![Release](https://img.shields.io/github/release/h4lfheart/FortnitePorting)](../../releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/h4lfheart/FortnitePorting/total?color=green)](../../releases)
+The app updates itself: when a new version is out, a window shows what changed and you can update with one click. You can turn update checks off, or check manually, under App Settings.
 
-<img alt="Fortnite Porting" src=".github/cover.png" />
+Building from source
+Run Build.bat. It checks for Python, Node.js and the .NET 10 SDK and downloads whatever is missing into the app folder (nothing is installed system-wide and no admin rights are needed), then builds the app. The file helper's source (CUE4Parse) is downloaded the same way.
 
-</div>
+What it does
+Files: browse your Fortnite files, preview textures, meshes and more, and export them.
+Convert: turn one or more materials into Unity shaders.
+My Shaders: see everything you've converted.
+Check Shaders: scan shader files for common problems and fix the safe ones. A .bak copy of any changed shader is kept next to it.
+Your converted shaders and settings are saved in Documents\Fortnite Unity Converter, so updating or deleting the app never removes them.
 
-## Requirements
+Not everything converts exactly. Some Unreal features have no Unity equivalent, so the app uses a stand-in and tells you when it does.
 
-- Windows x64
-- A local Fortnite installation or wifi strong enough for On-Demand mode
-- [Blender 4.2+](https://www.blender.org/download/) and/or [Unreal Engine 5.8+](https://www.unrealengine.com/en-US/download) for live import
+Credits
+@psdkyo - https://x.com/psdkyo Made the Blender add-on for the edited version of FortnitePorting that this project was based on. It made this converter possible. Thank you!
 
-Blender and Unreal Engine are only required when exporting directly to those applications. Assets can also be exported to a folder.
+FortnitePorting by h4lfheart (Half) and contributors https://github.com/h4lfheart/FortnitePorting This app grew out of FortnitePorting and still builds on its work. Thank you to everyone who works on it.
 
-> [!NOTE]
-> Community-maintained forks are available for other platforms: [FortnitePortingMac](https://github.com/skythumbnails/FortnitePortingMac) and [FortnitePorting-linux](https://github.com/fclivaz42/FortnitePorting-linux). These are not officially supported by this repository.
-
-## Installation
-
-Download the latest release from [GitHub Releases](../../releases/latest).
-
-> [!IMPORTANT]
-> Direct export to **Blender** and **Unreal Engine** requires their respective companion plugins. Install and manage them from the **Plugin** Tab inside Fortnite Porting.
-
-## Quick Start
-
-1. Download and launch `FortnitePorting.exe`.
-2. Complete the initial setup using **Latest Installed**, **On-Demand**, or a **Custom** installation.
-3. If exporting to Blender or Unreal Engine, install the appropriate companion plugin from the **Plugin** Tab.
-4. Open the **Assets** Tab, select an item, choose an export target, and export.
-
-## Export Targets
-
-| Target | Details |
-| --- | --- |
-| **Blender** | Live import through the Fortnite Porting Blender extension |
-| **Unreal Engine** | Live import through the Fortnite Porting and UEFormat plugins |
-| **Assets Folder** | Offline export to the default Fortnite Porting assets directory while maintaining folder structure |
-| **Custom Folder** | Offline export to a directory of your choice without maintaining folder structure |
-
----
-
-## Building from Source
-
-Fortnite Porting requires the [.NET SDK](https://dotnet.microsoft.com/download) and currently targets Windows x64.
-
-Clone the repository with its submodules:
-
-```sh
-git clone https://github.com/h4lfheart/FortnitePorting --recursive
-```
-
-From the repository root, publish a self-contained build:
-
-```sh
-dotnet publish FortnitePorting -c Release --self-contained -r win-x64 -o "./Release" -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:IncludeNativeLibrariesForSelfExtract=true
-```
-
-## Links
-
-- [Website](https://fortniteporting.app)
-- [Discord](https://discord.gg/fortniteporting)
-- [GitHub](https://github.com/h4lfheart/FortnitePorting)
-- [X / Twitter](https://twitter.com/FortnitePorting)
-- [Support on Ko-fi](https://ko-fi.com/h4lfheart)
-
-## License
-
-Fortnite Porting is distributed under the [GNU General Public License v3.0](LICENSE).
-
-Fortnite Porting is an independent project and is not affiliated with, endorsed by, or sponsored by Epic Games. Fortnite and related marks are trademarks of Epic Games. You are responsible for ensuring that your use of exported assets complies with applicable licenses and terms.
-
----
-
-## Contributors
-
-- [Chippy](https://github.com/Bmarquez1997) - Material system and export feature development.
-- [Ghost](https://github.com/GhostScissors) - RADA and BINKA audio decoders and asset deserialization fixes.
-- [Asval](https://github.com/4sval) - Inspiration for Fortnite Porting and a primary contributor to [CUE4Parse](https://github.com/FabianFG/CUE4Parse).
-- [GMatrix](https://github.com/GMatrixGames) - AES key and mapping infrastructure through UEDB.
-- [Marcel](https://github.com/Ka1serM) - Unreal Engine and UEFormat plugins, world export features, and project inspiration.
-- [MountainFlash](https://github.com/MinshuG) - Inspiration for the project's early automation.
-- [RedHaze](https://github.com/RedHaze) - Pose Asset processing and UEFormat pose export groundwork.
-
-Thank you to everyone who has contributed to Fortnite Porting throughout its development!!
+This project is not affiliated with or endorsed by Epic Games, FortnitePorting or Unity. Fortnite is a trademark of Epic Games.
