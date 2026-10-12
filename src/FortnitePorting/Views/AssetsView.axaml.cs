@@ -192,8 +192,6 @@ public partial class AssetsView : ViewBase<AssetsViewModel>
         var paths = ViewModel.GetSelectedAssetPaths();
         var dragDropInfoFile = await WriteDragDropInfoAsync(paths);
 
-        TaskService.Run(ExportClient.DiscoverAsync);
-
         var storageFile = await TopLevel.GetTopLevel(this)!
             .StorageProvider
             .TryGetFileFromPathAsync(new Uri(dragDropInfoFile));

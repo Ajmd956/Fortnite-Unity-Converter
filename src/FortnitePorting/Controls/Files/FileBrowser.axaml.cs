@@ -167,8 +167,6 @@ public partial class FileBrowser : UserControl
 
         var dragDropInfoFile = await WriteDragDropInfoAsync(paths);
 
-        TaskService.Run(ExportClient.DiscoverAsync);
-
         var storageFile = await TopLevel.GetTopLevel(this)!
             .StorageProvider
             .TryGetFileFromPathAsync(new Uri(dragDropInfoFile));

@@ -14,7 +14,6 @@ public class NavigationService : IService
     public readonly NavigatorContext Setup;
     public readonly NavigatorContext Assets;
     public readonly NavigatorContext Settings;
-    public readonly NavigatorContext ExportSettings;
     
     private readonly List<NavigatorContext> _contexts = [];
 
@@ -24,7 +23,6 @@ public class NavigationService : IService
         Setup = RegisterContext("Setup");
         Assets = RegisterContext("Assets");
         Settings = RegisterContext("Settings");
-        ExportSettings = RegisterContext("Export");
     }
 
     public void OpenRoute(string routePath)

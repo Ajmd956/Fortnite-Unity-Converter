@@ -68,5 +68,4 @@
         <ProjectReference Include="..\FortnitePorting.Shared\FortnitePorting.Shared.csproj" />
     </ItemGroup>
 
-    <Import Project="..\..\plugins\Resources.props" />
 </Project>

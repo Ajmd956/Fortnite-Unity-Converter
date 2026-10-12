@@ -34,7 +34,6 @@ public static class AppServices
     public static AssetLoaderService AssetLoading => Services.GetRequiredService<AssetLoaderService>();
     public static FilesService Files => Services.GetRequiredService<FilesService>();
     public static BridgeService ConversionBridge => Services.GetRequiredService<BridgeService>();
-    public static ExportClientService ExportClient => Services.GetRequiredService<ExportClientService>();
     public static ExportService Exporter => Services.GetRequiredService<ExportService>();
     public static ExportAssetProvider ExportAssets => Services.GetRequiredService<ExportAssetProvider>();
     public static WindowManagerService WindowManager => Services.GetRequiredService<WindowManagerService>();

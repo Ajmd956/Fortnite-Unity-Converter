@@ -83,8 +83,6 @@
                         <sidebar:SidebarItemSeparator />
 
                         <sidebar:SidebarItemText Text="Settings" />
-                        <sidebar:SidebarItemButton Text="Export Options" Icon="FileCog"
-                                                   Tag="{x:Type views:ExportSettingsView}" />
                         <sidebar:SidebarItemButton Text="App Settings" Icon="Settings"
                                                    Tag="{x:Type views:SettingsView}" />
                        

@@ -10,7 +10,6 @@ namespace FortnitePorting.Services;
 
 public partial class SettingsService : ObservableObject, IService
 {
-    [ObservableProperty] private ExportSettingsViewModel _exportSettings = new();
     [ObservableProperty] private InstallationSettingsViewModel _installation = new();
     [ObservableProperty] private ApplicationSettingsViewModel _application = new();
     [ObservableProperty] private DeveloperSettingsViewModel _developer = new();
