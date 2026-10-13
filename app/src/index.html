@@ -666,7 +666,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
           <button class="btn primary" id="convertBtn">Convert</button>
         </div>
       </div>
-      <div class="hint" style="padding:0 4px">The converter starts its own API in the background. The first start reads the game files and can take a minute. Each converted shader is saved in its own folder inside Fortnite Conversions, and everything it pulled in is filed under Cache with the same name.</div>
+      <div class="hint" style="padding:0 4px">The converter starts its own API in the background. The first start reads the game files and can take a minute. Each converted shader is saved in its own folder inside Shader Conversions, and everything it pulled in is filed under Cache with the same name.</div>
     </div>
 
     <div class="page split" id="page-export">
@@ -821,7 +821,8 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="sec-head">Unity</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Unity Editor</div><div class="rc-desc">Path to Unity.exe, used for compile checks. Leave empty to auto-detect.</div></div><div class="rc-ctl"><input type="text" id="setUnity" spellcheck="false" placeholder="Auto-detect"><button class="btn sm ico" id="browseUnity" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="sec-head">Locations</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Conversions Folder</div><div class="path-line" id="pathConversions"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openConv2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Shader Conversions Folder</div><div class="path-line" id="pathConversions"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openConv2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Conversions Folder</div><div class="path-line" id="pathParticles"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openParticles" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Cache Folder</div><div class="path-line" id="pathCache"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openCache2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
       </div>
     </div>
@@ -1330,9 +1331,14 @@ function showNotice(data) {
 
 function showDone(data) {
   const n = data.shaders.length
-  $('doneTitle').textContent = n === 1 ? 'Shader converted' : n + ' shaders converted'
+  const parts = data.shaders.filter(s => s.kind === 'particles').length
+  const shaders = n - parts
+  $('doneTitle').textContent = parts && shaders ? shaders + (shaders === 1 ? ' shader' : ' shaders') + ' and ' + parts + (parts === 1 ? ' particle system' : ' particle systems') + ' converted'
+    : parts ? (parts === 1 ? 'Particle system converted' : parts + ' particle systems converted')
+    : n === 1 ? 'Shader converted' : n + ' shaders converted'
   $('doneSub').textContent = n < data.total
     ? n + ' of ' + data.total + ' converted. The rest are explained in the output panel.'
+    : parts ? 'Drag the Particle Conversions folder into your Unity Assets folder and the prefab is built for you.'
     : 'Open shader takes you to the shader file, with its Textures folder right beside it.'
   const list = $('doneList')
   list.innerHTML = ''
@@ -1345,7 +1351,7 @@ function showDone(data) {
     name.title = s.shader
     const btn = document.createElement('button')
     btn.className = 'btn sm primary'
-    btn.textContent = 'Open shader'
+    btn.textContent = s.kind === 'particles' ? 'Open particles' : 'Open shader'
     btn.onclick = () => window.api.show(s.shader)
     row.append(name, btn)
     list.appendChild(row)
@@ -1524,6 +1530,7 @@ async function init() {
   $('optFix').checked = settings.fix
   $('optUnity').checked = settings.useUnity
   $('pathConversions').textContent = info.conversions
+  $('pathParticles').textContent = info.particles
   $('pathCache').textContent = info.cache
   fillSettings()
   window.api.onLog(onLog)
@@ -1561,6 +1568,7 @@ document.querySelectorAll('.sub-nav').forEach(t => t.onclick = () => showSub(t.d
 $('bridgeBtn').onclick = pollBridge
 $('logBtn').onclick = () => { showTab('settings'); showSub('console') }
 $('openConv2').onclick = () => window.api.open(info.conversions)
+$('openParticles').onclick = () => window.api.open(info.particles)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
 const NEWS_DATE = 'Oct 10'

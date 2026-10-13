@@ -11,7 +11,9 @@ const { createAi } = require('./ai')
 
 const appDir = app.isPackaged ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath)) : __dirname
 const root = path.join(app.getPath('documents'), 'Fortnite Unity Converter')
-const conversionsDir = path.join(root, 'Fortnite Conversions')
+const conversionsDir = path.join(root, 'Shader Conversions')
+const oldConversionsDir = path.join(root, 'Fortnite Conversions')
+const particlesDir = path.join(root, 'Particle Conversions')
 const cacheDir = path.join(root, 'Cache')
 const exportDefault = path.join(root, 'Exports')
 const settingsFile = path.join(root, 'settings.json')
@@ -41,7 +43,7 @@ function migrateOldData() {
     for (const name of ['Fortnite Conversions', 'Cache', 'settings.json']) {
       const from = path.join(appDir, name)
       if (fs.existsSync(from)) {
-        fs.cpSync(from, path.join(root, name), { recursive: true, force: false, errorOnExist: false })
+        fs.cpSync(from, path.join(root, name === 'Fortnite Conversions' ? 'Shader Conversions' : name), { recursive: true, force: false, errorOnExist: false })
       }
     }
     fs.writeFileSync(marker, '', 'utf8')
@@ -49,7 +51,11 @@ function migrateOldData() {
 }
 
 function ensureFolders() {
+  try {
+    if (fs.existsSync(oldConversionsDir) && !fs.existsSync(conversionsDir)) fs.renameSync(oldConversionsDir, conversionsDir)
+  } catch (e) {}
   fs.mkdirSync(conversionsDir, { recursive: true })
+  fs.mkdirSync(particlesDir, { recursive: true })
   fs.mkdirSync(cacheDir, { recursive: true })
 }
 
@@ -874,6 +880,7 @@ app.on('window-all-closed', () => {
 ipcMain.handle('app:info', () => ({
   root,
   conversions: conversionsDir,
+  particles: particlesDir,
   cache: cacheDir,
   exports: exportDirNow(),
   packaged: app.isPackaged
@@ -1177,6 +1184,13 @@ ipcMain.handle('api:ensure', () => ensureApi())
 
 ipcMain.handle('fnp:ensure', () => ensureFnp())
 
+function isNiagara(p) {
+  const t = String(p || '').trim()
+  const base = t.slice(t.lastIndexOf('/') + 1).split('.')[0]
+  if (/^NS_/i.test(base)) return true
+  return typeCache.get(t) === 'NiagaraSystem' || typeCache.get(packagePath(t)) === 'NiagaraSystem'
+}
+
 ipcMain.handle('engine:convert', async (_e, payload) => {
   if (busy) return { ok: false, error: 'busy' }
   const materials = (payload.materials || []).map(m => m.trim()).filter(Boolean)
@@ -1206,36 +1220,72 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
     }
   }
   let converted = 0
+  let attempted = materials.length
   const made = []
   const kinds = []
-  for (let i = 0; i < materials.length; i++) {
-    if (stopped) break
-    send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
-    const args = ['--bridge', settings.bridge, '--material', materials[i], '--out', conversionsDir, '--cache', cacheDir]
-    if (payload.name && materials.length === 1) args.push('--name', payload.name)
+  const convertMaterial = async (p, name, outDir) => {
+    const args = ['--bridge', settings.bridge, '--material', p, '--out', outDir, '--cache', cacheDir]
+    if (name) args.push('--name', name)
     const res = await runEngine(args)
     const m = res.output.match(/wrote (.+?)\.shader/)
     if (!m) {
       const kind = classifyFailure(res.output)
       if (kind) kinds.push(kind)
+      return null
     }
-    if (m) {
-      const shader = path.join(conversionsDir, m[1], m[1] + '.shader')
-      if (fs.existsSync(shader)) {
-        converted++
-        made.push({ name: m[1], shader, dir: path.dirname(shader) })
-      }
+    const shader = path.join(outDir, m[1], m[1] + '.shader')
+    if (!fs.existsSync(shader)) return null
+    converted++
+    const row = { name: m[1], shader, dir: path.dirname(shader) }
+    made.push(row)
+    return row
+  }
+  for (let i = 0; i < materials.length; i++) {
+    if (stopped) break
+    send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
+    if (!isNiagara(materials[i])) {
+      await convertMaterial(materials[i], payload.name && materials.length === 1 ? payload.name : '', conversionsDir)
+      continue
     }
+    const nargs = ['--bridge', settings.bridge, '--niagara', materials[i], '--out', particlesDir]
+    if (payload.name && materials.length === 1) nargs.push('--name', payload.name)
+    const nres = await runEngine(nargs)
+    const nm = nres.output.match(/wrote (.+?)\.particles\.json/)
+    if (!nm) {
+      const kind = classifyFailure(nres.output)
+      if (kind) kinds.push(kind)
+      continue
+    }
+    const pdir = path.join(particlesDir, nm[1])
+    const manifest = path.join(pdir, nm[1] + '.particles.json')
+    if (!fs.existsSync(manifest)) continue
+    converted++
+    made.push({ name: nm[1], shader: manifest, dir: pdir, kind: 'particles' })
+    const refs = []
+    for (const mm of nres.output.matchAll(/^material: (.+)$/gm)) {
+      const ref = mm[1].trim()
+      if (ref && !refs.includes(ref) && !materials.includes(ref)) refs.push(ref)
+    }
+    for (const ref of refs) {
+      if (stopped) break
+      const short = ref.slice(ref.lastIndexOf('/') + 1).split('.')[0]
+      if (fs.existsSync(path.join(pdir, short, short + '.shader'))) continue
+      attempted++
+      send('engine:log', '\nmaterial used by ' + nm[1] + ': ' + ref + '\n')
+      await convertMaterial(ref, '', pdir)
+    }
+    fs.rmSync(path.join(pdir, 'Editor'), { recursive: true, force: true })
+    fs.rmSync(path.join(pdir, 'PorterObjectBounds.cs'), { force: true })
   }
   busy = false
   send('engine:state', { running: false, label: '' })
-  send('engine:log', '\nfinished: ' + converted + ' of ' + materials.length + ' converted\n')
-  if (made.length) send('convert:done', { shaders: made, total: materials.length })
+  send('engine:log', '\nfinished: ' + converted + ' of ' + attempted + ' converted\n')
+  if (made.length) send('convert:done', { shaders: made, total: attempted })
   if (!made.length && !stopped) {
     const notice = noticeFor(kinds)
     if (notice) send('app:notice', notice)
   }
-  return { ok: true, converted, total: materials.length }
+  return { ok: true, converted, total: attempted }
 })
 
 ipcMain.handle('engine:check', async (_e, payload) => {

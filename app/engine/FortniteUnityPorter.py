@@ -4920,6 +4920,8 @@ def main():
     ap.add_argument("--unity", metavar="UNITY_EXE", help="with --check-shader: path to Unity.exe for the compile check")
     ap.add_argument("--curves", default=None, help="folder holding curve JSON exports (CQ_Something.json); also looks in Curves next to the cache")
     ap.add_argument("--keep-local-x", action="store_true", help="do not mirror object-space X for LocalPosition in the pixel stage (the exported Unity mesh has X mirrored relative to Unreal, so mirroring is the default)")
+    ap.add_argument("--niagara", metavar="PATH", help="convert a Niagara particle system (object path) to a Unity particle manifest and setup script")
+    ap.add_argument("--seconds", type=float, default=6.0, help="with --niagara: how many seconds of the system to play")
     ap.add_argument("--annotate", action="store_true", help="add UE node names as comments in the shader (off by default)")
     ap.add_argument("--no-annotate", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
@@ -4930,6 +4932,10 @@ def main():
         if not paths:
             sys.exit("no .shader files found")
         run_shader_check(paths, fix=not a.no_fix, unity=False if a.no_unity else (a.unity or None))
+        return
+    if a.niagara:
+        import NiagaraPorter
+        NiagaraPorter.run(a.bridge, a.niagara, a.out, a.name, a.seconds)
         return
     global ANIMATE_UNWIRED_TIME
     ANIMATE_UNWIRED_TIME = not a.hold_unwired_time
