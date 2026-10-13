@@ -6,6 +6,7 @@ using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Assets;
+using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.VirtualFileSystem;
@@ -76,8 +77,16 @@ try
 
     Say("status: Reading game archives");
     var provider = new DefaultFileProvider(archive, SearchOption.TopDirectoryOnly, new VersionContainer(EGame.GAME_UE6_0, optionOverrides: new Dictionary<string, bool> { ["StaticMesh.KeepMobileMinLODSettingOnDesktop"] = true }), StringComparer.OrdinalIgnoreCase);
+    provider.OnDemandOptions = new IoStoreOnDemandOptions
+    {
+        ChunkHostUri = new Uri("https://egdownload.fastly-edge.com/", UriKind.Absolute),
+        ChunkCacheDirectory = Directory.CreateDirectory(Path.Combine(cache, "chunks")),
+        Timeout = TimeSpan.FromSeconds(90)
+    };
     provider.Initialize();
     provider.ReadNaniteData = true; // Fortnite Porting turns this on by default; Nanite meshes fail to read without it
+
+    await LoadTextureStreamingAsync(http, provider, archive, cache);
 
     await provider.SubmitKeyAsync(new FGuid(), new FAesKey(info.Keys.MainKey.Key));
     foreach (var extra in info.Keys.ExtraKeys ?? [])
@@ -298,6 +307,45 @@ static string? ToObjectPath(string packagePath)
 
     var name = rest.Split('/').Last();
     return "/" + mount + "/" + rest + "." + name;
+}
+
+static async Task LoadTextureStreamingAsync(HttpClient http, DefaultFileProvider provider, string archive, string cache)
+{
+    // Fortnite keeps the large texture mips in streamed (on-demand) chunks, not in the paks. Without them every
+    // texture can only be read at its smallest stored mip (64x64). Same steps as Fortnite Porting's texture streaming.
+    try
+    {
+        var iniPath = Path.GetFullPath(Path.Combine(archive, "..", "..", "..", "Cloud", "IoStoreOnDemand.ini"));
+        if (!File.Exists(iniPath))
+        {
+            Say("status: Streamed textures are not installed, textures will be low resolution");
+            return;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(await File.ReadAllTextAsync(iniPath), "^\\s*TocPath\\s*=\\s*\"?([^\"\\r\\n]+?)\"?\\s*$", System.Text.RegularExpressions.RegexOptions.Multiline);
+        if (!match.Success)
+        {
+            Say("status: Streamed textures: no TocPath found, textures will be low resolution");
+            return;
+        }
+
+        var tocPath = match.Groups[1].Value.Trim().TrimStart('/');
+        var tocFile = new FileInfo(Path.Combine(cache, "chunks", tocPath.Substring(tocPath.LastIndexOf('/') + 1)));
+        if (!tocFile.Exists || tocFile.Length == 0)
+        {
+            Say("status: Downloading streamed texture index");
+            var bytes = await http.GetByteArrayAsync("https://download.epicgames.com/" + tocPath);
+            await File.WriteAllBytesAsync(tocFile.FullName, bytes);
+        }
+
+        Say("status: Loading streamed textures");
+        await provider.RegisterVfsAsync(new IoChunkToc(tocFile.FullName, provider.Versions));
+        await provider.MountAsync();
+    }
+    catch (Exception ex)
+    {
+        Say("status: Streamed textures failed to load (" + ex.Message.Replace('\r', ' ').Replace('\n', ' ') + "), textures will be low resolution");
+    }
 }
 
 static async Task<VersionInfo?> LoadKeysAsync(HttpClient http, string cache)
