@@ -167,16 +167,28 @@ EXTRA_SHOW = []              # --show REGEX (repeatable): keep visible even if a
 SKY_IGNORED = {"SkyLightEnvMapSample", "SkyAtmosphereLightIlluminanceOnGround"}
 
 
+def label_forms(label):
+    """A parameter's name as written, with underscores for spaces, and with no spaces or underscores, so a rule
+    written for "Hide_Element_00" also catches "Hide Element 00" and "HideElement00"."""
+    s = str(label).strip()
+    return (s, re.sub(r"\s+", "_", s), re.sub(r"[\s_]+", "", s))
+
+
+def label_matches(patterns, label):
+    forms = label_forms(label)
+    return any(re.search(r, f, re.I) for r in patterns for f in forms)
+
+
 def is_hardcoded(pname, label):
     if SHOW_ALL_PARAMS or pname.startswith("_O_"):
         return False
-    if any(re.search(r, str(label), re.I) for r in EXTRA_SHOW):
+    if label_matches(EXTRA_SHOW, label):
         return False
-    if any(re.search(r, str(label), re.I) for r in EXTRA_HIDE):
+    if label_matches(EXTRA_HIDE, label):
         return True
     if pname.startswith("_C_"):
         return HARDCODE_GLOBALS
-    return any(re.search(r, str(label), re.I) for r in HARDCODE_PATTERNS)
+    return label_matches(HARDCODE_PATTERNS, label)
 
 
 def time_period_override(p):
@@ -3876,6 +3888,19 @@ def check_shader_text(text):
             issues.append(Issue("error", "%s is used but has no declaration in the shader code" % name, ln, ("add_decl", name, props[name])))
         else:
             issues.append(Issue("error", "%s is used but is not declared anywhere (convert the material again)" % name, ln))
+    if not SHOW_ALL_PARAMS and pend:
+        bake = []
+        for mm in re.finditer(r'^[ \t]*((?:\[[^\]\n]*\][ \t]*)*)(_\w+)[ \t]*\("([^"\n]*)"[ \t]*,[ \t]*(\w+)', text[pend[0]:pend[1]], re.M):
+            name, label, typ = mm.group(2), mm.group(3), mm.group(4)
+            if typ not in ("Float", "Range", "Int", "Color", "Vector") or "HideInInspector" in mm.group(1):
+                continue
+            if name.startswith(("_O_", "_C_")) or name not in decls or decls[name].startswith("sampler"):
+                continue
+            if is_hardcoded(name, label):
+                bake.append((name, label))
+        if bake:
+            shown = ", ".join(l for _, l in bake[:4]) + (" ..." if len(bake) > 4 else "")
+            issues.append(Issue("warn", "%d parameters only matter inside Fortnite (%s). They are baked in at their default values and removed from the inspector, so the look does not change" % (len(bake), shown), None, ("bake_hidden", [n for n, _ in bake])))
     for name, typ in props.items():
         if typ == "2D" and name not in decls:
             issues.append(Issue("error", "texture %s has no sampler2D declaration" % name, None, ("add_decl", name, "2D")))
@@ -4072,6 +4097,33 @@ def fix_custom_functions(text):
     return text, count
 
 
+def bake_hidden_props(text, names):
+    """Turns exposed properties into static const values at their default and drops them from the Properties block."""
+    n = 0
+    for name in names:
+        pm = re.search(r'^[ \t]*(?:\[[^\]\n]*\][ \t]*)*%s[ \t]*\("[^"\n]*"[ \t]*,[ \t]*(\w+)[ \t]*(?:\([^)\n]*\))?[ \t]*\)[ \t]*=[ \t]*([^\n]*?)[ \t]*\n' % re.escape(name), text, re.M)
+        dm = re.search(r'^([ \t]*)(float[234]?|half[234]?|fixed[234]?|int)[ \t]+%s[ \t]*;' % re.escape(name), text, re.M)
+        if not pm or not dm:
+            continue
+        typ, raw, ctype = pm.group(1), pm.group(2).strip(), dm.group(2)
+        nums = [float(x) for x in re.findall(r"-?\d*\.?\d+(?:[eE][-+]?\d+)?", raw)]
+        if typ in ("Color", "Vector"):
+            dims = int(ctype[-1]) if ctype[-1].isdigit() else 0
+            if dims < 2 or len(nums) < dims:
+                continue
+            value = "%s(%s)" % (ctype, ", ".join(repr(v) for v in nums[:dims]))
+        else:
+            if not nums or ctype[-1].isdigit():
+                continue
+            value = str(int(nums[0])) if ctype == "int" else repr(nums[0])
+        text = text[:pm.start()] + text[pm.end():]
+        text = re.sub(r'^([ \t]*)%s[ \t]+%s[ \t]*;' % (re.escape(ctype), re.escape(name)), lambda m: "%sstatic const %s %s = %s;" % (m.group(1), ctype, name, value), text, flags=re.M)
+        n += 1
+    text = re.sub(r"^[ \t]*\[Header\([^\n]*\)\][ \t]*\n[ \t]*\[Space\([^\n]*\)\][ \t]*\n", "", text, flags=re.M)
+    text = re.sub(r"^[ \t]*\[Header\([^\n]*\)\][ \t]*\n(?=[ \t]*(?:\[Header\(|\}))", "", text, flags=re.M)
+    return text, n
+
+
 def apply_fixes(text, issues):
     """Applies the safe fixes. Returns (new_text, [what was done])."""
     done = []
@@ -4105,6 +4157,11 @@ def apply_fixes(text, issues):
         if new_text != text:
             text = new_text
             done.append("removed the extra _Cutoff declaration (alphatest:_Cutoff already declares it, which caused \"redefinition of '_Cutoff'\")")
+    for f in fixes:
+        if f[0] == "bake_hidden":
+            text, n = bake_hidden_props(text, f[1])
+            if n:
+                done.append("%d game-only parameters baked in at their default values and removed from the inspector" % n)
     if any(f[0] == "upgrade_shared" for f in fixes):
         text, ok = upgrade_shared_sampler_block(text)
         if ok:
