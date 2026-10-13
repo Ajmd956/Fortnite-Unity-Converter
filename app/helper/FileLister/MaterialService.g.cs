@@ -71,6 +71,7 @@ public sealed class TextureFile
     public bool Srgb { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+    public int FullWidth { get; set; }
     /// <summary>"2d", "cube", "volume" or "array"; volumes and arrays are stacks of slices, slice 0 on top.</summary>
     public string Kind { get; set; } = "2d";
     public int Depth { get; set; } = 1;
@@ -542,6 +543,7 @@ public sealed class MaterialService
                 {
                     Timing.Log($"texture {Bridge.ShortName(path)} (cached)", sw);
                     rec.Texture.Nearest = Nearest(tex);
+                    rec.Texture.FullWidth = full;
                     return rec.Texture;
                 }
             }
@@ -558,7 +560,7 @@ public sealed class MaterialService
                 {
                     var file = stem + ".dds";
                     WriteDds(file, mip.SizeX, mip.SizeY, dxgi, bytes);
-                    var rec = new TextureFile { File = file, Srgb = tex.SRGB, Width = mip.SizeX, Height = mip.SizeY, Nearest = Nearest(tex) };
+                    var rec = new TextureFile { File = file, Srgb = tex.SRGB, Width = mip.SizeX, Height = mip.SizeY, FullWidth = full, Nearest = Nearest(tex) };
                     await File.WriteAllTextAsync(meta, JsonConvert.SerializeObject(new CachedTexture { Version = TextureCacheVersion, Texture = rec }));
                     Timing.Log($"texture {Bridge.ShortName(path)} {mip.SizeX}x{mip.SizeY} {pd.PixelFormat} as DDS", sw);
                     return rec;
@@ -588,7 +590,7 @@ public sealed class MaterialService
             var depth = kind is "volume" or "array" && ct.Width > 0 ? Math.Max(1, ct.Height / ct.Width) : 1;
             var result = new TextureFile
             {
-                File = file, Srgb = tex.SRGB, Width = ct.Width, Height = ct.Height, Kind = kind, Depth = depth,
+                File = file, Srgb = tex.SRGB, Width = ct.Width, Height = ct.Height, FullWidth = full, Kind = kind, Depth = depth,
                 Hdr = ext == "hdr", Nearest = Nearest(tex),
             };
             await File.WriteAllTextAsync(meta, JsonConvert.SerializeObject(new CachedTexture { Version = TextureCacheVersion, Texture = result }));

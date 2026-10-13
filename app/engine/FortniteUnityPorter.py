@@ -157,7 +157,7 @@ def node_selected(names, g, x):
 HARDCODE_PATTERNS = [
     r"^FP_", r"^IsSmallerCharacter$", r"^HitGlow", r"^Character_Derez", r"^NewDissolveGradient$",
     r"EyeAdaptation", r"^PrimitiveDataRim", r"^bEnableCharacterRimLight$",
-    r"E,?mote", r"^TOD_", r"TimeOfDay", r"Time_?of_?Day", r"^Sunny", r"^Darkside$", r"SkyLight", r"Skybox", r"^SkyColor",
+    r"^Hide[_A-Z]", r"^(?:Head|Leg)_[LR]_", r"^Arm_[LR]_Radius", r"^Foot_(?:Hardness|Radius)", r"^NoHelmet$", r"^SpeedOffset$", r"Character_Vertex_Hide_Radius$", r"E,?mote", r"^TOD_", r"TimeOfDay", r"Time_?of_?Day", r"^Sunny", r"^Darkside$", r"SkyLight", r"Skybox", r"^SkyColor",
 ]
 HARDCODE_GLOBALS = True      # every _C_ parameter-collection value (game-wide settings)
 SHOW_ALL_PARAMS = False      # --show-all-params turns hiding off
@@ -2521,8 +2521,6 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             o.append("        %s %s;" % ("float" if v["kind"] == "float" else "float4", k))
     if not unlit:
         o.append("        float _FlipNormalY;")
-    if bm == "BLEND_Masked":
-        o.append("        float _Cutoff;")
     for c in tr.customs:
         o.extend("        " + l for l in c.split("\n"))
     o.append("")
@@ -2656,6 +2654,23 @@ def dds_to_png(source, dest):
         return first
 
 
+def low_res_texture_warnings(tr, tex_info):
+    out = []
+    for k, v in tr.textures.items():
+        info = tex_info.get(v["prop"]) or {}
+        if str(info.get("Kind", "2d")).lower() != "2d":
+            continue
+        try:
+            w = int(info.get("Width") or 0)
+            h = int(info.get("Height") or 0)
+            full = int(info.get("FullWidth") or 0)
+        except (TypeError, ValueError):
+            continue
+        if w > 0 and full > w:
+            out.append("texture %s was exported at %dx%d but the game's texture is %d px wide: its full-size data was not available (Fortnite streams it), so this is an approximation and it will look blurry. Turn on Pre-Download Streamed Assets for Fortnite in the Epic Games Launcher, let it finish, then convert again" % (os.path.basename(k).split(".")[0], w, h, full))
+    return out
+
+
 def export_textures(src, tr, folder):
     tex_dir = os.path.join(folder, "Textures")
     src.prefetch_textures([v["path"] for v in tr.textures.values()])
@@ -2787,7 +2802,7 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
     for v in tr.textures.values():
         info = src.texture_info(v["path"])
         if info:
-            tex_info[v["prop"]] = {k: info.get(k) for k in ("Srgb", "Kind", "Width", "Height", "Depth", "Hdr", "Nearest") if k in info}
+            tex_info[v["prop"]] = {k: info.get(k) for k in ("Srgb", "Kind", "Width", "Height", "Depth", "Hdr", "Nearest", "FullWidth") if k in info}
     tex_list = []
     for k, v in tr.textures.items():
         info = tex_info.get(v["prop"], {})
@@ -2800,6 +2815,9 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
                          "nearest": bool(info.get("Nearest")),
                          "stack": bool(v.get("sheet")) or str(info.get("Kind", "2d")).lower() != "2d"})
     copied, missing, kept = export_textures(src, tr, folder)
+    for w in low_res_texture_warnings(tr, tex_info):
+        tr.warn(w)
+        print("  low-res texture: %s" % w)
     if kept:
         tr.warn("textures left as DDS: %s" % "; ".join(kept))
         for k in kept:
@@ -3509,7 +3527,7 @@ MS_METALLIC = re.compile(r"^([ \t]*)o\.Metallic = saturate\((.*)\);[ \t]*$", re.
 MS_SMOOTH = re.compile(r"^([ \t]*)o\.Smoothness = 1\.0 - saturate\((.*)\);[ \t]*$", re.M)
 
 
-def ms_driven_by_property(t, expr):
+def ms_driven_by_property(t, expr, words):
     props = set(re.findall(r'^[ \t]*(?:\[[^\]]*\][ \t]*)*(_\w+)[ \t]*\("[^"]*",[ \t]*(?:Float|Range|Color|Vector)', t, re.M))
     defs = {}
     for m in re.finditer(r"^[ \t]*\w+[ \t]+(v\d+)[ \t]*=[ \t]*(.*);[ \t]*$", t, re.M):
@@ -3518,7 +3536,7 @@ def ms_driven_by_property(t, expr):
     todo = [expr]
     while todo:
         for name in re.findall(r"[A-Za-z_]\w*", todo.pop()):
-            if name in props:
+            if name in props and re.search(words, name, re.I):
                 return True
             if name in defs and name not in seen:
                 seen.add(name)
@@ -3537,8 +3555,8 @@ def add_metal_smooth_editor(text):
     mm, ms = MS_METALLIC.search(t), MS_SMOOTH.search(t)
     if not mm or not ms:
         return text, False
-    want_m = not ms_driven_by_property(t, mm.group(2))
-    want_s = not ms_driven_by_property(t, ms.group(2))
+    want_m = not ms_driven_by_property(t, mm.group(2), r"metal")
+    want_s = not ms_driven_by_property(t, ms.group(2), r"smooth|rough|gloss")
     if not want_m and not want_s:
         return text, False
     if want_m:
@@ -3841,9 +3859,16 @@ def check_shader_text(text):
     used = {}
     for mm in CHK_OURS.finditer(prog):
         used.setdefault(mm.group(0), chk_line_of(text, mm.start()))
-    for extra in ("_FlipNormalY", "_Cutoff"):
+    auto_cutoff = re.search(r"#pragma[ \t]+surface\b[^\n]*\balphatest:_Cutoff\b", code) is not None
+    for extra in (("_FlipNormalY",) if auto_cutoff else ("_FlipNormalY", "_Cutoff")):
         if re.search(r"\b%s\b" % extra, prog):
             used.setdefault(extra, 0)
+    if auto_cutoff and "_Cutoff" in decls:
+        cut_ln = 0
+        for mm in re.finditer(r"^[ \t]*(?:float|half|fixed)[ \t]+_Cutoff[ \t]*;", prog, re.M):
+            cut_ln = chk_line_of(text, mm.start())
+            break
+        issues.append(Issue("error", "_Cutoff is declared in the shader code, but \"alphatest:_Cutoff\" on the #pragma surface line already makes Unity declare it in every pass, so it fails with \"redefinition of '_Cutoff'\". The extra declaration is removed", cut_ln, ("auto_cutoff",)))
     for name, ln in sorted(used.items(), key=lambda kv: kv[1]):
         if name in decls:
             continue
@@ -4075,6 +4100,11 @@ def apply_fixes(text, issues):
                     seen = True
             text = "\n".join(l for l in lines if l is not None)
             done.append("removed the duplicate declaration of %s" % f[1])
+    if any(f[0] == "auto_cutoff" for f in fixes):
+        new_text = re.sub(r"^[ \t]*(?:float|half|fixed)[ \t]+_Cutoff[ \t]*;[ \t]*\n", "", text, flags=re.M)
+        if new_text != text:
+            text = new_text
+            done.append("removed the extra _Cutoff declaration (alphatest:_Cutoff already declares it, which caused \"redefinition of '_Cutoff'\")")
     if any(f[0] == "upgrade_shared" for f in fixes):
         text, ok = upgrade_shared_sampler_block(text)
         if ok:
