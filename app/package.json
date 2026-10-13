@@ -30,6 +30,7 @@
       "preview-preload.js",
       "store.js",
       "updater.js",
+      "ai.js",
       "update.json",
       "meshthumb.js",
       "src/**",

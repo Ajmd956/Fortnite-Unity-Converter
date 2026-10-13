@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage, session } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage, session, safeStorage } = require('electron')
 const meshThumb = require('./meshthumb')
 const crypto = require('crypto')
 const path = require('path')
@@ -7,6 +7,7 @@ const net = require('net')
 const { spawn, spawnSync } = require('child_process')
 const store = require('./store')
 const { createUpdater, wasUpdated } = require('./updater')
+const { createAi } = require('./ai')
 
 const appDir = app.isPackaged ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath)) : __dirname
 const root = path.join(app.getPath('documents'), 'Fortnite Unity Converter')
@@ -900,10 +901,43 @@ ipcMain.handle('app:reset', () => {
   app.exit(0)
 })
 
-ipcMain.handle('settings:get', () => settings)
+function publicSettings() {
+  const flags = {}
+  Object.keys(settings.aiKeys || {}).forEach(k => { flags[k] = !!settings.aiKeys[k] })
+  if (settings.aiKeyStored && !flags.openai) flags.openai = true
+  const out = Object.assign({}, settings, { aiHasKey: !!flags[settings.aiProvider || 'openai'], aiKeyFlags: flags })
+  delete out.aiKeyStored
+  delete out.aiKeys
+  return out
+}
+
+const ai = createAi({
+  safeStorage,
+  getSettings: () => settings,
+  saveSettings: patch => {
+    settings = Object.assign({}, settings, patch)
+    store.save(settingsFile, settings)
+  },
+  runEngine: args => runEngine(args),
+  send: (channel, data) => send(channel, data),
+  isStopped: () => stopped
+})
+
+ipcMain.handle('settings:get', () => publicSettings())
+ipcMain.handle('ai:status', () => ai.status())
+ipcMain.handle('ai:setKey', (_e, key, providerId) => {
+  ai.setKey(key, providerId)
+  return publicSettings()
+})
+ipcMain.handle('ai:chat', (_e, payload) => ai.chat(payload))
 
 ipcMain.handle('settings:set', (_e, next) => {
-  if (!next || typeof next !== 'object' || Array.isArray(next)) return settings
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return publicSettings()
+  next = Object.assign({}, next)
+  delete next.aiKeyStored
+  delete next.aiKeys
+  delete next.aiHasKey
+  delete next.aiKeyFlags
   const before = (settings.fortniteArchive || '') + '|' + (settings.bridge || '')
   settings = Object.assign({}, settings, next)
   if (typeServer && before !== (settings.fortniteArchive || '') + '|' + (settings.bridge || '')) {
@@ -911,7 +945,7 @@ ipcMain.handle('settings:set', (_e, next) => {
     setTimeout(() => ensureApi().catch(() => {}), 2000)
   }
   store.save(settingsFile, settings)
-  return settings
+  return publicSettings()
 })
 
 ipcMain.handle('files:info', async () => {
@@ -1214,7 +1248,15 @@ ipcMain.handle('engine:check', async (_e, payload) => {
   const args = ['--check-shader'].concat(paths)
   if (!payload.fix) args.push('--no-fix')
   if (!payload.useUnity) args.push('--no-unity')
-  await runEngine(args)
+  const checked = await runEngine(args)
+  if (payload.ai && !stopped) {
+    send('engine:state', { running: true, label: 'AI fixing' })
+    try {
+      await ai.fixShaders({ paths, output: checked.output, useUnity: !!payload.useUnity })
+    } catch (e) {
+      send('engine:log', 'AI fix failed: ' + e.message + '\n')
+    }
+  }
   busy = false
   send('engine:state', { running: false, label: '' })
   send('engine:log', '\ncheck finished\n')

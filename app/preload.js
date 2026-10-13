@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('api', {
   updatePending: () => ipcRenderer.invoke('update:pending'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
+  aiStatus: () => ipcRenderer.invoke('ai:status'),
+  aiSetKey: (key, providerId) => ipcRenderer.invoke('ai:setKey', key, providerId),
+  aiChat: payload => ipcRenderer.invoke('ai:chat', payload),
   appVersion: () => ipcRenderer.invoke('app:version'),
   onUpdate: cb => listen('update:available', cb),
   onUpdateProgress: cb => listen('update:progress', cb)
