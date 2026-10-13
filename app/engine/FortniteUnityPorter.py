@@ -2759,6 +2759,9 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
     except Exception:
         pass
     if "particle" not in tr.uses:
+        text, ac_used = add_ao_cavity_editor(text, len(tr.textures))
+        if ac_used:
+            tr.notes.append("Ao and Cavity sliders added (Ao scales ambient occlusion by the red channel, Cavity darkens or lightens the base color with the green channel of %s; both default to 0, so the look is unchanged)" % ac_used)
         text, ms_added = add_metal_smooth_editor(text)
         if ms_added:
             tr.notes.append("%s multiplier/offset sliders added only where no parameter already controls it (neutral defaults, the look is unchanged)" % ms_added)
@@ -3597,6 +3600,65 @@ def add_metal_smooth_editor(text):
     t = t[:pos] + decl + t[pos:]
     added = "Metallic and Smoothness" if want_m and want_s else ("Metallic" if want_m else "Smoothness")
     return (t.replace("\n", "\r\n") if crlf else t), added
+
+
+AC_ALBEDO = re.compile(r"^([ \t]*)o\.Albedo = saturate\((.*)\);[ \t]*$", re.M)
+AC_OCCLUSION = re.compile(r"^([ \t]*)o\.Occlusion = saturate\((.*)\);[ \t]*$", re.M)
+AC_MASK_RE = re.compile(r"^[ \t]*(?:\[[^\]\n]*\][ \t]*)*(_\w*_M)[ \t]*\(\"[^\"\n]*\"[ \t]*,[ \t]*2D\b", re.M)
+
+
+def add_ao_cavity_editor(text, texture_count=0):
+    """Adds Ao and Cavity sliders (Fortnite's own detail shading) to a lit surface shader. Ao scales ambient occlusion by the red channel
+    of a mask texture, Cavity overlay-blends its green channel onto the base color. The mask is the shader's own _M texture when it has
+    one (Fortnite's character mask), otherwise a new white slot. Both sliders default to 0, so the look is unchanged until they are raised.
+    Returns (new_text, what_was_used or False). Not used for particle or unlit shaders."""
+    if "_Cavity" in text or "SurfaceOutputStandard" not in text or "float4 tc01;" not in text:
+        return text, False
+    crlf = "\r\n" in text
+    t = text.replace("\r\n", "\n")
+    am, om = AC_ALBEDO.search(t), AC_OCCLUSION.search(t)
+    if not am or not om:
+        return text, False
+    pm = re.search(r"^[ \t]*Properties[ \t]*\n[ \t]*\{\n", t, re.M)
+    if not pm:
+        return text, False
+    mask, fn = None, "tex2D"
+    pend = chk_body(chk_strip(t), "Properties")
+    if pend:
+        for mm in AC_MASK_RE.finditer(t[pend[0]:pend[1]]):
+            use = re.search(r"\b((?:FPU_)?[tT][eE][xX]2[dD])\(%s\b" % re.escape(mm.group(1)), t)
+            if use:
+                mask, fn = mm.group(1), use.group(1)
+                break
+    own = mask is None
+    if own:
+        if texture_count >= 12:
+            return text, False
+        mask = "_AoCavityMask"
+    sample = "%s(%s, IN.tc01.xy)" % (fn, mask)
+    t = AC_OCCLUSION.sub(lambda m: "%so.Occlusion = saturate(%s) * lerp(1.0, %s.r, _Ao);" % (m.group(1), m.group(2), sample), t, count=1)
+    def albedo(m):
+        i = m.group(1)
+        return ("%so.Albedo = saturate(%s);\n"
+                "%sfloat3 fpuCavD = o.Albedo;\n"
+                "%sfloat fpuCavS = %s.g;\n"
+                "%so.Albedo = saturate(lerp(fpuCavD, lerp(2.0 * fpuCavD * fpuCavS, 1.0 - 2.0 * (1.0 - fpuCavD) * (1.0 - fpuCavS), step(0.5, fpuCavD)), _Cavity));"
+                % (i, m.group(2), i, i, sample, i))
+    t = AC_ALBEDO.sub(albedo, t, count=1)
+    block = ('        [Header(Ao and Cavity)]\n'
+             '        _Ao ("Ao", Range(0, 1)) = 0.0\n'
+             '        _Cavity ("Cavity", Range(0, 1)) = 0.0\n')
+    if own:
+        block += '        _AoCavityMask ("Ao and Cavity Mask (R = Ao, G = Cavity)", 2D) = "white" {}\n'
+    block += '        [Space(6)]\n'
+    t = t[:pm.end()] + block + t[pm.end():]
+    decl = "        float _Ao;\n        float _Cavity;\n" + ("        sampler2D _AoCavityMask;\n" if own else "")
+    m = re.search(r"^[ \t]*float[ \t]+_FlipNormalY;[^\n]*\n", t, re.M) or re.search(r"^[ \t]*struct[ \t]+Input", t, re.M)
+    if not m:
+        return text, False
+    pos = m.end() if m.group(0).rstrip().endswith(";") else m.start()
+    t = t[:pos] + decl + t[pos:]
+    return (t.replace("\n", "\r\n") if crlf else t), ("the shader's own " + mask if not own else "a new mask slot")
 
 
 def count_separate_samplers(text):
