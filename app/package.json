@@ -33,6 +33,7 @@
       "ai.js",
       "update.json",
       "meshthumb.js",
+      "glb2fbx.js",
       "src/**",
       "assets/**",
       "!**/*.map",

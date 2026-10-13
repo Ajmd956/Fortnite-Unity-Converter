@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage, session, safeStorage } = require('electron')
 const meshThumb = require('./meshthumb')
+const { glbToFbx } = require('./glb2fbx')
 const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
@@ -1273,6 +1274,38 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
       attempted++
       send('engine:log', '\nmaterial used by ' + nm[1] + ': ' + ref + '\n')
       await convertMaterial(ref, '', pdir)
+    }
+    const meshes = []
+    for (const mm of nres.output.matchAll(/^mesh: (.+)$/gm)) {
+      const ref = mm[1].trim()
+      if (ref && !meshes.includes(ref)) meshes.push(ref)
+    }
+    if (meshes.length && !stopped) {
+      if (await startTypeServer()) {
+        for (const ref of meshes) {
+          if (stopped) break
+          send('engine:log', '\nexporting mesh used by ' + nm[1] + ': ' + ref + '\n')
+          const r = await askExport('modelexport', packagePath(ref), path.join(pdir, 'Meshes'))
+          if (r && r.ok) {
+            let made = r.file
+            if (/\.glb$/i.test(made)) {
+              try {
+                const fbx = made.replace(/\.glb$/i, '.fbx')
+                glbToFbx(made, fbx)
+                fs.rmSync(made, { force: true })
+                made = fbx
+              } catch (err) {
+                send('engine:log', 'fbx conversion failed, keeping the glb: ' + (err && err.message ? err.message : err) + '\n')
+              }
+            }
+            send('engine:log', 'mesh exported: ' + made + '\n')
+          } else {
+            send('engine:log', 'mesh not exported: ' + ((r && r.error) || 'unknown error') + '\n')
+          }
+        }
+      } else {
+        send('engine:log', '\nmeshes were not exported because the file helper is not running\n')
+      }
     }
     fs.rmSync(path.join(pdir, 'Editor'), { recursive: true, force: true })
     fs.rmSync(path.join(pdir, 'PorterObjectBounds.cs'), { force: true })

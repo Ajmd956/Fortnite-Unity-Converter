@@ -483,7 +483,7 @@ public static class PorterParticleSetup
             string meshPath = FindPath(NameOf(r.mesh), "Mesh", folder);
             Mesh mesh = meshPath == null ? null : AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
             if (mesh != null) pr.mesh = mesh;
-            else Debug.LogWarning("Porter: mesh " + r.mesh + " was not found in the project, so " + label + " draws nothing until you set its mesh");
+            else Debug.LogWarning("Porter: mesh " + NameOf(r.mesh) + " was not found in the project (it should be the .fbx in the Meshes folder next to this prefab), so " + label + " draws nothing until you set its mesh");
         }
         else
         {
@@ -687,6 +687,13 @@ def convert(exports, name, source, out, seconds):
                     materials.append(m)
     for m in materials:
         print("material: %s" % m)
+    meshes = []
+    for em in emitters:
+        for r in em["renderers"]:
+            if r["kind"] == "Mesh" and r["enabled"] and r["mesh"] and r["mesh"] not in meshes:
+                meshes.append(r["mesh"])
+    for m in meshes:
+        print("mesh: %s" % m)
     print("wrote %s.particles.json (%d emitters, %d warnings)" % (name, len(emitters), len(warnings)))
     print("folder: %s" % os.path.abspath(folder))
     for w in warnings:
