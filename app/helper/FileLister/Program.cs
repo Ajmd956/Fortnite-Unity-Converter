@@ -81,7 +81,8 @@ try
     {
         ChunkHostUri = new Uri("https://egdownload.fastly-edge.com/", UriKind.Absolute),
         ChunkCacheDirectory = Directory.CreateDirectory(Path.Combine(cache, "chunks")),
-        Timeout = TimeSpan.FromSeconds(90)
+        DownloaderClient = new HttpClient(new StreamGuardHandler()) { Timeout = TimeSpan.FromSeconds(30) },
+        Timeout = TimeSpan.FromSeconds(30)
     };
     provider.Initialize();
     provider.ReadNaniteData = true; // Fortnite Porting turns this on by default; Nanite meshes fail to read without it

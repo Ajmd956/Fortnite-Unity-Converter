@@ -573,8 +573,19 @@ public sealed class MaterialService
         try
         {
             var tLoad = sw.Elapsed.TotalMilliseconds;
-            var ct = (cap > 0 ? TextureDecoder.Decode(tex, cap, ETexturePlatform.DesktopMobile) : tex.Decode(ETexturePlatform.DesktopMobile))
-                     ?? throw new InvalidDataException("Could not decode " + path);
+            CTexture? decoded;
+            try
+            {
+                decoded = cap > 0 ? TextureDecoder.Decode(tex, cap, ETexturePlatform.DesktopMobile) : tex.Decode(ETexturePlatform.DesktopMobile);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // the streamed full-size mips couldn't be loaded: use the best mip that can be read
+                Timing.Log($"texture {Bridge.ShortName(path)}: full-size data failed ({e.Message}), using the mips on disk", sw);
+                decoded = DecodeReadableMip(tex, cap);
+                if (decoded is null) throw;
+            }
+            var ct = decoded ?? throw new InvalidDataException("Could not decode " + path);
             var tDecode = sw.Elapsed.TotalMilliseconds;
             var (data, ext) = EncodeTexture(ct);
             var tEncode = sw.Elapsed.TotalMilliseconds;
@@ -598,6 +609,27 @@ public sealed class MaterialService
             return result;
         }
         finally { encoders.Release(); }
+    }
+
+    /// <summary>The largest mip (not above cap, when there is one) whose data can be read, decoded; null when none can.</summary>
+    static CTexture? DecodeReadableMip(UTexture tex, int cap)
+    {
+        var mips = tex.PlatformData?.Mips;
+        if (mips is null) return null;
+        for (var i = 0; i < mips.Length; i++)
+        {
+            if (cap > 0 && mips[i].SizeX > cap && mips[i].SizeY > cap) continue;
+            try
+            {
+                if (mips[i].EnsureValidBulkData(tex.MipDataProvider, i))
+                    return tex.DecodeMip(i, ETexturePlatform.DesktopMobile);
+            }
+            catch (Exception)
+            {
+                // this mip is streamed and can't be loaded: try the next smaller one
+            }
+        }
+        return null;
     }
 
     /// <summary>
