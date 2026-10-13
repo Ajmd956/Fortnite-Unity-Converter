@@ -1193,7 +1193,7 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
       send('engine:state', { running: false, label: '' })
       const hints = {
         nohelper: "The built-in API isn't installed and the game files couldn't be found. Set the game archive folder under Settings, then Game API, and make sure the app was built with the .NET SDK installed.",
-        failed: apiState.text ? 'The API could not start: ' + apiState.text : 'The API could not start. Check the game archive folder under Settings, then try again.',
+        failed: apiState.text === 'no-mappings' ? "The mappings file (.usmap) couldn't be downloaded, and the game files can't be read without it. Check your internet connection and try again. If it keeps failing, put a .usmap file named custom.usmap in Documents\\Fortnite Unity Converter\\Game Files." : apiState.text ? 'The API could not start: ' + apiState.text : 'The API could not start. Check the game archive folder under Settings, then try again.',
         timeout: 'The API is still loading the game files, or Fortnite looks down. Wait a moment and try again.',
         nopath: "The API couldn't start and the fallback program wasn't found. Set the game archive folder under Settings.",
         off: 'The API is turned off. Turn on Start the API under Settings, then try again.'

@@ -2837,6 +2837,7 @@ async function openFiles() {
 const FILE_ERRORS = {
   'api-unreachable': { title: "Looks like Fortnite's down", body: "The keys for the latest Fortnite version couldn't be downloaded, so the game files can't be read right now. Please try again later." },
   'no-keys': { title: "Looks like Fortnite's down", body: "The service that provides Fortnite's keys didn't return any, so the game files can't be read right now. Please try again later." },
+  'no-mappings': { title: "Couldn't get the mappings", body: "The mappings file (.usmap) couldn't be downloaded, and the game files can't be read without it. Check your internet connection and try again." },
   'no-files': { title: "Couldn't open the game files", body: "The keys didn't unlock your Fortnite install. Update Fortnite and try again, or try later if the update just came out." },
   'archive-missing': { title: 'Fortnite folder not found', body: 'The game archive folder no longer exists. Set it under Settings, then Game API.' },
   'no-archive': { title: 'Fortnite not found', body: 'Set the game archive folder under Settings, then Game API.' },

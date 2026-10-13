@@ -15,6 +15,7 @@ using CUE4Parse.UE4.Versions;
 // The app looks after its own game keys and mappings: keys come from fortnite-api.com (and are kept in the
 // cache for when it is down), mappings from your own .usmap, the cache, or the Fortnite Central list.
 const string KeysUrl = "https://fortnite-api.com/v2/aes";
+const string PortingVersionUrl = "https://api.fortniteporting.app/v2/fortnite/versions/latest";
 const string MappingsListUrl = "https://fortnitecentral.genxgames.gg/api/v1/mappings";
 
 var archive = ArgValue(args, "--archive");
@@ -60,7 +61,15 @@ try
     }
 
     var mappingsPath = await FindMappingsAsync(http, cache);
-    if (mappingsPath is null) Say("status: No mappings found, reading without them");
+    if (mappingsPath is null)
+    {
+        if (serve)
+        {
+            Say("error: no-mappings");
+            return 4;
+        }
+        Say("status: No mappings found, reading without them");
+    }
 
     Say("status: Preparing decompression");
     await OodleHelper.InitializeAsync(Path.Combine(cache, OodleHelper.OodleFileName));
@@ -398,13 +407,75 @@ static async Task<VersionInfo?> LoadKeysAsync(HttpClient http, string cache)
     return null;
 }
 
+static bool IsUsmap(string path)
+{
+    try
+    {
+        using var f = File.OpenRead(path);
+        if (f.Length < 64) return false;
+        var head = new byte[2];
+        return f.Read(head, 0, 2) == 2 && head[0] == 0xC4 && head[1] == 0x30;
+    }
+    catch (Exception)
+    {
+        return false;
+    }
+}
+
+static async Task<bool> DownloadUsmapAsync(HttpClient http, string url, string path)
+{
+    var part = path + ".part";
+    try
+    {
+        var bytes = await http.GetByteArrayAsync(url);
+        if (bytes.Length < 64 || bytes[0] != 0xC4 || bytes[1] != 0x30) return false;
+        await File.WriteAllBytesAsync(part, bytes);
+        File.Move(part, path, true);
+        return true;
+    }
+    catch (Exception)
+    {
+        try { File.Delete(part); } catch (Exception) { }
+        return false;
+    }
+}
+
+static JsonElement? Prop(JsonElement element, string name)
+{
+    if (element.ValueKind != JsonValueKind.Object) return null;
+    foreach (var prop in element.EnumerateObject())
+        if (prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) return prop.Value;
+    return null;
+}
+
 static async Task<string?> FindMappingsAsync(HttpClient http, string cache)
 {
     // 1. a .usmap you put in the cache yourself
     var custom = Path.Combine(cache, "custom.usmap");
     if (File.Exists(custom)) return custom;
 
-    // 2. the newest one offered online, downloaded once
+    // 2. the mappings Fortnite Porting uses, downloaded once per version
+    try
+    {
+        using var doc = JsonDocument.Parse(await http.GetStringAsync(PortingVersionUrl));
+        var mappings = Prop(doc.RootElement, "mappings");
+        var url = mappings is { } m ? Prop(m, "url")?.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            var md5 = Prop(mappings!.Value, "md5Hash")?.GetString();
+            var name = Path.GetFileName(url.Split('?')[0]);
+            if (name.Length > 0)
+            {
+                var path = Path.Combine(cache, name);
+                if (File.Exists(path) && IsUsmap(path) && (string.IsNullOrWhiteSpace(md5) || HashMatches(path, md5))) return path;
+                Say("status: Downloading mappings");
+                if (await DownloadUsmapAsync(http, url, path)) return path;
+            }
+        }
+    }
+    catch (Exception) { }
+
+    // 3. the newest one offered by Fortnite Central, downloaded once
     try
     {
         using var doc = JsonDocument.Parse(await http.GetStringAsync(MappingsListUrl));
@@ -428,18 +499,15 @@ static async Task<string?> FindMappingsAsync(HttpClient http, string cache)
             name = Path.GetFileName(name);
             var path = Path.Combine(cache, name);
             long? length = pick.TryGetProperty("length", out var ln) && ln.ValueKind == JsonValueKind.Number ? ln.GetInt64() : null;
-            if (!File.Exists(path) || (length is not null && new FileInfo(path).Length != length))
-            {
-                Say("status: Downloading mappings");
-                await File.WriteAllBytesAsync(path, await http.GetByteArrayAsync(url));
-            }
-            return path;
+            if (File.Exists(path) && IsUsmap(path) && (length is null || new FileInfo(path).Length == length)) return path;
+            Say("status: Downloading mappings");
+            if (await DownloadUsmapAsync(http, url, path)) return path;
         }
     }
     catch (Exception) { }
 
-    // 3. the newest one already in the cache
-    return Directory.EnumerateFiles(cache, "*.usmap").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+    // 4. the newest valid one already in the cache
+    return Directory.EnumerateFiles(cache, "*.usmap").Where(IsUsmap).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
 }
 
 class VersionInfo
