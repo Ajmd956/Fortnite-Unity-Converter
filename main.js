@@ -509,7 +509,9 @@ async function loadIndex() {
 
 function engineCommand() {
   if (app.isPackaged) {
-    return { cmd: path.join(process.resourcesPath, 'engine', 'FortniteUnityPorter.exe'), pre: [] }
+    // The engine is packed as a folder (starts instantly); an older single-file engine is still found if that is what the build made
+    const dir = path.join(process.resourcesPath, 'engine', 'FortniteUnityPorter', 'FortniteUnityPorter.exe')
+    return { cmd: fs.existsSync(dir) ? dir : path.join(process.resourcesPath, 'engine', 'FortniteUnityPorter.exe'), pre: [] }
   }
   return {
     cmd: process.platform === 'win32' ? 'python' : 'python3',
@@ -1362,12 +1364,6 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
       } else {
         send('engine:log', '\nmeshes were not exported because the file helper is not running\n')
       }
-    }
-    const drawer = path.join(pdir, 'Editor', 'PorterColorDrawer.cs')
-    if (fs.existsSync(drawer)) {
-      const shared = path.join(particlesDir, 'Editor')
-      fs.mkdirSync(shared, { recursive: true })
-      fs.copyFileSync(drawer, path.join(shared, 'PorterColorDrawer.cs'))
     }
     fs.rmSync(path.join(pdir, 'Editor'), { recursive: true, force: true })
     fs.rmSync(path.join(pdir, 'PorterObjectBounds.cs'), { force: true })

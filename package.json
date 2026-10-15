@@ -1,0 +1,73 @@
+{
+  "name": "fortnite-unity-converter",
+  "version": "1.0.0",
+  "description": "Fortnite Unity Converter",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.local.fortniteunityconverter",
+    "productName": "Fortnite Unity Converter",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "preview-preload.js",
+      "store.js",
+      "updater.js",
+      "ai.js",
+      "update.json",
+      "meshthumb.js",
+      "glb2fbx.js",
+      "src/**",
+      "assets/**",
+      "!**/*.map",
+      "!**/*.md"
+    ],
+    "extraResources": [
+      {
+        "from": "engine/bin",
+        "to": "engine",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "engine/tools",
+        "to": "engine/tools",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "en-US"
+    ],
+    "compression": "store",
+    "portable": {
+      "artifactName": "Fortnite Unity Converter.exe",
+      "requestExecutionLevel": "user"
+    },
+    "npmRebuild": false
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
