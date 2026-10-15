@@ -448,13 +448,24 @@ static JsonElement? Prop(JsonElement element, string name)
     return null;
 }
 
+static string KeepOnlyMappings(string cache, string keep)
+{
+    try
+    {
+        var keepFull = Path.GetFullPath(keep);
+        foreach (var file in Directory.EnumerateFiles(cache, "*.usmap").ToList())
+        {
+            if (Path.GetFileName(file).Equals("custom.usmap", StringComparison.OrdinalIgnoreCase)) continue;
+            if (Path.GetFullPath(file).Equals(keepFull, StringComparison.OrdinalIgnoreCase)) continue;
+            try { File.Delete(file); } catch (Exception) { }
+        }
+    }
+    catch (Exception) { }
+    return keep;
+}
+
 static async Task<string?> FindMappingsAsync(HttpClient http, string cache)
 {
-    // 1. a .usmap you put in the cache yourself
-    var custom = Path.Combine(cache, "custom.usmap");
-    if (File.Exists(custom)) return custom;
-
-    // 2. the mappings Fortnite Porting uses, downloaded once per version
     try
     {
         using var doc = JsonDocument.Parse(await http.GetStringAsync(PortingVersionUrl));
@@ -467,15 +478,14 @@ static async Task<string?> FindMappingsAsync(HttpClient http, string cache)
             if (name.Length > 0)
             {
                 var path = Path.Combine(cache, name);
-                if (File.Exists(path) && IsUsmap(path) && (string.IsNullOrWhiteSpace(md5) || HashMatches(path, md5))) return path;
+                if (File.Exists(path) && IsUsmap(path) && (string.IsNullOrWhiteSpace(md5) || HashMatches(path, md5))) return KeepOnlyMappings(cache, path);
                 Say("status: Downloading mappings");
-                if (await DownloadUsmapAsync(http, url, path)) return path;
+                if (await DownloadUsmapAsync(http, url, path)) return KeepOnlyMappings(cache, path);
             }
         }
     }
     catch (Exception) { }
 
-    // 3. the newest one offered by Fortnite Central, downloaded once
     try
     {
         using var doc = JsonDocument.Parse(await http.GetStringAsync(MappingsListUrl));
@@ -499,14 +509,16 @@ static async Task<string?> FindMappingsAsync(HttpClient http, string cache)
             name = Path.GetFileName(name);
             var path = Path.Combine(cache, name);
             long? length = pick.TryGetProperty("length", out var ln) && ln.ValueKind == JsonValueKind.Number ? ln.GetInt64() : null;
-            if (File.Exists(path) && IsUsmap(path) && (length is null || new FileInfo(path).Length == length)) return path;
+            if (File.Exists(path) && IsUsmap(path) && (length is null || new FileInfo(path).Length == length)) return KeepOnlyMappings(cache, path);
             Say("status: Downloading mappings");
-            if (await DownloadUsmapAsync(http, url, path)) return path;
+            if (await DownloadUsmapAsync(http, url, path)) return KeepOnlyMappings(cache, path);
         }
     }
     catch (Exception) { }
 
-    // 4. the newest valid one already in the cache
+    var custom = Path.Combine(cache, "custom.usmap");
+    if (File.Exists(custom)) return custom;
+
     return Directory.EnumerateFiles(cache, "*.usmap").Where(IsUsmap).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
 }
 
