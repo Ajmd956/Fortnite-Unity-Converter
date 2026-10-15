@@ -14,10 +14,11 @@
   ]
   const DEFAULT_HEADER = '#60815c'
   const IGNORED = new Set(['MaterialExpressionEditorX', 'MaterialExpressionEditorY', 'Material', 'Function', 'Declaration', 'InputExpressions', 'OutputExpressions', 'Input', 'Output'])
-  const PIN_COLORS = { R: '#ff4d4d', G: '#4dff6a', B: '#4d8bff', A: '#9a9aa6' }
+  const PIN_COLORS = { R: '#ff0000', G: '#008000', B: '#0000ff', A: '#a9a9a9' }
   const NONE = new Set(['None', '', null, undefined])
 
-  const H = { header: 22, row: 18, pad: 6, footer: 16, min: 96 }
+  // measured from Fortnite Porting (nodify): 2px border outside the content, 25px header, 18px rows
+  const H = { header: 25, top: 27, row: 18, pad: 2, footer: 16, min: 0 }
 
   const typeOf = x => String((x && x.Type) || '').replace(/^MaterialExpression/, '')
   const inner = s => {
@@ -402,33 +403,40 @@
     return { nodes, order, comments, conns, root: rootNode, isFunction, warnings, name: opts.name || '' }
   }
 
-  // Sizes every node from its pins and content, and puts the material node to the right of the others
-  function layout(graph, measure) {
-    const m = measure || (s => String(s).length * 6.6)
-    graph.order.forEach(n => {
-      let w = Math.max(H.min, m(n.label) + 28)
-      const rows = Math.max(n.inputs.length, n.outputs.length)
-      for (let i = 0; i < rows; i++) {
-        const a = n.inputs[i] ? m(n.inputs[i].name) : 0
-        const b = n.outputs[i] ? m(n.outputs[i].name) : 0
-        w = Math.max(w, a + b + 36)
-      }
-      let ch = 0
-      const c = n.content
-      if (c) {
-        if (c.kind === 'tex') { w = Math.max(w, 144); ch = 136 }
-        else if (c.kind === 'color') { w = Math.max(w, 120); ch = 30 }
-        else if (c.kind === 'num') { w = Math.max(w, 96); ch = 26 }
-        else if (c.kind === 'bool') { w = Math.max(w, 96); ch = 26 }
-        else if (c.kind === 'mask') { w = Math.max(w, 132); ch = 26 }
-        else if (c.kind === 'code') { w = Math.max(w, 220); ch = 84 }
-      }
-      const fh = n.footer ? H.footer : 0
-      n.rows = rows
-      n.contentH = ch
-      n.w = Math.ceil(w)
-      n.h = H.header + (rows ? rows * H.row + H.pad : 0) + (ch ? ch + H.pad : 0) + (fh ? fh + H.pad : 0)
-    })
+  // Sizes every node like Fortnite Porting's Nodify nodes: sockets left and right, content between them
+  const CONTENT = { tex: [128, 128], color: [100, 22], num: [80, 22], bool: [80, 22], mask: [120, 22], code: [220, 84], speaker: [128, 128] }
+  function sizeNode(n, mh, mp) {
+    const rows = Math.max(n.inputs.length, n.outputs.length)
+    let a = 0, b = 0
+    n.inputs.forEach(p => { a = Math.max(a, mp(p.name)) })
+    n.outputs.forEach(p => { b = Math.max(b, mp(p.name)) })
+    const hasIn = n.inputs.length > 0
+    const hasOut = n.outputs.length > 0
+    const cd = n.content && CONTENT[n.content.kind]
+    const speaker = !!(n.content && n.content.kind === 'speaker')
+    const hdr = mh(n.label) + 20 + (n.composite || n.package ? 76 : 0)
+    let w, body
+    if (cd) {
+      const lft = hasIn ? 26.5 + a + 28 : 8.5
+      const rgt = hasOut ? 28 + b + 26.5 : 8.5
+      w = Math.max(hdr, lft + cd[0] + rgt)
+      n.cw = cd[0]
+      n.cx = Math.round(lft + (w - lft - rgt - cd[0]) / 2)
+      body = Math.max(rows * H.row, cd[1] + (speaker ? 0 : 16))
+    } else {
+      w = Math.max(hdr, (hasIn ? 26.5 + a : 8.5) + 34 + (hasOut ? b + 26.5 : 8.5))
+      body = rows * H.row + 2
+    }
+    n.contentH = cd ? cd[1] : 0
+    n.rows = rows
+    n.body = body
+    n.w = Math.ceil(w)
+    n.h = 4 + H.header + body + (n.footer ? H.footer + H.pad : 0)
+  }
+  function layout(graph, measure, measurePort) {
+    const mh = measure || (s => String(s).length * 7.6)
+    const mp = measurePort || (s => String(s).length * 6.6)
+    graph.order.forEach(n => sizeNode(n, mh, mp))
     const r = graph.root
     if (r) {
       const others = graph.order.filter(n => n !== r && !n.owner)
@@ -451,10 +459,10 @@
   }
 
   function pinPos(n, side, i) {
-    return { x: side === 'out' ? n.x + n.w : n.x, y: n.y + H.header + i * H.row + H.row / 2 }
+    return { x: side === 'out' ? n.x + n.w - 12 : n.x + 12, y: n.y + H.top + i * H.row + H.row / 2 }
   }
 
-  const api = { build, layout, view, pinPos, H, shortName, spaced }
+  const api = { build, layout, sizeNode, view, pinPos, H, shortName, spaced }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.MaterialGraph = api
 })(typeof window !== 'undefined' ? window : this)

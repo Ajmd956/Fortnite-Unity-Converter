@@ -27,12 +27,12 @@ button{font-family:inherit;outline:none;border:none;color:inherit;background:non
 #gl{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none;}
 #side{grid-column:3;display:none;flex-direction:column;min-height:0;min-width:0;}
 #side.on{display:flex;}
-#cards{flex:1;min-height:0;overflow-y:auto;}
+#cards{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
 #cards::-webkit-scrollbar{width:0;}
 .card{border-radius:16px;background:linear-gradient(180deg,#181620,#16141E);box-shadow:var(--shadow);padding:12px;display:grid;grid-template-columns:auto 1fr;grid-template-rows:1fr 1fr;align-items:center;}
 .card .ic{grid-row:1/3;grid-column:1;width:48px;height:48px;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 .card .ic img{width:48px;height:48px;object-fit:contain;}
-.card .nm{grid-row:1;grid-column:2;margin-left:12px;align-self:end;font-weight:600;font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card .nm{grid-row:1;grid-column:2;margin-left:12px;align-self:end;font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .card .cl{grid-row:2;grid-column:2;margin-left:12px;align-self:start;font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #btns{flex:0 0 auto;margin-top:12px;display:flex;flex-direction:column;gap:8px;}
 .btn{height:32px;border-radius:16px;background:var(--btn);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--text);cursor:pointer;transition:background-color .12s;}
@@ -465,7 +465,7 @@ function frameBounds(bb) {
   const c = [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2]
   const ext = [(bb.max[0] - bb.min[0]) / 2, (bb.max[1] - bb.min[1]) / 2, (bb.max[2] - bb.min[2]) / 2]
   const radius = Math.hypot(ext[0], ext[1], ext[2])
-  const dist = radius / Math.tan(cam.fov * Math.PI / 360) * 0.8 // 1.5 in the Fortnite Porting code, but its viewer sits ~1.8x closer on screen (measured on SM_FlyingOrb_Body)
+  const dist = radius / Math.tan(cam.fov * Math.PI / 360) * 1.5 // same as CameraComponent.FrameBounds in Fortnite Porting (checked on SM_DragonCart_Orb: sphere fills ~40% of the view height in both)
   const k = dist / Math.sqrt(3)
   cam.pos = [c[0] + k, c[1] + k, c[2] + k]
   lookAt(c)

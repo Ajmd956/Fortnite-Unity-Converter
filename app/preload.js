@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('api', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: s => ipcRenderer.invoke('settings:set', s),
   convert: payload => ipcRenderer.invoke('engine:convert', payload),
+  convertNiagara: payload => ipcRenderer.invoke('niagara:convert', payload),
   check: payload => ipcRenderer.invoke('engine:check', payload),
   stop: () => ipcRenderer.invoke('engine:stop'),
   shaders: () => ipcRenderer.invoke('shaders:list'),
@@ -79,6 +80,7 @@ contextBridge.exposeInMainWorld('api', {
   aiSetKey: (key, providerId) => ipcRenderer.invoke('ai:setKey', key, providerId),
   aiChat: payload => ipcRenderer.invoke('ai:chat', payload),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  onGoto: cb => listen('files:goto', cb),
   onUpdate: cb => listen('update:available', cb),
   onUpdateProgress: cb => listen('update:progress', cb)
 })

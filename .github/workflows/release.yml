@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/workflows/release.yml
 
       - uses: actions/setup-node@v4
         with:
@@ -57,6 +59,17 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Cache downloads (npm, Electron, electron-builder, NuGet)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\npm-cache
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+            ~\.nuget\packages
+          key: dl-${{ runner.os }}-${{ hashFiles('app/package.json', 'app/helper/FileLister/FileLister.csproj') }}
+          restore-keys: dl-${{ runner.os }}-
 
       - name: Set the app version
         working-directory: app
@@ -68,12 +81,12 @@ jobs:
         shell: cmd
         run: |
           python -m pip install -q pyinstaller
-          python -m PyInstaller --noconfirm --clean --log-level WARN --onefile --console --name FortniteUnityPorter --distpath engine\bin --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib engine\FortniteUnityPorter.py
+          python -m PyInstaller --noconfirm --clean --log-level WARN --onedir --console --name FortniteUnityPorter --distpath engine\bin --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib engine\FortniteUnityPorter.py
 
       - name: Check the engine exists
         working-directory: app
         shell: cmd
-        run: if not exist engine\bin\FortniteUnityPorter.exe (echo FortniteUnityPorter.exe was not built & exit /b 1)
+        run: if not exist engine\bin\FortniteUnityPorter\FortniteUnityPorter.exe (echo FortniteUnityPorter.exe was not built & exit /b 1)
 
       - name: Build the file helper
         working-directory: app
@@ -84,7 +97,7 @@ jobs:
         working-directory: app
         shell: bash
         run: |
-          npm install --no-audit --no-fund --loglevel=error
+          npm install --no-audit --no-fund --prefer-offline --loglevel=error
           npm run pack
           ls -la dist
 

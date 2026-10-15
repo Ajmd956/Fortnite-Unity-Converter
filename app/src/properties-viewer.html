@@ -21,7 +21,7 @@ button{font-family:inherit;outline:none;border:none;color:inherit;background:non
 .winctl button{width:35px;height:35px;display:flex;align-items:center;justify-content:center;color:#b9b5c9;cursor:pointer;border-radius:4px;}
 .winctl button:hover{background:#ffffff0a;color:#fff;}
 .winctl .wc-close:hover{background:#FF0022;color:#fff;}
-#tabs{flex:0 0 auto;display:flex;align-items:center;min-height:48px;padding:0 16px 0 14px;overflow-x:auto;overflow-y:hidden;}
+#tabs{flex:0 0 auto;display:flex;align-items:center;min-height:48px;padding:0 16px 0 9px;overflow-x:auto;overflow-y:hidden;}
 #tabs::-webkit-scrollbar{height:0;}
 .tab{flex:0 0 auto;margin-left:8px;height:32px;min-width:48px;max-width:320px;display:flex;align-items:center;gap:12px;padding:0 6px 0 9px;border-radius:16px;background:var(--btn);box-shadow:var(--shadow);cursor:pointer;font-size:14px;transition:background-color .12s;}
 .tab:hover{background:var(--btn-hover);}
@@ -366,6 +366,7 @@ async function load(t) {
       if (!bytes) throw new Error('could not read ' + job.file)
       let text = new TextDecoder('utf-8').decode(bytes)
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
+      if (text.trim().split(/\r?\n/).length < 3) { try { text = JSON.stringify(JSON.parse(text), null, 2) } catch (e) {} }
       buildDoc(t, text)
       t.topLine = 0
       if (t.targetIndex >= 0 && t.topLines[t.targetIndex] != null) t.topLine = t.topLines[t.targetIndex]

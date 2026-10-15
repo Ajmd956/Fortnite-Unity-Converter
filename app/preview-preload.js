@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('pv', {
   read: file => ipcRenderer.invoke('pv:read', file),
   saveAs: file => ipcRenderer.invoke('pv:save', file),
   reveal: file => ipcRenderer.invoke('pv:reveal', file),
+  gotoFile: p => ipcRenderer.invoke('pv:goto', p),
+  openJson: (name, json) => ipcRenderer.invoke('pvm:open-json', name, json),
   settings: () => ipcRenderer.invoke('settings:get'),
   copy: text => ipcRenderer.invoke('clipboard:write', text),
   multiInit: () => ipcRenderer.invoke('pvm:init'),

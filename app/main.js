@@ -509,7 +509,9 @@ async function loadIndex() {
 
 function engineCommand() {
   if (app.isPackaged) {
-    return { cmd: path.join(process.resourcesPath, 'engine', 'FortniteUnityPorter.exe'), pre: [] }
+    // The engine is packed as a folder (starts instantly); an older single-file engine is still found if that is what the build made
+    const dir = path.join(process.resourcesPath, 'engine', 'FortniteUnityPorter', 'FortniteUnityPorter.exe')
+    return { cmd: fs.existsSync(dir) ? dir : path.join(process.resourcesPath, 'engine', 'FortniteUnityPorter.exe'), pre: [] }
   }
   return {
     cmd: process.platform === 'win32' ? 'python' : 'python3',
@@ -1192,14 +1194,11 @@ function isNiagara(p) {
   return typeCache.get(t) === 'NiagaraSystem' || typeCache.get(packagePath(t)) === 'NiagaraSystem'
 }
 
-ipcMain.handle('engine:convert', async (_e, payload) => {
-  if (busy) return { ok: false, error: 'busy' }
-  const materials = (payload.materials || []).map(m => m.trim()).filter(Boolean)
-  if (!materials.length) return { ok: false, error: 'no materials' }
+async function beginRun(label) {
   busy = true
   stopped = false
   ensureFolders()
-  send('engine:state', { running: true, label: 'Converting' })
+  send('engine:state', { running: true, label: label })
   if (!(await pingBridge())) {
     send('engine:log', 'The API is not up yet, starting it. The first start reads the game files and can take a minute...\n')
     const started = await ensureApi()
@@ -1220,6 +1219,64 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
       return { ok: false, error: 'no-bridge' }
     }
   }
+  return null
+}
+
+ipcMain.handle('engine:convert', async (_e, payload) => {
+  if (busy) return { ok: false, error: 'busy' }
+  const materials = (payload.materials || []).map(m => m.trim()).filter(Boolean)
+  if (!materials.length) return { ok: false, error: 'no materials' }
+  const fail = await beginRun('Converting shaders')
+  if (fail) return fail
+  let converted = 0
+  let attempted = materials.length
+  const made = []
+  const kinds = []
+  const convertMaterial = async (p, name, outDir) => {
+    const args = ['--bridge', settings.bridge, '--material', p, '--out', outDir, '--cache', cacheDir]
+    if (name) args.push('--name', name)
+    const res = await runEngine(args)
+    const m = res.output.match(/wrote (.+?)\.shader/)
+    if (!m) {
+      const kind = classifyFailure(res.output)
+      if (kind) kinds.push(kind)
+      return null
+    }
+    const shader = path.join(outDir, m[1], m[1] + '.shader')
+    if (!fs.existsSync(shader)) return null
+    converted++
+    const row = { name: m[1], shader, dir: path.dirname(shader) }
+    made.push(row)
+    return row
+  }
+  for (let i = 0; i < materials.length; i++) {
+    if (stopped) break
+    send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
+    if (isNiagara(materials[i])) {
+      attempted--
+      send('engine:log', 'skipped: this is a Niagara system. Use the Niagara Converter tab for it.\n')
+      continue
+    }
+    await convertMaterial(materials[i], payload.name && materials.length === 1 ? payload.name : '', conversionsDir)
+  }
+  busy = false
+  send('engine:state', { running: false, label: '' })
+  send('engine:log', '\nfinished: ' + converted + ' of ' + attempted + ' converted\n')
+  if (made.length) send('convert:done', { shaders: made, total: attempted })
+  if (!made.length && !stopped) {
+    const notice = noticeFor(kinds)
+    if (notice) send('app:notice', notice)
+  }
+  return { ok: true, converted, total: attempted }
+})
+
+
+ipcMain.handle('niagara:convert', async (_e, payload) => {
+  if (busy) return { ok: false, error: 'busy' }
+  const materials = (payload.materials || []).map(m => m.trim()).filter(Boolean)
+  if (!materials.length) return { ok: false, error: 'no systems' }
+  const fail = await beginRun('Converting Niagara')
+  if (fail) return fail
   let converted = 0
   let attempted = materials.length
   const made = []
@@ -1245,7 +1302,8 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
     if (stopped) break
     send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
     if (!isNiagara(materials[i])) {
-      await convertMaterial(materials[i], payload.name && materials.length === 1 ? payload.name : '', conversionsDir)
+      attempted--
+      send('engine:log', 'skipped: this is not a Niagara system (NS_...). Use the Shader Converter tab for materials.\n')
       continue
     }
     const nargs = ['--bridge', settings.bridge, '--niagara', materials[i], '--out', particlesDir]
@@ -1321,6 +1379,7 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
   return { ok: true, converted, total: attempted }
 })
 
+
 ipcMain.handle('engine:check', async (_e, payload) => {
   if (busy) return { ok: false, error: 'busy' }
   const paths = payload.paths || []
@@ -1366,6 +1425,7 @@ function previewClass(c, p) {
     if (/Texture/.test(c)) return 'texture'
     if (c === 'StaticMesh' || c === 'SkeletalMesh') return 'model'
     if (c === 'SoundWave') return 'sound'
+    if (c === 'SoundCue') return 'soundcue'
     if (c === 'Material' || /^MaterialFunction/.test(c)) return 'material'
     return 'json'
   }
@@ -1422,6 +1482,7 @@ function pickPreviewFile(dir, kind) {
     model: ['.glb', '.gltf'],
     json: ['.json'],
     material: ['.json'],
+    soundcue: ['.json'],
     sound: ['.ogg', '.wav', '.mp3', '.opus', '.flac']
   }[kind] || []
   for (const ext of order) {
@@ -1462,7 +1523,7 @@ async function previewExportInner(kind, p) {
   const job = (async () => {
     try { fs.rmSync(dir, { recursive: true, force: true }) } catch (e) {}
     fs.mkdirSync(dir, { recursive: true })
-    const r = await askExport(kind === 'material' ? 'matgraph' : kind, p, dir)
+    const r = await askExport(kind === 'material' ? 'matgraph' : kind === 'soundcue' ? 'json' : kind, p, dir)
     if (!r.ok) return { ok: false, kind, error: r.error || 'export failed' }
     let file = pickPreviewFile(dir, kind)
     if (!file && r.file && fs.existsSync(r.file)) file = r.file
@@ -1512,14 +1573,15 @@ function openPreviewWindow(p, force) {
   w.loadFile(path.join(__dirname, 'src', 'preview.html'))
 }
 
-const multi = { texture: null, sound: null, json: null, model: null, material: null }
+const multi = { texture: null, sound: null, json: null, model: null, material: null, soundcue: null }
 let multiSeq = 0
 const MULTI_SPEC = {
   texture: { page: 'texture-viewer.html', title: 'Texture Viewer', size: { width: 1280, height: 720, minWidth: 560, minHeight: 380 } },
   sound: { page: 'sound-viewer.html', title: 'Sound Viewer', size: { width: 540, height: 96, minWidth: 360, minHeight: 96, maxHeight: 96, useContentSize: true } },
   model: { page: 'model-viewer.html', title: 'Model Viewer', size: { width: 1280, height: 720, minWidth: 700, minHeight: 420 } },
   json: { page: 'properties-viewer.html', title: 'Properties Viewer', size: { width: 1280, height: 720, minWidth: 560, minHeight: 380 } },
-  material: { page: 'material-viewer.html', title: 'Material Viewer', size: { width: 1280, height: 720, minWidth: 700, minHeight: 420 } }
+  material: { page: 'material-viewer.html', title: 'Material Viewer', size: { width: 1280, height: 720, minWidth: 700, minHeight: 420 } },
+  soundcue: { page: 'soundcue-viewer.html', title: 'Sound Cue Viewer', size: { width: 1280, height: 720, minWidth: 700, minHeight: 420 } }
 }
 
 function linkCandidates(stem) {
@@ -1536,10 +1598,12 @@ function linkCandidates(stem) {
 
 function openMulti(kind, p, opts) {
   opts = opts || {}
-  const name = (opts.name || p.slice(p.lastIndexOf('/') + 1)).split('.')[0]
+  const name = opts.result ? String(opts.name || '') : (opts.name || p.slice(p.lastIndexOf('/') + 1)).split('.')[0]
   const id = 'j' + (++multiSeq)
   const index = opts.index != null ? opts.index : -1
-  const run = opts.cands
+  const run = opts.result
+    ? Promise.resolve(opts.result)
+    : opts.cands
     ? (async () => {
         let last = { ok: false, error: 'that file is not in the game archives' }
         for (const c of opts.cands) {
@@ -2071,12 +2135,12 @@ ipcMain.handle('home:screenimg', async (_e, p) => {
 ipcMain.handle('preview:open', async (_e, payload) => {
   const paths = Array.from(new Set(((payload && payload.paths) || []).map(packagePath).filter(Boolean)))
   if (!paths.length) return { ok: false, error: 'no paths' }
-  const force = payload && ['json', 'texture', 'model', 'sound', 'material'].includes(payload.kind) ? payload.kind : ''
+  const force = payload && ['json', 'texture', 'model', 'sound', 'material', 'soundcue'].includes(payload.kind) ? payload.kind : ''
   let firstModel = true
   for (const p of paths.slice(0, PREVIEW_MAX)) {
     const kind = force || await previewKindFor(p)
     if (kind === 'model') { openMulti(kind, p, { reset: firstModel }); firstModel = false }
-    else if (kind === 'texture' || kind === 'sound' || kind === 'json' || kind === 'material') openMulti(kind, p)
+    else if (kind === 'texture' || kind === 'sound' || kind === 'json' || kind === 'material' || kind === 'soundcue') openMulti(kind, p)
     else openPreviewWindow(p, kind)
   }
   return { ok: true, opened: Math.min(paths.length, PREVIEW_MAX), total: paths.length }
@@ -2142,6 +2206,41 @@ ipcMain.handle('pv:save', async (e, file) => {
   const r = await dialog.showSaveDialog(owner, { defaultPath: path.join(exportDirNow(), path.basename(abs)) })
   if (r.canceled || !r.filePath) return { ok: false }
   try { fs.copyFileSync(abs, r.filePath); return { ok: true, file: r.filePath } } catch (err) { return { ok: false } }
+})
+
+ipcMain.handle('pv:goto', async (_e, ref) => {
+  if (!fileDirs) await ensureIndex()
+  const t = String(ref || '').trim().replace(/\.\d+$/, '')
+  if (!t || !fileDirs) return false
+  const cut = t.lastIndexOf('.')
+  const stem = cut > t.lastIndexOf('/') ? t.slice(0, cut) : t
+  const name = stem.slice(stem.lastIndexOf('/') + 1).toLowerCase()
+  for (const c of linkCandidates(stem)) {
+    const dir = c.slice(0, c.lastIndexOf('/'))
+    const node = fileDirs.get(dir)
+    if (!node) continue
+    const hit = node.files.find(n => n.split('.')[0].toLowerCase() === name)
+    if (hit) {
+      send('files:goto', dir + '/' + hit)
+      if (win && !win.isDestroyed()) {
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+      }
+      return true
+    }
+  }
+  return false
+})
+
+ipcMain.handle('pvm:open-json', (_e, name, json) => {
+  const label = String(name || 'Properties')
+  const dir = path.join(previewDir, 'inline')
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, 'p' + (++multiSeq) + '.json')
+  fs.writeFileSync(file, String(json == null ? '' : json))
+  openMulti('json', file, { name: label, result: { ok: true, kind: 'json', file } })
+  return true
 })
 
 ipcMain.handle('pv:reveal', (_e, file) => {

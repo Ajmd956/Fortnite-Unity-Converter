@@ -4,6 +4,7 @@ using CUE4Parse.FileProvider;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
+using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Dto;
 using CUE4Parse_Conversion.Options;
@@ -64,6 +65,7 @@ static class AssetExport
             var stem = StripExtension(clean);
             var name = stem.Substring(stem.LastIndexOf('/') + 1);
             Directory.CreateDirectory(outRoot);
+            using var meshVersion = (kind is "model" or "modelexport" or "meshthumb") ? MeshVersionScope.Enter(provider, stem) : null;
 
             switch (kind)
             {
@@ -218,6 +220,77 @@ static class AssetExport
         }
     }
 
+    sealed class MeshVersionScope : IDisposable
+    {
+        static readonly EGame[] Fallbacks = { EGame.GAME_UE5_8, EGame.GAME_UE5_7, EGame.GAME_UE5_6, EGame.GAME_UE5_5 };
+
+        readonly IFileProvider _provider;
+        readonly EGame _original;
+        readonly bool _originalNanite;
+
+        MeshVersionScope(IFileProvider provider)
+        {
+            _provider = provider;
+            _original = provider.Versions.Game;
+            _originalNanite = provider.ReadNaniteData;
+        }
+
+        public static MeshVersionScope? Enter(IFileProvider provider, string stem)
+        {
+            if (MeshIsUsable(provider, stem)) return null;
+            var scope = new MeshVersionScope(provider);
+            foreach (var nanite in new[] { scope._originalNanite, false })
+            {
+                provider.ReadNaniteData = nanite;
+                foreach (var candidate in Fallbacks.Prepend(scope._original).Distinct())
+                {
+                    if (nanite == scope._originalNanite && candidate == scope._original) continue;
+                    provider.Versions.Game = candidate;
+                    if (MeshIsUsable(provider, stem)) return scope;
+                }
+            }
+            scope.Dispose();
+            return null;
+        }
+
+        public void Dispose()
+        {
+            _provider.Versions.Game = _original;
+            _provider.ReadNaniteData = _originalNanite;
+        }
+
+        static bool MeshIsUsable(IFileProvider provider, string stem)
+        {
+            var prevFatal = CUE4Parse.Globals.FatalObjectSerializationErrors;
+            CUE4Parse.Globals.FatalObjectSerializationErrors = true;
+            try
+            {
+                foreach (var lazy in provider.LoadPackage(stem).ExportsLazy)
+                {
+                    var export = lazy.Value;
+                    switch (export)
+                    {
+                        case USkeletalMesh skeletal:
+                        {
+                            using var dto = new SkeletalMeshDto(skeletal, EMeshQuality.Highest, exportMorphTarget: false);
+                            if (dto.LODs.Count == 0) return false;
+                            break;
+                        }
+                        case UStaticMesh staticMesh when staticMesh.RenderData?.LODs is not null:
+                        {
+                            using var dto = new StaticMeshDto(staticMesh, EMeshQuality.Highest);
+                            if (dto.LODs.Count == 0) return false;
+                            break;
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (Exception) { return false; }
+            finally { CUE4Parse.Globals.FatalObjectSerializationErrors = prevFatal; }
+        }
+    }
+
     static UObject ResolveMesh(IFileProvider provider, string stem)
     {
         var obj = provider.LoadPackageObject(stem);
@@ -233,9 +306,6 @@ static class AssetExport
         return obj;
     }
 
-    // Some skeletal meshes carry Nanite data the parser cannot read (it throws while reading the Nanite hierarchy, which
-    // leaves the mesh with no LODs). Loading the mesh again with Nanite reading switched off skips that data and uses the
-    // ordinary LODs instead.
     static UObject LoadWithoutNanite(IFileProvider provider, string stem)
     {
         var prev = provider.ReadNaniteData;

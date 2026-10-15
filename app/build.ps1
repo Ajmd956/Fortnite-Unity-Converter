@@ -458,7 +458,7 @@ try {
 
     # The engine, the file browser helper and the npm packages do not depend on each other,
     # so they are built at the same time instead of one after another.
-    $pyCmd = 'python -m pip install -q numpy && (python -m PyInstaller --version >nul 2>&1 || python -m pip install -q pyinstaller) && python -m PyInstaller --noconfirm --clean --log-level WARN --onefile --console --name FortniteUnityPorter --distpath engine\bin --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib engine\FortniteUnityPorter.py'
+    $pyCmd = 'python -m pip install -q numpy && (python -m PyInstaller --version >nul 2>&1 || python -m pip install -q pyinstaller) && python -m PyInstaller --noconfirm --clean --log-level WARN --onedir --console --name FortniteUnityPorter --distpath engine\bin --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib engine\FortniteUnityPorter.py'
     $codes = Invoke-Parallel 'Building the engine, file browser and app parts... this can take a few minutes' 3 88 150 @(
         @{ Name = 'engine'; Cmd = $pyCmd },
         @{ Name = 'helper'; Cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File helper\build-helper.ps1' },

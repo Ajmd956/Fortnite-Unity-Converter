@@ -102,6 +102,18 @@ def pf(x):
     return "0.0" if t in ("-0.0", "") else t
 
 
+def linear_to_gamma(x):
+    """Same curve as Unity's Mathf.LinearToGammaSpace."""
+    x = float(x)
+    if x <= 0.0:
+        return 0.0
+    if x <= 0.0031308:
+        return 12.92 * x
+    if x < 1.0:
+        return 1.055 * (x ** 0.4166667) - 0.055
+    return x ** 0.45454545
+
+
 COLOR_WORDS = re.compile(r"colou?r|tint|emissive|emission|glow|albedo|diffuse", re.I)
 
 
@@ -604,7 +616,7 @@ class Translator:
     def vector_prop(self, name, rgba, tag="_V_"):
         rgba = [float(c) for c in list(rgba)[:4]] + [1.0] * (4 - len(list(rgba)[:4]))
         pname = re.sub(r"_+", "_", tag + ident(name))
-        color = tag == "_V_" and bool(COLOR_WORDS.search(str(name))) and min(rgba[:3]) >= 0.0
+        color = tag == "_V_" and bool(COLOR_WORDS.search(str(name)))
         self.props.setdefault(pname, {"kind": "vector", "default": rgba, "label": str(name), "color": color})
         return V(pname, 4)
 
@@ -2467,7 +2479,13 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             if v["kind"] == "float":
                 o.append('        %s ("%s", Float) = %s' % (k, label, pf(v["default"])))
             else:
-                o.append('        %s%s ("%s", Vector) = (%s)' % ("[PorterColor] " if v.get("color") else "", k, label, ", ".join(pf(c) for c in v["default"])))
+                if v.get("color"):
+                    # Real Color property: Unity draws the picker itself, no script needed. Unity treats Color values as sRGB and converts them to
+                    # linear for the shader in a Linear project, so the default is stored as the gamma value that converts back to Unreal's linear one.
+                    d = v["default"]
+                    o.append('        [HDR] %s ("%s", Color) = (%s)' % (k, label, ", ".join(pf(c) for c in (linear_to_gamma(d[0]), linear_to_gamma(d[1]), linear_to_gamma(d[2]), d[3]))))
+                else:
+                    o.append('        %s ("%s", Vector) = (%s)' % (k, label, ", ".join(pf(c) for c in v["default"])))
         o.append("        [Space(6)]")
     if not unlit:
         o.append("        [Header(Lighting)]")
@@ -2764,7 +2782,7 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
             tr.notes.append("Ao and Cavity sliders added (Ao scales ambient occlusion by the red channel, Cavity darkens or lightens the base color with the green channel of %s; both default to 0, so the look is unchanged)" % ac_used)
         text, ms_added = add_metal_smooth_editor(text)
         if ms_added:
-            tr.notes.append("%s multiplier/offset sliders added only where no parameter already controls it (neutral defaults, the look is unchanged)" % ms_added)
+            tr.notes.append("%s multiplier/offset sliders added; the original Metallic/Smoothness/Roughness parameters are hidden so these are the controls (neutral defaults, the look is unchanged)" % ms_added)
     text, n_guard = guard_divisions(text)
     if n_guard:
         tr.notes.append("%d division(s) guarded with FPU_NZ() so a zero divisor cannot cause a division-by-zero warning or NaN" % n_guard)
@@ -2805,10 +2823,18 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
         bounds_cs = BOUNDS_CS.replace("__FLIP__", str(bool(LOCAL_X_FLIP))).replace("__XMIN__", "-mb.max.x" if LOCAL_X_FLIP else "mb.min.x").replace("__XMAX__", "-mb.min.x" if LOCAL_X_FLIP else "mb.max.x")
         if not os.path.exists(bounds_path) or "// x-flip: %s" % bool(LOCAL_X_FLIP) not in open(bounds_path, encoding="utf-8").read():
             open(bounds_path, "w", encoding="utf-8").write(bounds_cs)
-    color_path = os.path.join(out, "Editor", "PorterColorDrawer.cs")
-    if not os.path.exists(color_path) or open(color_path, encoding="utf-8").read() != COLOR_DRAWER_CS:
-        os.makedirs(os.path.dirname(color_path), exist_ok=True)
-        open(color_path, "w", encoding="utf-8").write(COLOR_DRAWER_CS)
+    # Colors are real Color properties now, so no picker script is written. Remove copies left by earlier versions.
+    for old_color in (os.path.join(folder, "Editor", "PorterColorDrawer.cs"), os.path.join(out, "Editor", "PorterColorDrawer.cs")):
+        for f in (old_color, old_color + ".meta"):
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+        try:
+            os.rmdir(os.path.dirname(old_color))
+        except OSError:
+            pass
     importer_path = os.path.join(out, "Editor", "PorterTextureSetup.cs")
     if not os.path.exists(importer_path):
         os.makedirs(os.path.dirname(importer_path), exist_ok=True)
@@ -2858,31 +2884,6 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
     src.file_away(shader_name)
     return shader_name, tr
 
-
-COLOR_DRAWER_CS = r'''using UnityEditor;
-using UnityEngine;
-
-public class PorterColorDrawer : MaterialPropertyDrawer
-{
-    public override void OnGUI(Rect position, MaterialProperty prop, GUIContent label, MaterialEditor editor)
-    {
-        EditorGUI.BeginChangeCheck();
-        EditorGUI.showMixedValue = prop.hasMixedValue;
-        Vector4 v = prop.vectorValue;
-        Color c = EditorGUI.ColorField(position, label, new Color(v.x, v.y, v.z, v.w), true, true, true);
-        EditorGUI.showMixedValue = false;
-        if (EditorGUI.EndChangeCheck())
-        {
-            prop.vectorValue = new Vector4(c.r, c.g, c.b, c.a);
-        }
-    }
-
-    public override float GetPropertyHeight(MaterialProperty prop, string label, MaterialEditor editor)
-    {
-        return EditorGUIUtility.singleLineHeight;
-    }
-}
-'''
 
 BOUNDS_CS = r'''// x-flip: __FLIP__
 using System.Collections.Generic;
@@ -3542,27 +3543,46 @@ MS_METALLIC = re.compile(r"^([ \t]*)o\.Metallic = saturate\((.*)\);[ \t]*$", re.
 MS_SMOOTH = re.compile(r"^([ \t]*)o\.Smoothness = 1\.0 - saturate\((.*)\);[ \t]*$", re.M)
 
 
-def ms_driven_by_property(t, expr, words):
-    props = set(re.findall(r'^[ \t]*(?:\[[^\]]*\][ \t]*)*(_\w+)[ \t]*\("[^"]*",[ \t]*(?:Float|Range|Color|Vector)', t, re.M))
+def ms_driving_props(t, expr, words):
+    """Scalar parameters (Float/Range) in the expression's dependency chain whose name looks like words (metal, rough...)."""
+    props = set(re.findall(r'^[ \t]*(?:\[[^\]]*\][ \t]*)*(_\w+)[ \t]*\("[^"]*",[ \t]*(?:Float|Range)', t, re.M))
     defs = {}
     for m in re.finditer(r"^[ \t]*\w+[ \t]+(v\d+)[ \t]*=[ \t]*(.*);[ \t]*$", t, re.M):
         defs.setdefault(m.group(1), m.group(2))
     seen = set()
+    found = []
     todo = [expr]
     while todo:
         for name in re.findall(r"[A-Za-z_]\w*", todo.pop()):
-            if name in props and re.search(words, name, re.I):
-                return True
+            if name in props and re.search(words, name, re.I) and name not in found:
+                found.append(name)
             if name in defs and name not in seen:
                 seen.add(name)
                 todo.append(defs[name])
-    return False
+    return found
+
+
+def hide_property(t, name):
+    """Hides one Properties entry from the inspector (its value is kept, so the look is unchanged). A [Header] line in front of it
+    is moved behind it so the group title still shows on the next property."""
+    pm = re.search(r"^[ \t]*Properties[ \t]*\n[ \t]*\{\n", t, re.M)
+    if not pm:
+        return t
+    m = re.compile(r"^([ \t]*)((?:\[[^\]\n]*\][ \t]*)*)(%s[ \t]*\(.*)$" % re.escape(name), re.M).search(t, pm.end())
+    if not m or "HideInInspector" in m.group(2):
+        return t
+    line = "%s[HideInInspector] %s%s" % (m.group(1), m.group(2), m.group(3))
+    pre = re.search(r"^[ \t]*\[Header\([^\n]*\)\][ \t]*\n\Z", t[:m.start()], re.M)
+    if pre:
+        hdr = pre.group(0)
+        return t[:pre.start()] + line + "\n" + hdr + t[m.end() + 1:]
+    return t[:m.start()] + line + t[m.end():]
 
 
 def add_metal_smooth_editor(text):
-    """Adds Metallic / Smoothness multiplier and offset sliders (neutral defaults, so the look is unchanged) to a lit surface shader,
-    but only for an output that no exposed parameter already controls. Returns (new_text, what_was_added or False).
-    Not used for particle shaders."""
+    """Adds Metallic / Smoothness multiplier and offset sliders (neutral defaults, so the look is unchanged) to every lit surface shader.
+    The original parameters that drove Metallic or Smoothness (Metallic, Roughness, ...) are hidden from the inspector, so these sliders
+    are the one place to control them. Returns (new_text, what_was_added or False). Not used for particle shaders."""
     if "_SmoothnessMultiplier" in text or "_MetallicMultiplier" in text or "SurfaceOutputStandard" not in text:
         return text, False
     crlf = "\r\n" in text
@@ -3570,10 +3590,8 @@ def add_metal_smooth_editor(text):
     mm, ms = MS_METALLIC.search(t), MS_SMOOTH.search(t)
     if not mm or not ms:
         return text, False
-    want_m = not ms_driven_by_property(t, mm.group(2), r"metal")
-    want_s = not ms_driven_by_property(t, ms.group(2), r"smooth|rough|gloss")
-    if not want_m and not want_s:
-        return text, False
+    want_m = want_s = True
+    old = ms_driving_props(t, mm.group(2), r"metal") + [n for n in ms_driving_props(t, ms.group(2), r"smooth|rough|gloss")]
     if want_m:
         t = MS_METALLIC.sub(lambda m: "%so.Metallic = saturate((%s) * _MetallicMultiplier + _MetallicOffset);" % (m.group(1), m.group(2)), t, count=1)
     if want_s:
@@ -3581,13 +3599,10 @@ def add_metal_smooth_editor(text):
     m = re.search(r"^[ \t]*Properties[ \t]*\n[ \t]*\{\n", t, re.M)
     if not m:
         return text, False
-    if want_m and want_s:
-        block = MS_EDITOR_PROPS
-    elif want_m:
-        block = MS_EDITOR_PROPS_M
-    else:
-        block = MS_EDITOR_PROPS_S
+    block = MS_EDITOR_PROPS
     t = t[:m.end()] + block + t[m.end():]
+    for n in old:
+        t = hide_property(t, n)
     decl = ""
     if want_m:
         decl += "        float _MetallicMultiplier;\n        float _MetallicOffset;\n"
@@ -3632,9 +3647,7 @@ def add_ao_cavity_editor(text, texture_count=0):
                 break
     own = mask is None
     if own:
-        if texture_count >= 12:
-            return text, False
-        mask = "_AoCavityMask"
+        return text, False   # no _M mask texture in this shader: Ao and Cavity would have nothing to read, so they are not added
     sample = "%s(%s, IN.tc01.xy)" % (fn, mask)
     t = AC_OCCLUSION.sub(lambda m: "%so.Occlusion = saturate(%s) * lerp(1.0, %s.r, _Ao);" % (m.group(1), m.group(2), sample), t, count=1)
     def albedo(m):

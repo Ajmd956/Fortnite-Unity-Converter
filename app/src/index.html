@@ -436,7 +436,7 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .logbox.fade{animation:pageIn .5s cubic-bezier(.1,.9,.2,1) both;}
 .notrans .logbox.fade{animation:none!important;}
 .logbox{display:none;flex:1 1 0;min-height:140px;flex-direction:column;background:linear-gradient(var(--card),var(--card2));box-shadow:var(--card-shadow);border-radius:16px;overflow:hidden;margin:0 16px 16px;}
-.wrap[data-tab="convert"] .logbox,.wrap[data-tab="check"] .logbox{display:flex;}
+.wrap[data-tab="convert"] .logbox,.wrap[data-tab="niagara"] .logbox,.wrap[data-tab="check"] .logbox{display:flex;}
 .loghead{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border-hi);}
 .loghead .label{flex:1;}
 .state{font-size:11px;color:var(--cyan);font-weight:700;letter-spacing:.06em;}
@@ -462,9 +462,9 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 #updateOverlay{backdrop-filter:none;}
 .upd-panel{width:clamp(380px,33.3vw,560px);padding:24px;border:none;border-radius:16px;box-shadow:inset 0 1px 2px -1px #ffffff50,inset 0 -1px 2px -2px #ffffff50,0 4px 8px #00000020,0 8px 12px #00000010,0 0 16px 4px #00000080;}
 .upd-panel h2{font-size:18px;font-weight:600;margin-bottom:8px;}
-.upd-sub{font-size:14px;color:#cdc9de;margin-bottom:16px;line-height:1.4;}
+.upd-sub{font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.4;}
 .upd-btns{display:flex;justify-content:flex-end;gap:12px;}
-.upd-btns .btn{height:28px;padding:0 11px;min-width:0;justify-content:center;border-radius:14px;font-weight:500;box-shadow:none;}
+.upd-btns .btn{height:28px;padding:0 12px;min-width:0;justify-content:center;border-radius:14px;font-weight:400;box-shadow:none;}
 #updCancel{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
 #updCancel:hover{background:#2a2733;}
 #updCancel:active{background:#1a1822;}
@@ -627,7 +627,8 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <div class="sec gate">Export<span class="ld"><i></i><i></i><i></i></span></div>
     <button class="tab nav gate" data-tab="files"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span>Files</span></button>
     <div class="sec">Tools</div>
-    <button class="tab nav" data-tab="convert"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Convert</span></button>
+    <button class="tab nav" data-tab="convert"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Shader Converter</span></button>
+    <button class="tab nav" data-tab="niagara"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Niagara Converter</span></button>
     <button class="tab nav" data-tab="shaders"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L6.04,7.5L12,10.85L17.96,7.5L12,4.15Z"/></svg><span>My Shaders</span></button>
     <button class="tab nav" data-tab="check"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/></svg><span>Check Shaders</span></button>
     <div class="sec">Settings</div>
@@ -658,7 +659,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 
     <div class="page" id="page-convert">
       <div class="row-card col">
-        <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any material path.</div></div>
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any material path. Niagara systems go in the Niagara Converter tab.</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteMaterials">Paste</button><button class="btn sm" id="clearMaterials">Clear</button></div></div>
         <textarea id="materials" spellcheck="false" placeholder="/Game/.../MI_Example.MI_Example"></textarea>
         <div class="row">
@@ -667,6 +668,19 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         </div>
       </div>
       <div class="hint" style="padding:0 4px">The converter starts its own API in the background. The first start reads the game files and can take a minute. Each converted shader is saved in its own folder inside Shader Conversions, and everything it pulled in is filed under Cache with the same name.</div>
+    </div>
+
+    <div class="page" id="page-niagara">
+      <div class="row-card col">
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Niagara System Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any Niagara system path (NS_...).</div></div>
+          <div class="rc-ctl"><button class="btn sm" id="pasteNiagara">Paste</button><button class="btn sm" id="clearNiagara">Clear</button></div></div>
+        <textarea id="niagaraPaths" spellcheck="false" placeholder="/Game/.../NS_Example.NS_Example"></textarea>
+        <div class="row">
+          <input type="text" id="niagaraName" class="grow" spellcheck="false" placeholder="Name (optional, only used when converting one system)">
+          <button class="btn primary" id="niagaraBtn">Convert</button>
+        </div>
+      </div>
+      <div class="hint" style="padding:0 4px">Niagara systems are converted on their own, separate from the Shader Converter. Each one is saved in its own folder inside Particle Conversions, with the materials and meshes it uses.</div>
     </div>
 
     <div class="page split" id="page-export">
@@ -1393,7 +1407,7 @@ function showTab(name) {
   const lb = document.querySelector('.logbox')
   if (lb) {
     lb.classList.remove('fade')
-    if (prev !== name && (name === 'convert' || name === 'check') && transitionsOn()) { void lb.offsetWidth; lb.classList.add('fade') }
+    if (prev !== name && (name === 'convert' || name === 'niagara' || name === 'check') && transitionsOn()) { void lb.offsetWidth; lb.classList.add('fade') }
   }
   if (name === 'shaders') refreshShaders()
   if (name === 'files') openFiles()
@@ -1534,6 +1548,7 @@ async function init() {
   $('pathCache').textContent = info.cache
   fillSettings()
   window.api.onLog(onLog)
+  window.api.onGoto(p => { showTab('files'); jumpTo(p) })
   logReadyRes()
   window.api.onState(setRunning)
   window.api.onDone(showDone)
@@ -2055,6 +2070,30 @@ $('convertBtn').onclick = async () => {
     return
   }
   const res = await window.api.convert({ materials, name: $('shaderName').value.trim() })
+  flushLog()
+  if (!res.ok) addLine('could not start: ' + res.error)
+}
+
+$('pasteNiagara').onclick = async () => {
+  const text = ((await window.api.readClipboard()) || '').replace(/\r/g, '').trim()
+  const box = $('niagaraPaths')
+  if (text) box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n' + text : text
+  box.focus()
+}
+
+$('clearNiagara').onclick = () => {
+  $('niagaraPaths').value = ''
+  $('niagaraPaths').focus()
+}
+
+$('niagaraBtn').onclick = async () => {
+  if (running) return
+  const materials = $('niagaraPaths').value.split('\n').map(s => s.trim()).filter(Boolean)
+  if (!materials.length) {
+    addLine('paste at least one Niagara system path first')
+    return
+  }
+  const res = await window.api.convertNiagara({ materials, name: $('niagaraName').value.trim() })
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }
@@ -2878,13 +2917,23 @@ async function rebuildFiles() {
   goDir(fileDir)
 }
 
+function isNiagaraPath(p) {
+  const base = String(p).slice(String(p).lastIndexOf('/') + 1).split('.')[0]
+  return /^NS_/i.test(base)
+}
+
+// Shader paths go to the Shader Converter box, Niagara systems to the Niagara Converter box. They never mix.
 function addToConvert(paths) {
   const objects = paths.map(toObjectPath).filter(Boolean)
-  const box = $('materials')
-  const have = new Set(box.value.split('\n').map(x => x.trim()).filter(Boolean))
-  const fresh = objects.filter(p => !have.has(p))
-  if (fresh.length) box.value = (box.value.trim() ? box.value.replace(/\s+$/, '') + '\n' : '') + fresh.join('\n')
-  return fresh.length
+  let added = 0
+  ;[['materials', p => !isNiagaraPath(p)], ['niagaraPaths', isNiagaraPath]].forEach(([id, pick]) => {
+    const box = $(id)
+    const have = new Set(box.value.split('\n').map(x => x.trim()).filter(Boolean))
+    const fresh = objects.filter(pick).filter(p => !have.has(p))
+    if (fresh.length) box.value = (box.value.trim() ? box.value.replace(/\s+$/, '') + '\n' : '') + fresh.join('\n')
+    added += fresh.length
+  })
+  return added
 }
 
 function goBack() {
@@ -3383,8 +3432,17 @@ function convertSelected(paths) {
   addToConvert(paths)
   fileSel.clear()
   renderFileSelection()
-  showTab('convert')
-  $('convertBtn').click()
+  const objs = paths.map(toObjectPath).filter(Boolean)
+  const hasShader = objs.some(p => !isNiagaraPath(p))
+  const hasNiagara = objs.some(isNiagaraPath)
+  if (hasNiagara && !hasShader) {
+    showTab('niagara')
+    $('niagaraBtn').click()
+  } else {
+    showTab('convert')
+    $('convertBtn').click()
+    if (hasNiagara) setStatus('Niagara systems were added to the Niagara Converter tab')
+  }
 }
 $('fileUnity').onclick = () => { runExportSelected() }
 $('fileCancel').onclick = () => {
