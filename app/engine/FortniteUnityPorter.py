@@ -583,7 +583,6 @@ class Translator:
         self.bodies = {"ps": [], "vs": []}
         self.uses = set()
         self.props = {}
-        self.pan_ids = {}
         self.tex_trace = []
         self.override_hits = 0
         self.fn_over = {}
@@ -1365,16 +1364,10 @@ class Translator:
                     tm = C(0.0)
             sp = self.input(g, p.get("Speed"), scope, None)
             sp = self.fit(sp, 2) if sp is not None else C((float(p.get("SpeedX", 0.0)), float(p.get("SpeedY", 0.0))), 2)
-            # Every Panner gets two neutral inspector controls so its motion can always be edited: Speed scales/flips the X and Y speed
-            # (1, 1 = exactly Unreal's), Position shifts where the pattern sits (0, 0 = Unreal's). With Speed 0 the pattern stops at Position.
-            pid = self.pan_ids.setdefault("%s|%s" % (g.name, x.get("Name")), len(self.pan_ids) + 1)
-            pspd = self.vector_prop("Pan %d Speed" % pid, (1.0, 1.0, 0.0, 0.0))
-            ppos = self.vector_prop("Pan %d Position" % pid, (0.0, 0.0, 0.0, 0.0))
-            self.note("Panner %s: inspector controls 'Pan %d Speed' (X Y multipliers, negative reverses, 0 stops) and 'Pan %d Position' (X Y offset); defaults match Unreal" % (node_ref(g, x), pid, pid))
-            off = self.tmp("%s * %s * %s.xy" % (par(tm.e if tm.w == 1 else self.comp(tm, 0)), par(sp.e), pspd.e), 2)
+            off = self.tmp("%s * %s" % (par(tm.e if tm.w == 1 else self.comp(tm, 0)), par(sp.e)), 2)
             if p.get("bFractionalPart"):
                 off = self.call1("frac", off)
-            return self.tmp("%s + %s + %s.xy" % (off.e, par(self.fit(uv, 2).e), ppos.e), 2)
+            return self.tmp("%s + %s" % (off.e, par(self.fit(uv, 2).e)), 2)
         if t == "Rotator":
             uv = self.fit(self.input(g, p.get("Coordinate"), scope, None) or self.uvs(0), 2)
             tm = self.input(g, p.get("Time"), scope, None)
