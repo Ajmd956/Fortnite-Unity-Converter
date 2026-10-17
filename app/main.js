@@ -1411,16 +1411,18 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
         queue.push(ref.replace(/_C$/, ''))
       }
     }
-    const nm = res.output.match(/wrote (.+?)\.blueprint\.json/)
+    const nm = res.output.match(/wrote (.+?)\.(blueprint|propspec)\.json/)
+    const isProp = !!nm && nm[2] === 'propspec'
     if (!nm) {
       const kind = classifyFailure(res.output)
       if (kind) kinds.push(kind)
       continue
     }
     const bdir = path.join(blueprintsDir, nm[1])
-    if (!fs.existsSync(path.join(bdir, nm[1] + '.blueprint.json'))) continue
+    const specFile = path.join(bdir, nm[1] + (isProp ? '.propspec.json' : '.blueprint.json'))
+    if (!fs.existsSync(specFile)) continue
     converted++
-    made.push({ name: nm[1], shader: path.join(bdir, nm[1] + '.blueprint.json'), dir: bdir, kind: 'blueprint' })
+    made.push({ name: nm[1], shader: specFile, dir: bdir, kind: 'blueprint' })
     const refs = []
     for (const mm of res.output.matchAll(/^material: (.+)$/gm)) {
       const ref = mm[1].trim()
@@ -1433,17 +1435,35 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
     for (const ref of refs) {
       if (stopped) break
       const short = ref.slice(ref.lastIndexOf('/') + 1).split('.')[0]
-      const isSkyShader = skyRefs.includes(ref) || /sky|sundandmoon|sunandmoon|moon|bakedclouds|cloud/i.test(short)
+      const isSkyShader = !isProp && (skyRefs.includes(ref) || /sky|sundandmoon|sunandmoon|moon|bakedclouds|cloud/i.test(short))
       if (!isSkyShader && fs.existsSync(path.join(shadersDir, short, short + '.shader'))) continue
       send('engine:log', '\nmaterial used by ' + nm[1] + ': ' + ref + '\n')
       // game-wide values (the _C_ ones) stay editable properties so the day cycle can animate them; a sky dome's material draws behind everything
-      const margs = ['--bridge', settings.bridge, '--material', ref.replace(/\.\d+$/, '.' + short), '--out', shadersDir, '--cache', cacheDir, '--expose-globals']
+      const margs = ['--bridge', settings.bridge, '--material', ref.replace(/\.\d+$/, '.' + short), '--out', shadersDir, '--cache', cacheDir]
+      if (!isProp) margs.push('--expose-globals')
       if (skyRefs.includes(ref)) margs.push('--sky')
       const mres = await runEngine(margs)
       if (!/wrote (.+?)\.shader/.test(mres.output)) {
         const kind = classifyFailure(mres.output)
         if (kind) kinds.push(kind)
         send('engine:log', 'material not converted: ' + short + '\n')
+      }
+    }
+    const sounds = []
+    for (const mm of res.output.matchAll(/^sound: (.+)$/gm)) {
+      const ref = mm[1].trim()
+      if (ref && !sounds.includes(ref)) sounds.push(ref)
+    }
+    if (sounds.length && !stopped) {
+      if (await startTypeServer()) {
+        for (const ref of sounds) {
+          if (stopped) break
+          send('engine:log', '\nexporting sound used by ' + nm[1] + ': ' + ref + '\n')
+          const r = await askExport('sound', packagePath(ref), path.join(bdir, 'Audio'))
+          send('engine:log', r && r.ok ? 'sound exported: ' + r.file + '\n' : 'sound not exported: ' + ((r && r.error) || 'unknown error') + '\n')
+        }
+      } else {
+        send('engine:log', '\nsounds were not exported because the file helper is not running\n')
       }
     }
     const meshes = []

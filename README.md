@@ -24,8 +24,9 @@ manually, under App Settings.
   export them.
 - Convert: turn one or more materials into Unity shaders.
 - My Shaders: see everything you've converted.
-- Blueprint Converter: turn a sky dome Blueprint into a Unity prefab. It saves
-  the shaders, textures, meshes and day cycle in Blueprint Conversions. Copy
+- Blueprint Converter: turn a sky dome or a prop Blueprint (lights, sounds and
+  particle systems, like the Reboot Van) into a Unity prefab. It saves the
+  shaders, textures, meshes, sounds and day cycle in Blueprint Conversions. Copy
   that folder into your Unity project's Assets and Unity builds the prefab.
 - Check Shaders: scan shader files for common problems and fix the safe ones.
   A .bak copy of any changed shader is kept next to it.
@@ -92,3 +93,7 @@ Sky fix v34: Cloud Exposure defaults back to 1. With the material's own Color Bo
 App v35: Shader, Particle (Niagara) and Blueprint converters now live under one Converter tab, switched with three buttons at the top. The Blueprint converter now shows the "finished" popup, and the popup for every converter shows the output folder path. App Settings has a new Conversion Cache row with a Clear cache button (it empties the Cache folder only, not your converted shaders, particles or Blueprints). Includes the v34 Cloud Exposure default of 1.
 
 App v35 also: the "already running" window uses the new look and brings the open window to the front, and News & Updates has new entries for this release.
+
+Sky fix: the clouds' Direct Sun Light Color (any game-wide property named like _C_..DirectSunLight..Color) is not animated in the day data, because Unreal sets it while the game runs. The Time of Day controller now sets it from the sun light after the atmosphere (white at midday, warmer toward the horizon), so cloud colours follow the time of day on every converted sky dome. Cloud Sun Color Strength on the controller tunes it (0 = white). Reconvert the sky Blueprint to get the new script.
+
+App v36: the Blueprint Converter now converts prop Blueprints, not only sky domes. A prop's meshes and materials, spot and point lights, sound cues (volume, pitch, looping, attenuation) and Niagara systems become one Unity prefab, built automatically when the folder is in your project. Sounds are exported as WAV files into the Blueprint's Audio folder, and a .propreport.txt next to the prefab lists everything removed, defaulted or not applied. Niagara drag (applied as exp(-drag*age)), light intensity (passed through unscaled; PorterPropBuilder.cs has a LightIntensityScale at the top) and mesh particle orientation are not verified against Unreal.

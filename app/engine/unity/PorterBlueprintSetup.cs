@@ -298,6 +298,11 @@ public static class PorterBlueprintSetup
         return found;
     }
 
+    public static Material MaterialByName(string name, string folder)
+    {
+        return EnsureMaterial(name, folder);
+    }
+
     static Material EnsureMaterial(string objectPath, string folder)
     {
         string name = NameOf(objectPath);
@@ -363,7 +368,7 @@ public class PorterBlueprintAuto : AssetPostprocessor
     {
         foreach (string p in imported)
         {
-            if (p.EndsWith(".blueprint.json") || p.EndsWith(".fbx") || p.EndsWith(".shader"))
+            if (p.EndsWith(".blueprint.json") || p.EndsWith(".propspec.json") || p.EndsWith(".fbx") || p.EndsWith(".shader") || p.EndsWith(".wav"))
             {
                 Schedule();
                 return;
@@ -387,6 +392,12 @@ public class PorterBlueprintAuto : AssetPostprocessor
             if (!p.EndsWith(".blueprint.json")) continue;
             if (PorterBlueprintSetup.BuildPrefab(p, false, true) != null) made++;
         }
+        foreach (string guid in AssetDatabase.FindAssets("propspec t:TextAsset"))
+        {
+            string p = AssetDatabase.GUIDToAssetPath(guid);
+            if (!p.EndsWith(".propspec.json")) continue;
+            if (PorterPropBuilder.Build(p, false, true) != null) made++;
+        }
         Debug.Log("Porter: built " + made + " new blueprint prefab(s)");
     }
 
@@ -404,6 +415,19 @@ public class PorterBlueprintAuto : AssetPostprocessor
             try
             {
                 PorterBlueprintSetup.BuildPrefab(p, false, false);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("Porter: could not build " + p + ": " + ex.Message);
+            }
+        }
+        foreach (string guid in AssetDatabase.FindAssets("propspec t:TextAsset"))
+        {
+            string p = AssetDatabase.GUIDToAssetPath(guid);
+            if (!p.EndsWith(".propspec.json")) continue;
+            try
+            {
+                PorterPropBuilder.Build(p, false, false);
             }
             catch (Exception ex)
             {
