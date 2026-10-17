@@ -53,7 +53,7 @@ public class TimeOfDayController : MonoBehaviour
     public bool sunTransmittance = true;
     [Tooltip("The clouds' Direct Sun Light Color is not animated in the day data (it is one fixed white), so it is set here from the sun light after the atmosphere: white at midday, warmer toward the horizon. 0 leaves it white, 1 is the full atmosphere colour.")]
     [Range(0f, 1f)] public float cloudSunColorStrength = 1f;
-    static readonly string CloudSunColorProp = "_C_CloudsDirectSunLightColor";
+    readonly Dictionary<int, string> sunColorProps = new Dictionary<int, string>();
     [Tooltip("Scales the moon's disc and glow. The moon colour from the day data is first scaled so its brightest value is Moon Peak, so the disc keeps its texture instead of clipping to white.")]
     [Range(0f, 2f)] public float moonDiscBrightness = 1f;
     [Range(0.1f, 1.5f)] public float moonPeak = 0.8f;
@@ -801,10 +801,29 @@ public class TimeOfDayController : MonoBehaviour
         }
         foreach (var m in Targets())
         {
-            if (m == null || !m.HasProperty(CloudSunColorProp)) continue;
-            if (IsColor(m, CloudSunColorProp)) m.SetColor(CloudSunColorProp, new Color(ToProperty(ratio.x), ToProperty(ratio.y), ToProperty(ratio.z), 1f));
-            else m.SetVector(CloudSunColorProp, new Vector4(ratio.x, ratio.y, ratio.z, 1f));
+            if (m == null) continue;
+            var prop = SunColorProperty(m);
+            if (prop == null) continue;
+            if (IsColor(m, prop)) m.SetColor(prop, new Color(ToProperty(ratio.x), ToProperty(ratio.y), ToProperty(ratio.z), 1f));
+            else m.SetVector(prop, new Vector4(ratio.x, ratio.y, ratio.z, 1f));
         }
+    }
+
+    // The material's game-wide "direct sun light colour" property, whatever the skybox calls it (for example _C_CloudsDirectSunLightColor), or null.
+    string SunColorProperty(Material m)
+    {
+        var id = m.shader.GetInstanceID();
+        if (sunColorProps.TryGetValue(id, out var known)) return known;
+        string found = null;
+        var shader = m.shader;
+        var count = shader.GetPropertyCount();
+        for (var i = 0; i < count; i++)
+        {
+            var n = shader.GetPropertyName(i);
+            if (n.StartsWith("_C_", StringComparison.Ordinal) && n.IndexOf("DirectSunLight", StringComparison.OrdinalIgnoreCase) >= 0 && n.IndexOf("Color", StringComparison.OrdinalIgnoreCase) >= 0) { found = n; break; }
+        }
+        sunColorProps[id] = found;
+        return found;
     }
 
     public void RefreshEnvironment()
