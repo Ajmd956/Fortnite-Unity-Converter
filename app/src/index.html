@@ -671,7 +671,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       <div class="cv-pane active" id="cv-shader">
       <div class="row-card col">
         <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any material path. Niagara systems go in the Particle Converter button above.</div></div>
-          <div class="rc-ctl"><button class="btn sm" id="pasteMaterials">Paste</button><button class="btn sm" id="clearMaterials">Clear</button></div></div>
+          <div class="rc-ctl"><button class="btn sm" id="pasteMaterials">Paste</button><button class="btn sm" id="clearMaterials">Clear</button><button class="btn sm" id="openShaderConv">Open folder</button></div></div>
         <textarea id="materials" spellcheck="false" placeholder="/Game/.../MI_Example.MI_Example"></textarea>
         <div class="row">
           <input type="text" id="shaderName" class="grow" spellcheck="false" placeholder="Shader name (optional, only used when converting one material)">
@@ -683,7 +683,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       <div class="cv-pane" id="cv-particle">
       <div class="row-card col">
         <div class="rc-head"><div class="rc-text"><div class="rc-title">Niagara System Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any Niagara system path (NS_...).</div></div>
-          <div class="rc-ctl"><button class="btn sm" id="pasteNiagara">Paste</button><button class="btn sm" id="clearNiagara">Clear</button></div></div>
+          <div class="rc-ctl"><button class="btn sm" id="pasteNiagara">Paste</button><button class="btn sm" id="clearNiagara">Clear</button><button class="btn sm" id="openParticleConv">Open folder</button></div></div>
         <textarea id="niagaraPaths" spellcheck="false" placeholder="/Game/.../NS_Example.NS_Example"></textarea>
         <div class="row">
           <input type="text" id="niagaraName" class="grow" spellcheck="false" placeholder="Name (optional, only used when converting one system)">
@@ -2173,6 +2173,8 @@ $('blueprintBtn').onclick = async () => {
   if (!res.ok) addLine('could not start: ' + res.error)
 }
 $('openBlueprints').onclick = () => window.api.open(info.blueprints)
+$('openShaderConv').onclick = () => window.api.open(info.conversions)
+$('openParticleConv').onclick = () => window.api.open(info.particles)
 
 $('checkBtn').onclick = () => {
   if (!checkPaths.length) {
