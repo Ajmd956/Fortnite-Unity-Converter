@@ -51,6 +51,9 @@ public class TimeOfDayController : MonoBehaviour
     [Range(0.5f, 8f)] public float mieScale = 2f;
     [Tooltip("The sun light is tinted by the atmosphere between it and the ground, so it turns orange and dim near the horizon, as Unreal's atmosphere sun light does.")]
     public bool sunTransmittance = true;
+    [Tooltip("The clouds' Direct Sun Light Color is not animated in the day data (it is one fixed white), so it is set here from the sun light after the atmosphere: white at midday, warmer toward the horizon. 0 leaves it white, 1 is the full atmosphere colour.")]
+    [Range(0f, 1f)] public float cloudSunColorStrength = 1f;
+    static readonly string CloudSunColorProp = "_C_CloudsDirectSunLightColor";
     [Tooltip("Scales the moon's disc and glow. The moon colour from the day data is first scaled so its brightest value is Moon Peak, so the disc keeps its texture instead of clipping to white.")]
     [Range(0f, 2f)] public float moonDiscBrightness = 1f;
     [Range(0.1f, 1.5f)] public float moonPeak = 0.8f;
@@ -768,6 +771,7 @@ public class TimeOfDayController : MonoBehaviour
                 sun.color = new Color(ToProperty(lightRgb.x), ToProperty(lightRgb.y), ToProperty(lightRgb.z), 1f);
             }
         }
+        DriveCloudSunColor(toBody);
         if (!driveSunVectors) return;
         var ue = new Vector4(toBody.x, toBody.z, toBody.y, 0f);
         var sunVec = new Vector4(toSun.x, toSun.y, toSun.z, 0f);
@@ -779,6 +783,27 @@ public class TimeOfDayController : MonoBehaviour
             if (m.HasProperty(SunDirectionB)) m.SetVector(SunDirectionB, ue);
             if (m.HasProperty(SunDirProp)) m.SetVector(SunDirProp, sunVec);
             if (m.HasProperty(MoonDirProp)) m.SetVector(MoonDirProp, moonVec);
+        }
+    }
+
+    // Unreal's cloud material multiplies its colour by the sun light colour, which the game sets while it runs (the day data holds a single white key).
+    // Here it is the colour the atmosphere leaves in the sunlight: 1 at zenith, redder as the sun (or moon) gets low.
+    void DriveCloudSunColor(Vector3 toBody)
+    {
+        if (!atmosphereFromData) return;
+        var ratio = Vector3.one;
+        if (cloudSunColorStrength > 0f)
+        {
+            var t = TransmittanceToward(ClampTransmittanceElevation(toBody));
+            var tz = TransmittanceToward(Vector3.up);
+            ratio = new Vector3(Mathf.Clamp01(t.x / Mathf.Max(tz.x, 1e-4f)), Mathf.Clamp01(t.y / Mathf.Max(tz.y, 1e-4f)), Mathf.Clamp01(t.z / Mathf.Max(tz.z, 1e-4f)));
+            ratio = Vector3.Lerp(Vector3.one, ratio, cloudSunColorStrength);
+        }
+        foreach (var m in Targets())
+        {
+            if (m == null || !m.HasProperty(CloudSunColorProp)) continue;
+            if (IsColor(m, CloudSunColorProp)) m.SetColor(CloudSunColorProp, new Color(ToProperty(ratio.x), ToProperty(ratio.y), ToProperty(ratio.z), 1f));
+            else m.SetVector(CloudSunColorProp, new Vector4(ratio.x, ratio.y, ratio.z, 1f));
         }
     }
 
