@@ -694,7 +694,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       </div>
       <div class="cv-pane" id="cv-blueprint">
       <div class="row-card col">
-        <div class="rc-head"><div class="rc-text"><div class="rc-title">Blueprint Paths</div><div class="rc-desc">Sky dome Blueprints only, for now. One per line. Copy them from the Files tab, or paste any Blueprint path (BP_...).</div></div>
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Blueprint Paths</div><div class="rc-desc">Sky domes and props with lights, sounds and particle systems. One per line. Copy them from the Files tab, or paste any Blueprint path (BP_...).</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteBlueprint">Paste</button><button class="btn sm" id="clearBlueprint">Clear</button><button class="btn sm" id="openBlueprints">Open folder</button></div></div>
         <textarea id="blueprintPaths" spellcheck="false" placeholder="/Game/.../BP_Example.BP_Example"></textarea>
         <div class="row">
@@ -1628,8 +1628,9 @@ $('openParticles').onclick = () => window.api.open(info.particles)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
 const NEWS_DATE = 'Oct 17'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'One Converter tab and a better sky dome', date: NEWS_DATE }
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Blueprint Converter now handles props', date: NEWS_DATE }
 const NEWS = [
+  { tag: 'Blueprint', title: 'Props, lights, sounds and particles', sub: 'Convert more than sky domes.', body: 'The Blueprint Converter now builds prefabs for props such as the Reboot Van: its meshes and materials, headlights, every sound cue with its volume, pitch, looping and distance falloff, and its Niagara particle systems as Unity particle systems. Sounds are exported as WAV files into the Blueprint folder. Copy Blueprint Conversions into your Unity project and Unity builds the prefab by itself. Sky domes work as before.' },
   { tag: 'Converter', title: 'One Converter tab', sub: 'Shader, Particle and Blueprint in one place.', body: 'The three converters now live in a single Converter tab. Pick Shader Converter, Particle Converter or Blueprint Converter with the buttons at the top. Sending files from the Files tab opens the right one for you.' },
   { tag: 'Converter', title: 'Finished popups', sub: 'See where your files went.', body: 'When a conversion finishes, a popup now shows the folder each result was saved in, with a button to open it. This now works for Blueprints too, not only shaders and particles.' },
   { tag: 'Sky Dome', title: 'Better sky and clouds', sub: 'Clouds keep their colour through the day.', body: 'Sky dome clouds now use a lower default exposure so they keep their colour as the time of day changes instead of washing out to white, and characters pick up less of the sky tint. Reconvert your sky Blueprint to get the new shaders.' },

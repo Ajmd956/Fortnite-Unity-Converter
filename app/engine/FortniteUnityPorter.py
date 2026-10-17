@@ -5115,19 +5115,22 @@ def run_blueprint_export(bridge, path, out, name, scripts=None):
     import shutil
     src = Source(bridge=bridge, folder=None, cache=None)
     bp = src._json("blueprint", path)
-    if not bp:
-        sys.exit("the app did not give the Blueprint (%s)" % (src.why("blueprint", path) or "no answer"))
-    comps = bp.get("components") or []
+    comps = (bp or {}).get("components") or []
     words = ("sky", "dome", "sun", "moon", "cloud", "atmosphere", "timeofday")
-    names = [bp.get("blueprint") or "", path]
+    names = [(bp or {}).get("blueprint") or "", path]
     for c in comps:
         names.append(c.get("name") or "")
         names.append(c.get("mesh") or "")
         names += [m.get("material") or "" for m in (c.get("materials") or [])]
-    if not any(w in n.lower() for n in names for w in words):
-        sys.exit("this Blueprint does not look like a sky dome, and only sky domes are supported right now")
-    if not comps:
-        sys.exit("this Blueprint has no components to convert")
+    is_sky = bool(bp) and bool(comps) and (any(is_sky_mesh(c) for c in comps) or any(w in n.lower() for n in names for w in words))
+    if is_sky and not any(is_sky_mesh(c) for c in comps):
+        import PropBlueprint
+        if PropBlueprint.looks_like_prop(src, path):
+            is_sky = False
+    if not is_sky:
+        import PropBlueprint
+        PropBlueprint.run(src, path, out, name, scripts)
+        return
     base = name or bp.get("blueprint") or re.split(r"[\\/.]", path.rstrip("/\\"))[-1]
     folder = os.path.join(out, base)
     os.makedirs(folder, exist_ok=True)
@@ -5217,7 +5220,7 @@ def main():
     ap.add_argument("--scripts", default=None, help="with --blueprint: folder holding the Unity scripts to copy")
     ap.add_argument("--sky", action="store_true", help="the material is on a sky dome: draw it first, behind everything, without writing depth")
     ap.add_argument("--expose-globals", action="store_true", help="show the parameter-collection values (the _C_ ones) as material properties instead of fixing them in the shader, so a script can animate them")
-    ap.add_argument("--blueprint", metavar="PATH", help="convert a sky dome Blueprint (object path) to a Unity prefab setup")
+    ap.add_argument("--blueprint", metavar="PATH", help="convert a Blueprint (object path) to a Unity prefab: a sky dome, or a prop with lights, sounds and particle systems")
     ap.add_argument("--annotate", action="store_true", help="add UE node names as comments in the shader (off by default)")
     ap.add_argument("--no-annotate", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
