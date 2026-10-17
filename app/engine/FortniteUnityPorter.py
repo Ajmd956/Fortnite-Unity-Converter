@@ -173,6 +173,7 @@ HARDCODE_PATTERNS = [
 ]
 HARDCODE_GLOBALS = True      # every _C_ parameter-collection value (game-wide settings)
 SHOW_ALL_PARAMS = False      # --show-all-params turns hiding off
+SKY_MATERIAL = False         # --sky: the material is on a sky dome, so it is drawn first, behind everything, without writing depth
 EXTRA_HIDE = []              # --hide REGEX (repeatable)
 EXTRA_SHOW = []              # --show REGEX (repeatable): keep visible even if a rule above hides it
 # Sky and atmosphere lighting only exists in the Fortnite world; these nodes are replaced by 0 on purpose.
@@ -1943,8 +1944,9 @@ class Translator:
             if d is None:
                 d = self.tmp("-%s" % par(self.camera_vector().e), 3)
             dv = self.tmp("%s.xzy" % par(self.fit(d, 3).e), 3)
-            self.warn("stand-in: SkyAtmosphereViewLuminance reads Unity's skybox probe (unity_SpecCube0) instead of Unreal's atmosphere")
-            return self.tmp("DecodeHDR(UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, %s, 0), unity_SpecCube0_HDR).rgb" % dv.e, 3)
+            self.warn("approximation: SkyAtmosphereViewLuminance is a single-scattering sky with an isotropic second-order term; the Time of Day controller supplies the sun and moon directions and the per-hour scattering colors, heights and anisotropy from the day sequence, while the scattering scales stay at Unreal's defaults")
+            self.uses.add("atmosphere")
+            return self.tmp("PorterAtmosphereView(%s)" % dv.e, 3)
         if t == "SkyAtmosphereLightDiskLuminance":
             diam = self.input(g, p.get("DiskAngularDiameterOverride"), scope, None)
             half = "(%s * 0.0087266463)" % (par(self.fit(diam, 1).e) if diam is not None else "0.5357") if diam is not None else "(0.5357 * 0.0087266463)"
@@ -2222,6 +2224,140 @@ float3 BlackBodyUE(float temp)
 }
 """
 
+TONE_HELPERS = r"""
+float3 PorterFilm(float3 c)
+{
+    const float slope = 0.88;
+    const float toe = 0.55;
+    const float shoulder = 0.26;
+    const float whiteClip = 0.04;
+    const float blackClip = 0.0;
+    const float toeScale = 1.0 + blackClip - toe;
+    const float shoulderScale = 1.0 + whiteClip - shoulder;
+    const float bt = (0.18 + blackClip) / toeScale - 1.0;
+    const float toeMatch = log10(0.18) - 0.5 * log((1.0 + bt) / (1.0 - bt)) * (toeScale / slope);
+    const float straightMatch = (1.0 - toe) / slope - toeMatch;
+    const float shoulderMatch = shoulder / slope - straightMatch;
+    float3 lc = log10(max(c, 1e-6));
+    float3 straight = slope * (lc + straightMatch);
+    float3 toeColor = -blackClip + 2.0 * toeScale / (1.0 + exp(-2.0 * (slope / toeScale) * (lc - toeMatch)));
+    float3 shoulderColor = (1.0 + whiteClip) - 2.0 * shoulderScale / (1.0 + exp(2.0 * (slope / shoulderScale) * (lc - shoulderMatch)));
+    toeColor = lerp(straight, toeColor, step(lc, toeMatch));
+    shoulderColor = lerp(straight, shoulderColor, step(shoulderMatch, lc));
+    float3 t = saturate((lc - toeMatch) / (shoulderMatch - toeMatch));
+    if (shoulderMatch < toeMatch)
+        t = 1.0 - t;
+    t = (3.0 - 2.0 * t) * t * t;
+    float3 o = saturate(lerp(toeColor, shoulderColor, t));
+    o = lerp(float3(0.0, 0.0, 0.0), o, step(1e-5, c));
+#ifdef UNITY_COLORSPACE_GAMMA
+    o = pow(o, 1.0 / 2.2);
+#endif
+    return o;
+}
+"""
+
+CLOUD_HELPERS = r"""
+float3 PorterCloudFilm(float3 c)
+{
+    float peak = max(c.r, max(c.g, c.b));
+    float3 o = PorterFilm(c);
+    float l = dot(o, float3(0.2126, 0.7152, 0.0722));
+    return lerp(o, float3(l, l, l), 0.6 * saturate((peak - 1.0) / 8.0));
+}
+"""
+
+ATMOSPHERE_HELPERS = r"""
+float4 _PorterSunDir;
+float4 _PorterMoonDir;
+float4 _AtmoRayleigh;
+float4 _AtmoMie;
+float4 _AtmoMieAbs;
+float4 _AtmoOzone;
+float4 _AtmoShape;
+float4 _AtmoTent;
+float4 _AtmoFactor;
+float4 _AtmoLight;
+float _AtmoSun;
+float _AtmoMoon;
+float _AtmoMieScale;
+float PorterRaySphere(float3 o, float3 d, float r)
+{
+    float b = dot(o, d);
+    float c = dot(o, o) - r * r;
+    float disc = b * b - c;
+    return disc < 0.0 ? -1.0 : -b + sqrt(disc);
+}
+
+float3 PorterExtinction(float h)
+{
+    float rd = exp(-h / max(_AtmoShape.y, 0.01));
+    float md = exp(-h / max(_AtmoShape.z, 0.01));
+    float od = _AtmoTent.x * max(1.0 - abs(h - 25.0) / max(_AtmoTent.y, 0.01), 0.0);
+    return _AtmoRayleigh.rgb * (0.0331 * rd) + _AtmoMie.rgb * (0.003996 * _AtmoMieScale * md) + _AtmoMieAbs.rgb * (0.00444 * _AtmoMieScale * md) + _AtmoOzone.rgb * (0.001881 * od);
+}
+
+float3 PorterScatterLight(float3 viewDir, float3 lightDir, float illuminance)
+{
+    float3 o = float3(0.0, 6360.05, 0.0);
+    float tTop = PorterRaySphere(o, viewDir, 6420.0);
+    float tGround = PorterRaySphere(o, viewDir, 6360.0);
+    float tEnd = tTop;
+    if (tGround > 0.0)
+    {
+        float b = dot(o, viewDir);
+        float c = dot(o, o) - 6360.0 * 6360.0;
+        float disc = b * b - c;
+        tEnd = min(tTop, -b - sqrt(max(disc, 0.0)));
+    }
+    tEnd = max(tEnd, 0.0);
+    float mu = dot(viewDir, lightDir);
+    float g = clamp(_AtmoShape.x, -0.99, 0.99);
+    float phaseR = 0.0596831 * (1.0 + mu * mu);
+    float phaseM = 0.0795775 * (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 0.0001), 1.5);
+    float3 optical = float3(0.0, 0.0, 0.0);
+    float3 sum = float3(0.0, 0.0, 0.0);
+    [loop] for (int i = 0; i < 16; i++)
+    {
+        float f = (i + 0.5) / 16.0;
+        float tMid = tEnd * f * f;
+        float ds = tEnd * 2.0 * f / 16.0;
+        float3 p = o + viewDir * tMid;
+        float h = max(length(p) - 6360.0, 0.0);
+        float3 ext = PorterExtinction(h);
+        optical += ext * ds;
+        float3 sunOptical = float3(0.0, 0.0, 0.0);
+        float tl = PorterRaySphere(p, lightDir, 6420.0);
+        float lit = 1.0;
+        float pl = dot(p, lightDir);
+        float cl = dot(p, p) - 6360.0 * 6360.0;
+        if (pl < 0.0 && pl * pl - cl > 0.0) lit = 0.0;
+        [loop] for (int j = 0; j < 8; j++)
+        {
+            float fj = (j + 0.5) / 8.0;
+            float3 q = p + lightDir * (max(tl, 0.0) * fj * fj);
+            sunOptical += PorterExtinction(max(length(q) - 6360.0, 0.0)) * (max(tl, 0.0) * 2.0 * fj / 8.0);
+        }
+        float rd = exp(-h / max(_AtmoShape.y, 0.01));
+        float md = exp(-h / max(_AtmoShape.z, 0.01));
+        float3 scatterR = _AtmoRayleigh.rgb * (0.0331 * rd);
+        float3 scatterM = _AtmoMie.rgb * (0.003996 * _AtmoMieScale * md);
+        float3 scatter = scatterR * phaseR + scatterM * phaseM + (scatterR + scatterM) * (0.0795775 * _AtmoTent.z);
+        sum += scatter * exp(-(optical + sunOptical)) * lit * ds;
+    }
+    return sum * illuminance * _AtmoLight.rgb;
+}
+
+float3 PorterAtmosphereView(float3 viewDir)
+{
+    float3 sunDir = dot(_PorterSunDir.xyz, _PorterSunDir.xyz) > 0.25 ? normalize(_PorterSunDir.xyz) : normalize(_WorldSpaceLightPos0.xyz);
+    float3 col = PorterScatterLight(normalize(viewDir), sunDir, _AtmoSun);
+    if (dot(_PorterMoonDir.xyz, _PorterMoonDir.xyz) > 0.25)
+        col += PorterScatterLight(normalize(viewDir), normalize(_PorterMoonDir.xyz), _AtmoMoon);
+    return col * _AtmoFactor.rgb;
+}
+"""
+
 NOISE_HELPERS = """
 float3 NoiseHashUE(float3 p)
 {
@@ -2487,6 +2623,37 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
                 else:
                     o.append('        %s ("%s", Vector) = (%s)' % (k, label, ", ".join(pf(c) for c in v["default"])))
         o.append("        [Space(6)]")
+    cloud_tone = unlit and bm == "BLEND_Translucent" and "bakedclouds" in name.lower()
+    if cloud_tone:
+        o.append("        [Header(Brightness)]")
+        o.append('        _CloudExposure ("Cloud Exposure (multiplier)", Float) = 1.0')
+        o.append("        [Space(6)]")
+    sky_exposure = unlit and SKY_MATERIAL and bm == "BLEND_Opaque"
+    if sky_exposure:
+        o.append("        [Header(Brightness)]")
+        o.append('        _SkyExposure ("Sky Exposure", Float) = 1.0')
+        o.append("        [Space(6)]")
+    if "atmosphere" in tr.uses:
+        o.append("        [Header(Atmosphere)]")
+        o.append('        _AtmoSun ("Sun Brightness", Float) = 12')
+        o.append('        _AtmoMoon ("Moon Brightness", Float) = 12')
+        o.append('        _AtmoMieScale ("Mie Scale (sun halo size)", Float) = 2.0')
+        o.append("        [HideInInspector] _PorterSunDir (\"Sun Direction\", Vector) = (0, 0, 0, 0)")
+        o.append("        [HideInInspector] _PorterMoonDir (\"Moon Direction\", Vector) = (0, 0, 0, 0)")
+        o.append("        [HideInInspector] _AtmoRayleigh (\"Rayleigh\", Vector) = (0.175287, 0.409607, 1, 0)")
+        o.append("        [HideInInspector] _AtmoMie (\"Mie\", Vector) = (1, 1, 1, 0)")
+        o.append("        [HideInInspector] _AtmoMieAbs (\"Mie Absorption\", Vector) = (1, 1, 1, 0)")
+        o.append("        [HideInInspector] _AtmoOzone (\"Ozone\", Vector) = (0.345561, 1, 0.045189, 0)")
+        o.append("        [HideInInspector] _AtmoShape (\"Shape\", Vector) = (0.8, 8, 1.2, 0)")
+        o.append("        [HideInInspector] _AtmoTent (\"Ozone Tent and Multi Scattering\", Vector) = (1, 15, 1, 0)")
+        o.append("        [HideInInspector] _AtmoFactor (\"Luminance Factor\", Vector) = (1, 1, 1, 0)")
+        o.append("        [HideInInspector] _AtmoLight (\"Light Color\", Vector) = (1, 1, 1, 0)")
+        o.append("        [Space(6)]")
+    sun_cap = unlit and bm == "BLEND_Additive" and (SKY_MATERIAL or "sundandmoon" in name.lower() or "sunandmoon" in name.lower())
+    if sun_cap:
+        o.append("        [Header(Brightness)]")
+        o.append('        _SkyExposure ("Sun Exposure", Float) = 1.0')
+        o.append("        [Space(6)]")
     if not unlit:
         o.append("        [Header(Lighting)]")
         o.append('        [Toggle] _FlipNormalY ("Flip Normal Y (DirectX normal maps)", Float) = 0')
@@ -2499,8 +2666,15 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     o.append("    {")
     tags = {"BLEND_Opaque": "Opaque", "BLEND_Masked": "TransparentCutout"}.get(bm, "Transparent")
     queue = {"BLEND_Opaque": "Geometry", "BLEND_Masked": "AlphaTest"}.get(bm, "Transparent")
+    sky_first = SKY_MATERIAL and bm == "BLEND_Opaque"
+    if sky_first:
+        # Unreal draws a sky dome at the far plane whatever its size. Drawing it first without writing depth does the same here, so the
+        # clouds and everything else always draw over it (the converted prefab also keeps the dome centred on the camera).
+        queue = "Background"
     o.append('        Tags { "RenderType"="%s" "Queue"="%s" "IgnoreProjector"="True" }' % (tags, queue))
-    if two:
+    if sky_first:
+        o.append("        ZWrite Off")
+    if two or sun_cap:
         o.append("        Cull Off")
     if bm == "BLEND_Additive":
         o.append("        Blend One One")
@@ -2521,9 +2695,15 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         pragma += " alpha:premul"
     pragma += " nofog" if unlit else ""
     o.append("        " + pragma)
-    o.append("        #pragma target 3.0")
+    o.append("        #pragma target %s" % ("4.0" if "atmosphere" in tr.uses else "3.0"))
     o.append("        #include \"UnityCG.cginc\"")
     o.append("        #include \"Lighting.cginc\"")
+    if "atmosphere" in tr.uses:
+        o.extend("        " + l if l else "" for l in ATMOSPHERE_HELPERS.strip("\n").split("\n"))
+    if sky_exposure or sun_cap or cloud_tone:
+        o.extend("        " + l if l else "" for l in TONE_HELPERS.strip("\n").split("\n"))
+    if cloud_tone:
+        o.extend("        " + l if l else "" for l in CLOUD_HELPERS.strip("\n").split("\n"))
     if "depth" in tr.uses:
         o.extend("        " + l if l else "" for l in DEPTH_HELPERS.strip("\n").split("\n"))
     if "noise" in tr.uses:
@@ -2551,6 +2731,12 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             o.append("        %s %s;" % ("float" if v["kind"] == "float" else "float4", k))
     if not unlit:
         o.append("        float _FlipNormalY;")
+    if cloud_tone:
+        o.append("        float _CloudExposure;")
+    if sky_exposure:
+        o.append("        float _SkyExposure;")
+    if sun_cap:
+        o.append("        float _SkyExposure;")
     for c in tr.customs:
         o.extend("        " + l for l in c.split("\n"))
     o.append("")
@@ -2581,6 +2767,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("            float2 uv0 = v.texcoord.xy;")
         o.append("            float2 uv1 = v.texcoord1.xy;")
         for l in vs_body:
+            if sun_cap:
+                l = l.replace("float3(unity_ObjectToWorld._m03, unity_ObjectToWorld._m23, unity_ObjectToWorld._m13) * 100.0", "float3(0.0, 0.0, 0.0)")
             o.append("            " + l)
         o.append("            float3 wpoUE = %s;" % tr.fit(wpo, 3).e)
         o.append("            v.vertex.xyz += mul((float3x3)unity_WorldToObject, wpoUE.xzy * 0.01);")
@@ -2600,7 +2788,16 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("            " + l)
     if unlit:
         o.append("            o.Albedo = 0.0;")
-        o.append("            o.Emission = max(%s, 0.0);" % f3("EmissiveColor"))
+        if sun_cap:
+            o.append("            float3 skyEm = max(%s, 0.0) * _SkyExposure;" % f3("EmissiveColor"))
+            o.append("            o.Emission = PorterFilm(skyEm);")
+        elif cloud_tone:
+            o.append("            float3 cEm = max(%s, 0.0) * _CloudExposure;" % f3("EmissiveColor"))
+            o.append("            o.Emission = PorterCloudFilm(cEm);")
+        elif sky_exposure:
+            o.append("            o.Emission = PorterFilm(max(%s, 0.0) * _SkyExposure);" % f3("EmissiveColor"))
+        else:
+            o.append("            o.Emission = max(%s, 0.0);" % f3("EmissiveColor"))
     else:
         o.append("            o.Albedo = saturate(%s);" % f3("BaseColor"))
         o.append("            o.Metallic = saturate(%s);" % f1("Metallic"))
@@ -4905,6 +5102,88 @@ def interactive():
             print("choose 1, 2, 3, 4, 5, 6 or 0")
 
 
+def is_sky_mesh(c):
+    """A sky dome: its mesh or component is named for a sky or dome (clouds are not part of the dome)."""
+    mesh = (c.get("mesh") or "").split("/")[-1].split(".")[0]
+    for n in (mesh, c.get("name") or ""):
+        if re.search(r"sky|dome|skybox|skysphere", n, re.I) and not re.search(r"cloud", n, re.I):
+            return bool(c.get("mesh"))
+    return False
+
+
+def run_blueprint_export(bridge, path, out, name, scripts=None):
+    import shutil
+    src = Source(bridge=bridge, folder=None, cache=None)
+    bp = src._json("blueprint", path)
+    if not bp:
+        sys.exit("the app did not give the Blueprint (%s)" % (src.why("blueprint", path) or "no answer"))
+    comps = bp.get("components") or []
+    words = ("sky", "dome", "sun", "moon", "cloud", "atmosphere", "timeofday")
+    names = [bp.get("blueprint") or "", path]
+    for c in comps:
+        names.append(c.get("name") or "")
+        names.append(c.get("mesh") or "")
+        names += [m.get("material") or "" for m in (c.get("materials") or [])]
+    if not any(w in n.lower() for n in names for w in words):
+        sys.exit("this Blueprint does not look like a sky dome, and only sky domes are supported right now")
+    if not comps:
+        sys.exit("this Blueprint has no components to convert")
+    base = name or bp.get("blueprint") or re.split(r"[\\/.]", path.rstrip("/\\"))[-1]
+    folder = os.path.join(out, base)
+    os.makedirs(folder, exist_ok=True)
+    os.makedirs(os.path.join(out, "Editor"), exist_ok=True)
+    os.makedirs(os.path.join(out, "Scripts"), exist_ok=True)
+    sky_materials = []
+    for c in comps:
+        if is_sky_mesh(c):
+            c["sky"] = True
+            for m in (c.get("materials") or []):
+                if m.get("material") and m["material"] not in sky_materials:
+                    sky_materials.append(m["material"])
+    day = bp.pop("day", None)
+    bp["blueprint"] = base
+    if bp.get("dayError"):
+        print("note: the day sequence could not be read (%s), so the prefab has no Time of Day" % bp["dayError"])
+    if day:
+        with open(os.path.join(folder, base + ".day.json"), "w", encoding="utf-8") as fh:
+            json.dump(day, fh, separators=(",", ":"))
+    with open(os.path.join(folder, base + ".blueprint.json"), "w", encoding="utf-8") as fh:
+        json.dump(bp, fh, indent=2)
+    here = scripts or os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity")
+    for fname, sub in (("PorterBlueprintSetup.cs", "Editor"), ("TimeOfDayOverlay.cs", "Editor"), ("TimeOfDayController.cs", "Scripts"), ("PorterSkyRig.cs", "Scripts"), ("PorterSkyLighting.cs", "Scripts"), ("PorterHeightFog.cs", "Scripts"), ("PorterHeightFog.shader", "Scripts")):
+        srcf = os.path.join(here, fname)
+        if not os.path.exists(srcf):
+            sys.exit("the Unity scripts are missing from the app (%s)" % here)
+        shutil.copyfile(srcf, os.path.join(out, sub, fname))
+    materials, meshes = [], []
+    for c in comps:
+        if c.get("mesh") and c["mesh"] not in meshes:
+            meshes.append(c["mesh"])
+        for m in (c.get("materials") or []):
+            if m.get("material") and m["material"] not in materials:
+                materials.append(m["material"])
+    for m in (bp.get("materials") or []):
+        if m and m not in materials:
+            materials.append(m)
+    linked = [b for b in (bp.get("linked") or []) if b]
+    print("%d components, %d meshes, %d materials, %s" % (len(comps), len(meshes), len(materials),
+          "day cycle included" if day else "no day cycle"))
+    for m in materials:
+        print("material: %s" % m)
+    for m in sky_materials:
+        print("skymaterial: %s" % m)
+    for m in meshes:
+        print("mesh: %s" % m)
+    for b in linked:
+        print("linked: %s" % b)
+    if not meshes and not materials:
+        print("note: %s holds no meshes or materials of its own, so nothing was exported besides its day cycle" % base)
+        if linked:
+            print("it points at %d other Blueprint(s), listed above as linked; the sky dome is usually one of those" % len(linked))
+    print("wrote %s.blueprint.json" % base)
+    print("folder: %s" % os.path.abspath(folder))
+
+
 def main():
     if len(sys.argv) == 1:
         interactive()
@@ -4935,6 +5214,10 @@ def main():
     ap.add_argument("--keep-local-x", action="store_true", help="do not mirror object-space X for LocalPosition in the pixel stage (the exported Unity mesh has X mirrored relative to Unreal, so mirroring is the default)")
     ap.add_argument("--niagara", metavar="PATH", help="convert a Niagara particle system (object path) to a Unity particle manifest and setup script")
     ap.add_argument("--seconds", type=float, default=6.0, help="with --niagara: how many seconds of the system to play")
+    ap.add_argument("--scripts", default=None, help="with --blueprint: folder holding the Unity scripts to copy")
+    ap.add_argument("--sky", action="store_true", help="the material is on a sky dome: draw it first, behind everything, without writing depth")
+    ap.add_argument("--expose-globals", action="store_true", help="show the parameter-collection values (the _C_ ones) as material properties instead of fixing them in the shader, so a script can animate them")
+    ap.add_argument("--blueprint", metavar="PATH", help="convert a sky dome Blueprint (object path) to a Unity prefab setup")
     ap.add_argument("--annotate", action="store_true", help="add UE node names as comments in the shader (off by default)")
     ap.add_argument("--no-annotate", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
@@ -4945,6 +5228,9 @@ def main():
         if not paths:
             sys.exit("no .shader files found")
         run_shader_check(paths, fix=not a.no_fix, unity=False if a.no_unity else (a.unity or None))
+        return
+    if a.blueprint:
+        run_blueprint_export(a.bridge, a.blueprint, a.out, a.name, a.scripts)
         return
     if a.niagara:
         import NiagaraPorter
@@ -4958,7 +5244,10 @@ def main():
     ANIMATE_NODES = set(a.animate_node)
     global HOLD_NODES
     HOLD_NODES = set(a.hold_node)
-    global SHOW_ALL_PARAMS, EXTRA_HIDE, EXTRA_SHOW
+    global SHOW_ALL_PARAMS, EXTRA_HIDE, EXTRA_SHOW, SKY_MATERIAL, HARDCODE_GLOBALS
+    SKY_MATERIAL = a.sky
+    if a.expose_globals:
+        HARDCODE_GLOBALS = False
     SHOW_ALL_PARAMS = a.show_all_params
     EXTRA_HIDE = list(a.hide)
     EXTRA_SHOW = list(a.show)

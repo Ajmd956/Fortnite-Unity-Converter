@@ -788,6 +788,430 @@ public sealed class MaterialService
         return day = values;
     }
 
+    /// <summary>
+    /// The season's whole day sequence as keyframes (not one hour): {"sequence", "slots": [{"name", "props": [{"prop", "kind", "ch": [...]}]}], "collections": [...]}.
+    /// A channel is {"none"} or {"d", "t", "v", "m", "a", "l"}: key times in hours (0-24), values, interpolation modes
+    /// (0 linear, 1 constant, 2 cubic) and arrive/leave tangents in value per hour.
+    /// </summary>
+    /// <summary>The always-on day sequences of the blueprint's day sequence collections (no scalability condition), lowest bias first.</summary>
+    async Task<List<string>> CollectionSequencesAsync(List<string> collectionPaths)
+    {
+        var list = new List<(double Bias, string Seq)>();
+        foreach (var cp in collectionPaths)
+        {
+            try
+            {
+                var key = ResolveKey(cp, ".uasset");
+                if (key == null) continue;
+                var pkg = await game.Provider.LoadPackageAsync(key);
+                foreach (var e in pkg.GetExports().Select(x => JObject.Parse(JsonConvert.SerializeObject(x, Ser))))
+                    foreach (var entry in e["Properties"]?["DaySequences"] as JArray ?? new JArray())
+                    {
+                        if ((entry["Conditions"]?["Conditions"] as JArray)?.Count > 0) continue;
+                        if (PathOf(entry["Sequence"]) is { } seq) list.Add(((double?)entry["BiasOffset"] ?? 0, seq));
+                    }
+            }
+            catch (Exception) { /* an unreadable collection falls back to the newest season */ }
+        }
+        return list.OrderBy(x => x.Bias).Select(x => x.Seq).ToList();
+    }
+
+    public Task<JObject> DayCurvesAsync() => Locked(() => DayCurvesCore());
+
+    /// <summary>
+    /// The day curves of the given day sequences, merged in order (a later one overrides an earlier one, like a higher bias in the collection).
+    /// With none given, the newest DS_BR_Ch&lt;n&gt;S&lt;n&gt; stands in.
+    /// </summary>
+    async Task<JObject> DayCurvesCore(List<string> sequences = null)
+    {
+        var keys = new List<string>();
+        foreach (var sp in sequences ?? new List<string>())
+            if (ResolveKey(sp, ".uasset") is { } found && !keys.Contains(found)) keys.Add(found);
+        if (keys.Count == 0)
+        {
+            var newest = game.Provider.Files.Keys
+                .Select(k => (Key: k, M: System.Text.RegularExpressions.Regex.Match(System.IO.Path.GetFileName(k), @"^DS_BR_Ch(\d+)S(\d+)\.uasset$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
+                .Where(x => x.M.Success)
+                .OrderByDescending(x => int.Parse(x.M.Groups[1].Value)).ThenByDescending(x => int.Parse(x.M.Groups[2].Value))
+                .Select(x => x.Key).FirstOrDefault();
+            if (newest == null) throw new KeyNotFoundException("no day sequence (DS_BR_Ch..S..) in the game files");
+            keys.Add(newest);
+        }
+        var collections = new Dictionary<string, Dictionary<string, JObject>>(StringComparer.OrdinalIgnoreCase);
+        var slots = new Dictionary<string, Dictionary<string, JObject>>(StringComparer.OrdinalIgnoreCase);
+        var bindings = new Dictionary<string, Dictionary<string, JObject>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys)
+        {
+            var pkg = await game.Provider.LoadPackageAsync(key);
+            var exports = pkg.GetExports().Select(e => JObject.Parse(JsonConvert.SerializeObject(e, Ser))).ToList();
+            var movie = exports.FirstOrDefault(e => (string)e["Type"] == "MovieScene")?["Properties"];
+            var dayTicks = (double?)movie?["PlaybackRange"]?["Value"]?["UpperBound"]?["Value"]?["Value"] ?? 19200000;
+            JObject Section(JToken r) => ((string)r?["ObjectPath"])?.Split('.').Last() is { } i && int.TryParse(i, out var n) && n >= 0 && n < exports.Count
+                ? exports[n]["Properties"] as JObject : null;
+            foreach (var e in exports)
+            {
+                var p = e["Properties"];
+                Dictionary<string, JObject> target = null;
+                if ((string)e["Type"] == "MovieSceneMaterialParameterCollectionTrack" && ((string)p?["MPC"]?["ObjectName"])?.Split('\'') is { Length: > 1 } mpc)
+                    target = collections.TryGetValue(mpc[1], out var c) ? c : collections[mpc[1]] = new Dictionary<string, JObject>();
+                else if ((string)e["Type"] == "MovieSceneComponentMaterialTrack" && (string)p?["MaterialInfo"]?["MaterialSlotName"] is { } slot)
+                    target = slots.TryGetValue(slot, out var s) ? s : slots[slot] = new Dictionary<string, JObject>();
+                if (target == null) continue;
+                foreach (var r in p["Sections"] ?? new JArray())
+                {
+                    if (Section(r) is not { } sec) continue;
+                    foreach (var sp in (sec["ScalarParameterNamesAndCurves"] ?? sec["ScalarParameterInfosAndCurves"]) ?? new JArray())
+                        if (((string)sp["ParameterName"] ?? (string)sp["ParameterInfo"]?["Name"]) is { } n)
+                            target[n] = new JObject { ["prop"] = n, ["kind"] = "float", ["ch"] = new JArray(CurveOf(sp["ParameterCurve"], dayTicks)) };
+                    foreach (var cp in (sec["ColorParameterNamesAndCurves"] ?? sec["ColorParameterInfosAndCurves"]) ?? new JArray())
+                    {
+                        if (((string)cp["ParameterName"] ?? (string)cp["ParameterInfo"]?["Name"]) is not { } n) continue;
+                        var chans = new[] { CurveOf(cp["RedCurve"], dayTicks), CurveOf(cp["GreenCurve"], dayTicks), CurveOf(cp["BlueCurve"], dayTicks), CurveOf(cp["AlphaCurve"], dayTicks) };
+                        if (chans.All(x => (bool?)x["none"] == true)) continue;
+                        target[n] = new JObject { ["prop"] = n, ["kind"] = "color", ["ch"] = new JArray(chans) };
+                    }
+                }
+            }
+            var possessables = new Dictionary<string, string>();
+            foreach (var ps in movie?["Possessables"] as JArray ?? new JArray())
+                if ((string)ps["Guid"] is { } pg && (string)ps["Name"] is { } pn) possessables[pg] = pn;
+            foreach (var ob in movie?["ObjectBindings"] as JArray ?? new JArray())
+            {
+                if (!possessables.TryGetValue((string)ob["ObjectGuid"] ?? "", out var bindingName)) continue;
+                foreach (var tref in ob["Tracks"] as JArray ?? new JArray())
+                {
+                    if (Section(tref) is not { } trackProps) continue;
+                    var trackType = ((string)tref["ObjectName"])?.Split('\'')[0];
+                    var propName = (string)trackProps["PropertyBinding"]?["PropertyName"];
+                    if (string.IsNullOrEmpty(propName) || (trackType != "MovieSceneFloatTrack" && trackType != "MovieSceneColorTrack")) continue;
+                    foreach (var sr in trackProps["Sections"] ?? new JArray())
+                    {
+                        if (Section(sr) is not { } bsec) continue;
+                        if (!bindings.TryGetValue(bindingName, out var bgroup)) bgroup = bindings[bindingName] = new Dictionary<string, JObject>();
+                        if (trackType == "MovieSceneFloatTrack")
+                            bgroup[propName] = new JObject { ["prop"] = propName, ["kind"] = "float", ["ch"] = new JArray(CurveOf(bsec["FloatCurve"], dayTicks)) };
+                        else
+                        {
+                            var bchans = new[] { CurveOf(bsec["RedCurve"], dayTicks), CurveOf(bsec["GreenCurve"], dayTicks), CurveOf(bsec["BlueCurve"], dayTicks), CurveOf(bsec["AlphaCurve"], dayTicks) };
+                            if (bchans.All(x => (bool?)x["none"] == true)) continue;
+                            bgroup[propName] = new JObject { ["prop"] = propName, ["kind"] = "color", ["ch"] = new JArray(bchans) };
+                        }
+                    }
+                }
+            }
+        }
+        JArray Groups(Dictionary<string, Dictionary<string, JObject>> d) =>
+            new JArray(d.Select(g => new JObject { ["name"] = g.Key, ["props"] = new JArray(g.Value.Values) }));
+        return new JObject
+        {
+            ["sequence"] = string.Join(" + ", keys.Select(k => System.IO.Path.GetFileNameWithoutExtension(k))),
+            ["slots"] = Groups(slots),
+            ["collections"] = Groups(collections),
+            ["bindings"] = Groups(bindings),
+        };
+    }
+
+    static bool IsEnvironmentType(string type) =>
+        type != null && (type.StartsWith("ExponentialHeightFog") || type.StartsWith("SkyAtmosphere") || type.StartsWith("VolumetricCloud") || type.StartsWith("SkyLight") || type == "DirectionalLightComponent");
+
+    static JObject StaticChannel(double v) =>
+        new JObject { ["none"] = false, ["d"] = v, ["t"] = new JArray(), ["v"] = new JArray() };
+
+    static void FlattenStatic(string prefix, JObject o, List<JObject> into, int depth)
+    {
+        foreach (var kv in o.Properties())
+        {
+            var name = prefix + kv.Name;
+            if (kv.Value is JValue jv)
+            {
+                if (jv.Type == JTokenType.Integer || jv.Type == JTokenType.Float)
+                    into.Add(new JObject { ["prop"] = name, ["kind"] = "float", ["ch"] = new JArray(StaticChannel((double)jv)) });
+                else if (jv.Type == JTokenType.Boolean)
+                    into.Add(new JObject { ["prop"] = name, ["kind"] = "float", ["ch"] = new JArray(StaticChannel((bool)jv ? 1.0 : 0.0)) });
+            }
+            else if (kv.Value is JObject child)
+            {
+                if (child["R"] != null && child["G"] != null && child["B"] != null)
+                {
+                    var bytes = child["R"].Type == JTokenType.Integer && child["G"].Type == JTokenType.Integer && child["B"].Type == JTokenType.Integer;
+                    var k = bytes ? 255.0 : 1.0;
+                    into.Add(new JObject
+                    {
+                        ["prop"] = name,
+                        ["kind"] = "color",
+                        ["ch"] = new JArray(StaticChannel(((double?)child["R"] ?? 0) / k), StaticChannel(((double?)child["G"] ?? 0) / k), StaticChannel(((double?)child["B"] ?? 0) / k), StaticChannel(bytes ? ((double?)child["A"] ?? 255) / 255.0 : (double?)child["A"] ?? 1)),
+                    });
+                }
+                else if (depth < 2)
+                    FlattenStatic(name + ".", child, into, depth + 1);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fills the day data's bindings with the environment components' own stored values (fog density, scale heights, atmosphere scattering, sun
+    /// colour, second fog layer ...), under the component's name. A value the day sequence animates stays the animated one.
+    /// </summary>
+    static void MergeStaticProps(JObject result, Dictionary<string, JObject> staticProps)
+    {
+        if (staticProps.Count == 0) return;
+        if (result["day"] is not JObject day) { day = new JObject { ["sequence"] = "", ["slots"] = new JArray(), ["collections"] = new JArray(), ["bindings"] = new JArray() }; result["day"] = day; }
+        var groups = day["bindings"] as JArray ?? (JArray)(day["bindings"] = new JArray());
+        foreach (var comp in staticProps)
+        {
+            var entries = new List<JObject>();
+            FlattenStatic("", comp.Value, entries, 0);
+            var group = groups.OfType<JObject>().FirstOrDefault(g => string.Equals((string)g["name"], comp.Key, StringComparison.OrdinalIgnoreCase));
+            if (group == null) { group = new JObject { ["name"] = comp.Key, ["props"] = new JArray() }; groups.Add(group); }
+            var props = group["props"] as JArray ?? (JArray)(group["props"] = new JArray());
+            var have = new HashSet<string>(props.OfType<JObject>().Select(x => (string)x["prop"]), StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries) if (have.Add((string)entry["prop"])) props.Add(entry);
+        }
+    }
+
+    static double[] Triple(JToken v, string a, string b, string c, double def) =>
+        v is JObject ? new[] { (double?)v[a] ?? def, (double?)v[b] ?? def, (double?)v[c] ?? def } : null;
+
+    /// <summary>The material slots of a mesh asset: [(slot name, material object path)].</summary>
+    async Task<List<(string Slot, string Material)>> MeshMaterialsAsync(string meshPath)
+    {
+        var list = new List<(string, string)>();
+        try
+        {
+            var obj = await MainExportAsync(meshPath);
+            var arr = (obj["Properties"]?["StaticMaterials"] ?? obj["Properties"]?["SkeletalMaterials"] ?? obj["Properties"]?["Materials"]) as JArray ?? new JArray();
+            foreach (var m in arr)
+            {
+                var mi = m is JObject ? m["MaterialInterface"] : m;
+                list.Add(((m is JObject ? (string)m["MaterialSlotName"] : null) ?? "", PathOf(mi)));
+            }
+        }
+        catch (Exception) { /* a mesh that won't load keeps its own materials in Unity */ }
+        return list;
+    }
+
+    /// <summary>
+    /// A Blueprint's components (its construction script's tree, native mesh components, and its parent Blueprints' components) with each mesh's
+    /// materials, the meshes and materials its data points at, the Blueprints it links to, plus the season's day curves:
+    /// {"blueprint", "source", "components": [...], "materials": [...], "linked": [...], "day": {...}}.
+    /// A component is {"name", "type", "parent", "loc", "rot", "scale", "mesh", "materials": [{"slot", "material"}], "intensity", "color", "inferred"}
+    /// with UE units and the rotation as pitch, yaw, roll.
+    /// </summary>
+    public Task<JObject> BlueprintAsync(string path) => Locked(async () =>
+    {
+        var components = new List<JObject>();
+        var names = new HashSet<string>();
+        var refMeshes = new List<string>();
+        var refMaterials = new List<string>();
+        var refBlueprints = new List<string>();
+        var native = new List<(string Name, string Type, string Parent, JObject Props)>();
+        var staticProps = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
+        var current = path;
+        var guard = 0;
+        var collectionPaths = new List<string>();
+
+        async Task<JObject> Build(string variable, string type, string parent, JObject tp)
+        {
+            var comp = new JObject
+            {
+                ["name"] = variable,
+                ["type"] = type,
+                ["parent"] = parent ?? "",
+                ["loc"] = tp["RelativeLocation"] is { } l ? new JArray(Triple(l, "X", "Y", "Z", 0)) : null,
+                ["rot"] = tp["RelativeRotation"] is { } r ? new JArray(Triple(r, "Pitch", "Yaw", "Roll", 0)) : null,
+                ["scale"] = tp["RelativeScale3D"] is { } sc ? new JArray(Triple(sc, "X", "Y", "Z", 1)) : null,
+            };
+            if (IsEnvironmentType(type))
+            {
+                if (!staticProps.TryGetValue(variable, out var merged)) merged = staticProps[variable] = new JObject();
+                foreach (var kv in tp.Properties()) if (merged[kv.Name] == null) merged[kv.Name] = kv.Value.DeepClone();
+            }
+            var mesh = PathOf(tp["StaticMesh"]) ?? PathOf(tp["SkeletalMesh"]) ?? PathOf(tp["SkinnedAsset"]);
+            if (!string.IsNullOrEmpty(mesh))
+            {
+                comp["mesh"] = mesh;
+                var slots = await MeshMaterialsAsync(mesh);
+                var over = tp["OverrideMaterials"] as JArray ?? new JArray();
+                var count = Math.Max(slots.Count, over.Count);
+                var mats = new JArray();
+                for (var i = 0; i < count; i++)
+                {
+                    var material = i < over.Count ? PathOf(over[i]) : null;
+                    if (string.IsNullOrEmpty(material) && i < slots.Count) material = slots[i].Material;
+                    mats.Add(new JObject { ["slot"] = i < slots.Count ? slots[i].Slot : "", ["material"] = material });
+                }
+                comp["materials"] = mats;
+            }
+            if (tp["Intensity"] != null) comp["intensity"] = (double?)tp["Intensity"];
+            if (tp["LightColor"] is JObject lc)
+                comp["color"] = new JArray(Triple(lc, "R", "G", "B", 255).Select(x => x / 255.0));
+            return comp;
+        }
+
+        while (!string.IsNullOrEmpty(current) && guard++ < 6)
+        {
+            var key = ResolveKey(current, ".uasset");
+            if (key == null)
+            {
+                if (guard == 1) throw new FileNotFoundException("No package for " + current);
+                break;
+            }
+            var pkg = await game.Provider.LoadPackageAsync(key);
+            var exports = pkg.GetExports().Select(e => JObject.Parse(JsonConvert.SerializeObject(e, Ser))).ToList();
+            JObject Ref(JToken r)
+            {
+                if (r is not JObject) return null;
+                var op = PathOf(r);
+                if (op != null && int.TryParse(op.Split('.').Last(), out var n) && n >= 0 && n < exports.Count) return exports[n];
+                var on = ObjName(r)?.Split('\'');
+                var nm = on is { Length: > 1 } ? on[1] : null;
+                return nm == null ? null : exports.FirstOrDefault(x => (string)x["Name"] == nm);
+            }
+            if (guard == 1 && !exports.Any(e => (string)e["Type"] == "BlueprintGeneratedClass"))
+                throw new InvalidOperationException(System.IO.Path.GetFileNameWithoutExtension(key) + " is not a Blueprint (it holds: " + string.Join(", ", exports.Select(e => (string)e["Type"]).Distinct().Take(6)) + ")");
+            foreach (var node in exports.Where(e => (string)e["Type"] == "SCS_Node"))
+            {
+                var np = node["Properties"];
+                if (np is not JObject) continue;
+                var template = Ref(np["ComponentTemplate"]);
+                var templateName = (string)template?["Name"];
+                if (templateName != null && templateName.EndsWith("_GEN_VARIABLE")) templateName = templateName[..^"_GEN_VARIABLE".Length];
+                var variable = (string)np?["InternalVariableName"] ?? (string)np?["VariableName"] ?? templateName ?? "Component";
+                if (!names.Add(variable)) continue;
+                var type = (string)template?["Type"] ?? ((string)np?["ComponentClass"]?["ObjectName"])?.Split('\'').FirstOrDefault() ?? "SceneComponent";
+                components.Add(await Build(variable, type, (string)np?["ParentComponentOrVariableName"], template?["Properties"] as JObject ?? new JObject()));
+            }
+            foreach (var e in exports)
+            {
+                var type = (string)e["Type"] ?? "";
+                if (!(type.EndsWith("MeshComponent") || type.EndsWith("LightComponent") || IsEnvironmentType(type)) || e["Properties"] is not JObject tp) continue;
+                var variable = (string)e["Name"] ?? type;
+                if (variable.EndsWith("_GEN_VARIABLE")) variable = variable[..^"_GEN_VARIABLE".Length];
+                var attach = ObjName(tp["AttachParent"])?.Split('\'');
+                var parent = attach is { Length: > 1 } ? attach[1].Split(':').Last() : "";
+                native.Add((variable, type, parent, tp));
+            }
+            foreach (var e in exports)
+            {
+                if (e["Properties"] == null) continue;
+                CollectAssetRefs(e["Properties"], (cls, op) =>
+                {
+                    if (cls == "StaticMesh" || cls == "SkeletalMesh") { if (!refMeshes.Contains(op)) refMeshes.Add(op); }
+                    else if (cls == "Material" || cls == "MaterialInstanceConstant") { if (!refMaterials.Contains(op)) refMaterials.Add(op); }
+                    else if (cls == "BlueprintGeneratedClass") { if (!refBlueprints.Contains(op)) refBlueprints.Add(op); }
+                });
+            }
+            if (collectionPaths.Count == 0)
+                foreach (var d in exports.Where(e => ((string)e["Name"] ?? "").StartsWith("Default__")))
+                    if (d["Properties"]?["DaySequenceCollections"] is JArray cols)
+                        foreach (var col in cols) if (PathOf(col) is { } cp) collectionPaths.Add(cp);
+            var cdo = exports.FirstOrDefault(e => (string)e["Type"] == "BlueprintGeneratedClass");
+            var super = (string)cdo?["Super"]?["ObjectPath"] ?? (string)cdo?["SuperStruct"]?["ObjectPath"];
+            current = !string.IsNullOrEmpty(super) && !super.StartsWith("/Script/") ? super : null;
+        }
+
+        var ownKey = ResolveKey(path, ".uasset");
+        var ownName = System.IO.Path.GetFileNameWithoutExtension(ownKey ?? path);
+        var found = components.Any(c => c["mesh"] != null);
+        foreach (var n in native)
+        {
+            if (names.Add(n.Name)) { components.Add(await Build(n.Name, n.Type, n.Parent, n.Props)); continue; }
+            // A child Blueprint's own entry for an inherited component only lists what it overrides (the sky dome's mesh and material, say).
+            // Everything it leaves out comes from the parent's entry (the parent scales the sky dome 300x), so fill the gaps from it.
+            var have = components.FirstOrDefault(c => (string)c["name"] == n.Name);
+            if (have == null) continue;
+            var inherited = await Build(n.Name, n.Type, n.Parent, n.Props);
+            foreach (var field in new[] { "loc", "rot", "scale", "intensity", "color" })
+            {
+                var mine = have[field];
+                var theirs = inherited[field];
+                if ((mine == null || mine.Type == JTokenType.Null) && theirs != null && theirs.Type != JTokenType.Null)
+                    have[field] = theirs.DeepClone();
+            }
+        }
+        found = components.Any(c => c["mesh"] != null);
+        var known = new HashSet<string>(components.Where(c => c["mesh"] != null).Select(c => (string)c["mesh"]), StringComparer.OrdinalIgnoreCase);
+        foreach (var mesh in found ? Enumerable.Empty<string>() : refMeshes.Take(20))
+        {
+            if (!known.Add(mesh)) continue;
+            var slots = await MeshMaterialsAsync(mesh);
+            var comp = new JObject
+            {
+                ["name"] = mesh.Split('/').Last().Split('.')[0],
+                ["type"] = "StaticMeshComponent",
+                ["parent"] = "",
+                ["loc"] = null,
+                ["rot"] = null,
+                ["scale"] = null,
+                ["mesh"] = mesh,
+                ["inferred"] = true,
+                ["materials"] = new JArray(slots.Select(s => new JObject { ["slot"] = s.Slot, ["material"] = s.Material })),
+            };
+            if (names.Add((string)comp["name"])) components.Add(comp);
+        }
+
+        var usedMaterials = new HashSet<string>(components.SelectMany(c => (c["materials"] as JArray ?? new JArray()).Select(m => (string)m["material"])).Where(m => !string.IsNullOrEmpty(m)), StringComparer.OrdinalIgnoreCase);
+        var result = new JObject
+        {
+            ["blueprint"] = ownName,
+            ["source"] = path,
+            ["components"] = new JArray(components),
+            ["materials"] = new JArray(found ? Enumerable.Empty<string>() : refMaterials.Where(m => !usedMaterials.Contains(m)).Take(40)),
+            ["linked"] = new JArray(refBlueprints.Where(b => !string.Equals(b.Split('.').First(), path.Split('.').First(), StringComparison.OrdinalIgnoreCase)).Take(12)),
+        };
+        try { result["day"] = await DayCurvesCore(await CollectionSequencesAsync(collectionPaths)); }
+        catch (Exception e) { result["dayError"] = e.Message; }
+        try { MergeStaticProps(result, staticProps); }
+        catch (Exception e) { result["staticPropsError"] = e.Message; }
+        return result;
+    });
+
+    static string PathOf(JToken t) => t is JObject o && o["ObjectPath"] is JValue { Value: string v } ? v : null;
+
+    static string ObjName(JToken t) => t is JObject o && o["ObjectName"] is JValue { Value: string v } ? v : null;
+
+    static void CollectAssetRefs(JToken t, Action<string, string> add)
+    {
+        if (t is JObject o)
+        {
+            var op = o["ObjectPath"] is JValue { Value: string ps } ? ps : null;
+            var on = o["ObjectName"] is JValue { Value: string ns } ? ns : null;
+            if (!string.IsNullOrEmpty(op) && on != null && !op.StartsWith("/Script/") && op.StartsWith("/"))
+            {
+                var q = on.IndexOf('\'');
+                var last = op.Split('.').Last();
+                if (q > 0 && !int.TryParse(last, out _)) add(on[..q], op);
+            }
+            foreach (var p in o.Properties()) CollectAssetRefs(p.Value, add);
+        }
+        else if (t is JArray a)
+            foreach (var x in a) CollectAssetRefs(x, add);
+    }
+
+    /// <summary>A movie scene float channel as keyframes in hours; {"none": true} when it has no keys and no default.</summary>
+    static JObject CurveOf(JToken ch, double dayTicks)
+    {
+        var o = new JObject();
+        if (ch is not JObject) { o["none"] = true; return o; }
+        var times = (ch["Times"] as JArray ?? new JArray()).Select(x => (double?)x["Value"] ?? 0).ToArray();
+        var keys = ch["Values"] as JArray ?? new JArray();
+        var def = (bool?)ch["bHasDefaultValue"] == true ? (double?)ch["DefaultValue"] : null;
+        var n = Math.Min(times.Length, keys.Count);
+        if (n == 0)
+        {
+            if (def == null) o["none"] = true; else o["d"] = def.Value;
+            return o;
+        }
+        var perHour = dayTicks / 24.0;
+        o["d"] = def ?? ((double?)keys[0]["Value"] ?? 0);
+        o["t"] = new JArray(times.Take(n).Select(x => Math.Round(x / perHour, 6)));
+        o["v"] = new JArray(Enumerable.Range(0, n).Select(i => (double?)keys[i]["Value"] ?? 0));
+        o["m"] = new JArray(Enumerable.Range(0, n).Select(i => (int?)keys[i]["InterpMode"] ?? 2));
+        o["a"] = new JArray(Enumerable.Range(0, n).Select(i => Math.Round(((double?)keys[i]["Tangent"]?["ArriveTangent"] ?? 0) * perHour, 6)));
+        o["l"] = new JArray(Enumerable.Range(0, n).Select(i => Math.Round(((double?)keys[i]["Tangent"]?["LeaveTangent"] ?? 0) * perHour, 6)));
+        return o;
+    }
+
     /// <summary>A movie scene float channel at tick t (null if it has no keys and no default).</summary>
     static double? Channel(JToken ch, double t)
     {

@@ -15,6 +15,7 @@ const root = path.join(app.getPath('documents'), 'Fortnite Unity Converter')
 const conversionsDir = path.join(root, 'Shader Conversions')
 const oldConversionsDir = path.join(root, 'Fortnite Conversions')
 const particlesDir = path.join(root, 'Particle Conversions')
+const blueprintsDir = path.join(root, 'Blueprint Conversions')
 const cacheDir = path.join(root, 'Cache')
 const exportDefault = path.join(root, 'Exports')
 const settingsFile = path.join(root, 'settings.json')
@@ -57,6 +58,7 @@ function ensureFolders() {
   } catch (e) {}
   fs.mkdirSync(conversionsDir, { recursive: true })
   fs.mkdirSync(particlesDir, { recursive: true })
+  fs.mkdirSync(blueprintsDir, { recursive: true })
   fs.mkdirSync(cacheDir, { recursive: true })
 }
 
@@ -884,6 +886,7 @@ ipcMain.handle('app:info', () => ({
   root,
   conversions: conversionsDir,
   particles: particlesDir,
+  blueprints: blueprintsDir,
   cache: cacheDir,
   exports: exportDirNow(),
   packaged: app.isPackaged
@@ -1254,7 +1257,7 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
     send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
     if (isNiagara(materials[i])) {
       attempted--
-      send('engine:log', 'skipped: this is a Niagara system. Use the Niagara Converter tab for it.\n')
+      send('engine:log', 'skipped: this is a Niagara system. Use the Particle Converter button in the Converter tab for it.\n')
       continue
     }
     await convertMaterial(materials[i], payload.name && materials.length === 1 ? payload.name : '', conversionsDir)
@@ -1303,7 +1306,7 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
     send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
     if (!isNiagara(materials[i])) {
       attempted--
-      send('engine:log', 'skipped: this is not a Niagara system (NS_...). Use the Shader Converter tab for materials.\n')
+      send('engine:log', 'skipped: this is not a Niagara system (NS_...). Use the Shader Converter button in the Converter tab for materials.\n')
       continue
     }
     const nargs = ['--bridge', settings.bridge, '--niagara', materials[i], '--out', particlesDir]
@@ -1379,6 +1382,112 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
   return { ok: true, converted, total: attempted }
 })
 
+
+ipcMain.handle('blueprint:convert', async (_e, payload) => {
+  if (busy) return { ok: false, error: 'busy' }
+  const paths = (payload.paths || []).map(m => m.trim()).filter(Boolean)
+  if (!paths.length) return { ok: false, error: 'no blueprints' }
+  const fail = await beginRun('Converting Blueprint')
+  if (fail) return fail
+  const scripts = app.isPackaged ? path.join(process.resourcesPath, 'engine', 'unity') : path.join(__dirname, 'engine', 'unity')
+  let converted = 0
+  const made = []
+  const kinds = []
+  const queue = paths.slice()
+  const followed = new Set(paths.map(x => x.split('.')[0].toLowerCase()))
+  for (let i = 0; i < queue.length; i++) {
+    if (stopped) break
+    send('engine:log', '\n[' + (i + 1) + '/' + queue.length + '] ' + queue[i] + (i >= paths.length ? ' (linked from another Blueprint)' : '') + '\n')
+    const args = ['--bridge', settings.bridge, '--blueprint', queue[i], '--out', blueprintsDir, '--scripts', scripts]
+    if (payload.name && i === 0 && paths.length === 1) args.push('--name', payload.name)
+    const res = await runEngine(args)
+    if (i < paths.length && /^note: .* holds no meshes or materials/m.test(res.output)) {
+      for (const lm of res.output.matchAll(/^linked: (.+)$/gm)) {
+        const ref = lm[1].trim()
+        const pk = ref.split('.')[0].toLowerCase()
+        if (!ref || followed.has(pk) || queue.length >= paths.length + 6) continue
+        followed.add(pk)
+        queue.push(ref.replace(/_C$/, ''))
+      }
+    }
+    const nm = res.output.match(/wrote (.+?)\.blueprint\.json/)
+    if (!nm) {
+      const kind = classifyFailure(res.output)
+      if (kind) kinds.push(kind)
+      continue
+    }
+    const bdir = path.join(blueprintsDir, nm[1])
+    if (!fs.existsSync(path.join(bdir, nm[1] + '.blueprint.json'))) continue
+    converted++
+    made.push({ name: nm[1], shader: path.join(bdir, nm[1] + '.blueprint.json'), dir: bdir, kind: 'blueprint' })
+    const refs = []
+    for (const mm of res.output.matchAll(/^material: (.+)$/gm)) {
+      const ref = mm[1].trim()
+      if (ref && !refs.includes(ref)) refs.push(ref)
+    }
+    const skyRefs = []
+    for (const mm of res.output.matchAll(/^skymaterial: (.+)$/gm)) skyRefs.push(mm[1].trim())
+    const shadersDir = path.join(bdir, 'Shaders')
+    fs.mkdirSync(shadersDir, { recursive: true })
+    for (const ref of refs) {
+      if (stopped) break
+      const short = ref.slice(ref.lastIndexOf('/') + 1).split('.')[0]
+      const isSkyShader = skyRefs.includes(ref) || /sky|sundandmoon|sunandmoon|moon|bakedclouds|cloud/i.test(short)
+      if (!isSkyShader && fs.existsSync(path.join(shadersDir, short, short + '.shader'))) continue
+      send('engine:log', '\nmaterial used by ' + nm[1] + ': ' + ref + '\n')
+      // game-wide values (the _C_ ones) stay editable properties so the day cycle can animate them; a sky dome's material draws behind everything
+      const margs = ['--bridge', settings.bridge, '--material', ref.replace(/\.\d+$/, '.' + short), '--out', shadersDir, '--cache', cacheDir, '--expose-globals']
+      if (skyRefs.includes(ref)) margs.push('--sky')
+      const mres = await runEngine(margs)
+      if (!/wrote (.+?)\.shader/.test(mres.output)) {
+        const kind = classifyFailure(mres.output)
+        if (kind) kinds.push(kind)
+        send('engine:log', 'material not converted: ' + short + '\n')
+      }
+    }
+    const meshes = []
+    for (const mm of res.output.matchAll(/^mesh: (.+)$/gm)) {
+      const ref = mm[1].trim()
+      if (ref && !meshes.includes(ref)) meshes.push(ref)
+    }
+    if (meshes.length && !stopped) {
+      if (await startTypeServer()) {
+        for (const ref of meshes) {
+          if (stopped) break
+          send('engine:log', '\nexporting mesh used by ' + nm[1] + ': ' + ref + '\n')
+          const r = await askExport('modelexport', packagePath(ref), path.join(bdir, 'Meshes'))
+          if (r && r.ok) {
+            let file = r.file
+            if (/\.glb$/i.test(file)) {
+              try {
+                const fbx = file.replace(/\.glb$/i, '.fbx')
+                glbToFbx(file, fbx)
+                fs.rmSync(file, { force: true })
+                file = fbx
+              } catch (err) {
+                send('engine:log', 'fbx conversion failed, keeping the glb: ' + (err && err.message ? err.message : err) + '\n')
+              }
+            }
+            send('engine:log', 'mesh exported: ' + file + '\n')
+          } else {
+            send('engine:log', 'mesh not exported: ' + ((r && r.error) || 'unknown error') + '\n')
+          }
+        }
+      } else {
+        send('engine:log', '\nmeshes were not exported because the file helper is not running\n')
+      }
+    }
+  }
+  busy = false
+  send('engine:state', { running: false, label: '' })
+  if (made.length) send('convert:done', { shaders: made, total: queue.length })
+  send('engine:log', '\nfinished: ' + converted + ' of ' + queue.length + ' converted\n' + (converted ? 'Copy the Blueprint Conversions folder into your Unity project\'s Assets. Unity builds the prefab by itself.\n' : ''))
+  if (!converted && !stopped) {
+    const notice = noticeFor(kinds)
+    if (notice) send('app:notice', notice)
+  }
+  return { ok: true, converted, total: paths.length }
+})
 
 ipcMain.handle('engine:check', async (_e, payload) => {
   if (busy) return { ok: false, error: 'busy' }
@@ -2256,6 +2365,17 @@ async function dirSize(dir) {
 }
 
 ipcMain.handle('preview:cacheSize', () => dirSize(previewDir))
+
+ipcMain.handle('cache:convSize', () => dirSize(cacheDir))
+
+ipcMain.handle('cache:convClear', () => {
+  if (busy) return { ok: false, error: 'busy' }
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true })
+    for (const name of fs.readdirSync(cacheDir)) fs.rmSync(path.join(cacheDir, name), { recursive: true, force: true })
+  } catch (e) { return { ok: false } }
+  return { ok: true }
+})
 
 ipcMain.handle('preview:clearCache', () => {
   try { fs.rmSync(previewDir, { recursive: true, force: true }) } catch (e) { return { ok: false } }

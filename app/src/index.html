@@ -436,7 +436,13 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .logbox.fade{animation:pageIn .5s cubic-bezier(.1,.9,.2,1) both;}
 .notrans .logbox.fade{animation:none!important;}
 .logbox{display:none;flex:1 1 0;min-height:140px;flex-direction:column;background:linear-gradient(var(--card),var(--card2));box-shadow:var(--card-shadow);border-radius:16px;overflow:hidden;margin:0 16px 16px;}
-.wrap[data-tab="convert"] .logbox,.wrap[data-tab="niagara"] .logbox,.wrap[data-tab="check"] .logbox{display:flex;}
+.wrap[data-tab="converter"] .logbox,.wrap[data-tab="check"] .logbox{display:flex;}
+.cv-tabs{display:flex;gap:4px;padding:0 0 12px;}
+.cv-tab.nav{width:auto;margin-bottom:0;padding:0 14px 0 10px;}
+.cv-pane{display:none;}
+.cv-pane.active{display:block;}
+.done-item .path{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.done-item .nm{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
 .loghead{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border-hi);}
 .loghead .label{flex:1;}
 .state{font-size:11px;color:var(--cyan);font-weight:700;letter-spacing:.06em;}
@@ -627,8 +633,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <div class="sec gate">Export<span class="ld"><i></i><i></i><i></i></span></div>
     <button class="tab nav gate" data-tab="files"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span>Files</span></button>
     <div class="sec">Tools</div>
-    <button class="tab nav" data-tab="convert"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Shader Converter</span></button>
-    <button class="tab nav" data-tab="niagara"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Niagara Converter</span></button>
+    <button class="tab nav" data-tab="converter"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/></svg><span>Converter</span></button>
     <button class="tab nav" data-tab="shaders"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L6.04,7.5L12,10.85L17.96,7.5L12,4.15Z"/></svg><span>My Shaders</span></button>
     <button class="tab nav" data-tab="check"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/></svg><span>Check Shaders</span></button>
     <div class="sec">Settings</div>
@@ -657,9 +662,15 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       </div>
     </div>
 
-    <div class="page" id="page-convert">
+    <div class="page" id="page-converter">
+      <div class="cv-tabs">
+        <button class="cv-tab nav active" data-cv="shader"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Shader Converter</span></button>
+        <button class="cv-tab nav" data-cv="particle"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M7.5,5.6L5,7L6.4,4.5L5,2L7.5,3.4L10,2L8.6,4.5L10,7L7.5,5.6M19.5,15.4L22,14L20.6,16.5L22,19L19.5,17.6L17,19L18.4,16.5L17,14L19.5,15.4M22,2L20.6,4.5L22,7L19.5,5.6L17,7L18.4,4.5L17,2L19.5,3.4L22,2M13.34,12.78L15.78,10.34L13.66,8.22L11.22,10.66L13.34,12.78M14.37,7.29L16.71,9.63C17.1,10 17.1,10.65 16.71,11.04L5.04,22.71C4.65,23.1 4,23.1 3.63,22.71L1.29,20.37C0.9,20 0.9,19.35 1.29,18.96L12.96,7.29C13.35,6.9 14,6.9 14.37,7.29Z"/></svg><span>Particle Converter</span></button>
+        <button class="cv-tab nav" data-cv="blueprint"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/></svg><span>Blueprint Converter</span></button>
+      </div>
+      <div class="cv-pane active" id="cv-shader">
       <div class="row-card col">
-        <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any material path. Niagara systems go in the Niagara Converter tab.</div></div>
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any material path. Niagara systems go in the Particle Converter button above.</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteMaterials">Paste</button><button class="btn sm" id="clearMaterials">Clear</button></div></div>
         <textarea id="materials" spellcheck="false" placeholder="/Game/.../MI_Example.MI_Example"></textarea>
         <div class="row">
@@ -668,9 +679,8 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         </div>
       </div>
       <div class="hint" style="padding:0 4px">The converter starts its own API in the background. The first start reads the game files and can take a minute. Each converted shader is saved in its own folder inside Shader Conversions, and everything it pulled in is filed under Cache with the same name.</div>
-    </div>
-
-    <div class="page" id="page-niagara">
+      </div>
+      <div class="cv-pane" id="cv-particle">
       <div class="row-card col">
         <div class="rc-head"><div class="rc-text"><div class="rc-title">Niagara System Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any Niagara system path (NS_...).</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteNiagara">Paste</button><button class="btn sm" id="clearNiagara">Clear</button></div></div>
@@ -681,6 +691,19 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         </div>
       </div>
       <div class="hint" style="padding:0 4px">Niagara systems are converted on their own, separate from the Shader Converter. Each one is saved in its own folder inside Particle Conversions, with the materials and meshes it uses.</div>
+      </div>
+      <div class="cv-pane" id="cv-blueprint">
+      <div class="row-card col">
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Blueprint Paths</div><div class="rc-desc">Sky dome Blueprints only, for now. One per line. Copy them from the Files tab, or paste any Blueprint path (BP_...).</div></div>
+          <div class="rc-ctl"><button class="btn sm" id="pasteBlueprint">Paste</button><button class="btn sm" id="clearBlueprint">Clear</button><button class="btn sm" id="openBlueprints">Open folder</button></div></div>
+        <textarea id="blueprintPaths" spellcheck="false" placeholder="/Game/.../BP_Example.BP_Example"></textarea>
+        <div class="row">
+          <input type="text" id="blueprintName" class="grow" spellcheck="false" placeholder="Name (optional, only used when converting one Blueprint)">
+          <button class="btn primary" id="blueprintBtn">Convert</button>
+        </div>
+      </div>
+      <div class="hint" style="padding:0 4px">Each Blueprint is saved in its own folder inside Blueprint Conversions, with its shaders, textures, meshes and day cycle. Copy the whole Blueprint Conversions folder into your Unity project's Assets and Unity builds the prefab by itself.</div>
+      </div>
     </div>
 
     <div class="page split" id="page-export">
@@ -750,7 +773,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div id="fileMenuExt">Copy Path With Extension</div>
         <div id="fileMenuNoExt">Copy Path Without Extension</div>
         <div id="fileMenuConv"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg>Convert</div>
-        <div id="fileMenuAdd"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21L23 12L2 3V10L17 12L2 14V21Z"/></svg>Add to Convert</div>
+        <div id="fileMenuAdd"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21L23 12L2 3V10L17 12L2 14V21Z"/></svg><span id="fileMenuAddLbl">Add to Convert</span></div>
       </div>
     </div>
 
@@ -837,6 +860,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="sec-head">Locations</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Shader Conversions Folder</div><div class="path-line" id="pathConversions"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openConv2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Conversions Folder</div><div class="path-line" id="pathParticles"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openParticles" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Conversion Cache</div><div class="rc-desc"><span id="convCacheSize">Calculating...</span></div></div><div class="rc-ctl"><button class="btn sm" id="convCacheClear">Clear cache</button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Cache Folder</div><div class="path-line" id="pathCache"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openCache2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
       </div>
     </div>
@@ -1347,11 +1371,13 @@ function showDone(data) {
   const n = data.shaders.length
   const parts = data.shaders.filter(s => s.kind === 'particles').length
   const shaders = n - parts
-  $('doneTitle').textContent = parts && shaders ? shaders + (shaders === 1 ? ' shader' : ' shaders') + ' and ' + parts + (parts === 1 ? ' particle system' : ' particle systems') + ' converted'
+  const bps = data.shaders.filter(s => s.kind === 'blueprint').length
+  $('doneTitle').textContent = bps && bps === n ? (bps === 1 ? 'Blueprint converted' : bps + ' Blueprints converted') : parts && shaders ? shaders + (shaders === 1 ? ' shader' : ' shaders') + ' and ' + parts + (parts === 1 ? ' particle system' : ' particle systems') + ' converted'
     : parts ? (parts === 1 ? 'Particle system converted' : parts + ' particle systems converted')
     : n === 1 ? 'Shader converted' : n + ' shaders converted'
   $('doneSub').textContent = n < data.total
     ? n + ' of ' + data.total + ' converted. The rest are explained in the output panel.'
+    : bps ? 'Copy the Blueprint Conversions folder into your Unity project\'s Assets and Unity builds the prefab by itself.'
     : parts ? 'Drag the Particle Conversions folder into your Unity Assets folder and the prefab is built for you.'
     : 'Open shader takes you to the shader file, with its Textures folder right beside it.'
   const list = $('doneList')
@@ -1359,15 +1385,22 @@ function showDone(data) {
   data.shaders.forEach(s => {
     const row = document.createElement('div')
     row.className = 'done-item'
+    const nm = document.createElement('div')
+    nm.className = 'nm'
     const name = document.createElement('div')
     name.className = 'name'
     name.textContent = s.name
     name.title = s.shader
+    const where = document.createElement('div')
+    where.className = 'path'
+    where.textContent = s.dir || s.shader
+    where.title = s.dir || s.shader
+    nm.append(name, where)
     const btn = document.createElement('button')
     btn.className = 'btn sm primary'
-    btn.textContent = s.kind === 'particles' ? 'Open particles' : 'Open shader'
+    btn.textContent = s.kind === 'particles' ? 'Open particles' : s.kind === 'blueprint' ? 'Open Blueprint' : 'Open shader'
     btn.onclick = () => window.api.show(s.shader)
-    row.append(name, btn)
+    row.append(nm, btn)
     list.appendChild(row)
   })
   $('doneOverlay').classList.add('open')
@@ -1394,6 +1427,13 @@ function swapActive(items, isTarget, immediate) {
   show()
 }
 
+function showConverterSub(which) {
+  showTab('converter')
+  document.querySelectorAll('.cv-tab').forEach(t => t.classList.toggle('active', t.dataset.cv === which))
+  document.querySelectorAll('.cv-pane').forEach(p => p.classList.toggle('active', p.id === 'cv-' + which))
+}
+document.querySelectorAll('.cv-tab').forEach(t => t.onclick = () => showConverterSub(t.dataset.cv))
+
 function showTab(name) {
   const prev = $('wrap').dataset.tab
   document.body.dataset.tab = name
@@ -1407,7 +1447,7 @@ function showTab(name) {
   const lb = document.querySelector('.logbox')
   if (lb) {
     lb.classList.remove('fade')
-    if (prev !== name && (name === 'convert' || name === 'niagara' || name === 'check') && transitionsOn()) { void lb.offsetWidth; lb.classList.add('fade') }
+    if (prev !== name && (name === 'converter' || name === 'check') && transitionsOn()) { void lb.offsetWidth; lb.classList.add('fade') }
   }
   if (name === 'shaders') refreshShaders()
   if (name === 'files') openFiles()
@@ -1516,6 +1556,7 @@ function fillSettings() {
   buildAudioDD()
   buildFilesDD()
   refreshCacheSize()
+  refreshConvCacheSize()
   applyGridSize()
   syncToggleLabels()
 }
@@ -1586,9 +1627,13 @@ $('openConv2').onclick = () => window.api.open(info.conversions)
 $('openParticles').onclick = () => window.api.open(info.particles)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
-const NEWS_DATE = 'Oct 10'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Faster downloads and a smoother app', date: NEWS_DATE }
+const NEWS_DATE = 'Oct 17'
+const NEWS_FEATURED = { title: 'Latest release', sub: 'One Converter tab and a better sky dome', date: NEWS_DATE }
 const NEWS = [
+  { tag: 'Converter', title: 'One Converter tab', sub: 'Shader, Particle and Blueprint in one place.', body: 'The three converters now live in a single Converter tab. Pick Shader Converter, Particle Converter or Blueprint Converter with the buttons at the top. Sending files from the Files tab opens the right one for you.' },
+  { tag: 'Converter', title: 'Finished popups', sub: 'See where your files went.', body: 'When a conversion finishes, a popup now shows the folder each result was saved in, with a button to open it. This now works for Blueprints too, not only shaders and particles.' },
+  { tag: 'Sky Dome', title: 'Better sky and clouds', sub: 'Clouds keep their colour through the day.', body: 'Sky dome clouds now use a lower default exposure so they keep their colour as the time of day changes instead of washing out to white, and characters pick up less of the sky tint. Reconvert your sky Blueprint to get the new shaders.' },
+  { tag: 'Settings', title: 'Clear cache', sub: 'Free up space in one click.', body: 'App Settings has a new Conversion Cache section that shows how much space the cache uses and a Clear cache button. It only clears the cache, your converted shaders, particles and Blueprints are kept.' },
   { tag: 'Performance', title: 'Faster and smoother', sub: 'Quicker texture downloads, no freezing.', body: 'Textures now download and convert several at a time, so converting a shader with many textures finishes sooner. The app no longer reads files on its main thread, so it opens faster and does not freeze or show Not Responding while the Files list, shader list or previews load.' },
   { tag: 'News', title: 'Rotating pictures', sub: 'Pictures change every 10 seconds.', body: 'The pictures on the Home cards and the News & Updates tab are real Fortnite loading screens picked at random. They change every 10 seconds, never repeat on screen at the same time, and are positioned so faces and heads stay in view.' },
   { tag: 'Files', title: 'Icons', sub: 'Icons keep loading and meshes get a picture.', body: 'Texture and model icons in the Files tab that failed to load are tried again automatically. Static and skeletal meshes show a rendered picture of the mesh as their icon.' },
@@ -2019,6 +2064,17 @@ async function refreshCacheSize() {
   $('pvCacheSize').textContent = 'Exported previews are kept on disk. Currently using ' + (n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB') + '.'
 }
 $('pvClear').onclick = async () => { await window.api.previewClearCache(); refreshCacheSize() }
+async function refreshConvCacheSize() {
+  const n = await window.api.convCacheSize()
+  $('convCacheSize').textContent = 'Textures and files pulled in by conversions are kept here so repeat conversions are faster. Currently using ' + (n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB') + '. Clearing it does not delete your converted shaders, particles or Blueprints.'
+}
+$('convCacheClear').onclick = async () => {
+  if (!confirm('Clear the conversion cache? It is rebuilt the next time you convert, which can take longer.')) return
+  const r = await window.api.convCacheClear()
+  if (r && r.error === 'busy') setStatus('Wait for the current conversion to finish, then clear the cache')
+  else setStatus(r && r.ok ? 'Conversion cache cleared' : 'Could not clear the conversion cache')
+  refreshConvCacheSize()
+}
 let textTimer = null
 const saveTexts = () => {
   clearTimeout(textTimer)
@@ -2097,6 +2153,26 @@ $('niagaraBtn').onclick = async () => {
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }
+
+$('pasteBlueprint').onclick = async () => {
+  const text = ((await window.api.readClipboard()) || '').replace(/\r/g, '').trim()
+  const box = $('blueprintPaths')
+  if (text) box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n' + text : text
+  box.focus()
+}
+$('clearBlueprint').onclick = () => { $('blueprintPaths').value = '' }
+$('blueprintBtn').onclick = async () => {
+  if (running) return
+  const paths = $('blueprintPaths').value.split('\n').map(s => s.trim()).filter(Boolean)
+  if (!paths.length) {
+    addLine('paste at least one Blueprint path first')
+    return
+  }
+  const res = await window.api.convertBlueprint({ paths, name: $('blueprintName').value.trim() })
+  flushLog()
+  if (!res.ok) addLine('could not start: ' + res.error)
+}
+$('openBlueprints').onclick = () => window.api.open(info.blueprints)
 
 $('checkBtn').onclick = () => {
   if (!checkPaths.length) {
@@ -2438,6 +2514,7 @@ function showFileMenu(e, item) {
   fileCtx = item
   const menu = $('fileMenu')
   $('fileMenuAdd').classList.toggle('off', item.kind !== 'file')
+  $('fileMenuAddLbl').textContent = item.kind === 'file' ? addLabelFor(selectedFilePaths().length > 1 && fileSel.has(item.key) ? selectedFilePaths() : [item.path]) : CONVERT_LABEL.shader
   $('fileMenuPrev').classList.toggle('off', item.kind !== 'file')
   $('fileMenuProps').classList.toggle('off', item.kind !== 'file')
   menu.classList.add('show')
@@ -2922,14 +2999,36 @@ function isNiagaraPath(p) {
   return /^NS_/i.test(base)
 }
 
-// Shader paths go to the Shader Converter box, Niagara systems to the Niagara Converter box. They never mix.
+function isBlueprintPath(p) {
+  const base = String(p).slice(String(p).lastIndexOf('/') + 1).split('.')[0]
+  return /^BP_/i.test(base) || /_C$/.test(base)
+}
+
+function convertKindOf(p) {
+  const it = fileItems.get('f|' + p)
+  const cls = (it && it.cls) || ''
+  if (cls === 'BlueprintGeneratedClass') return 'blueprint'
+  if (cls === 'NiagaraSystem') return 'niagara'
+  if (isBlueprintPath(p)) return 'blueprint'
+  if (isNiagaraPath(p)) return 'niagara'
+  return 'shader'
+}
+
+const CONVERT_LABEL = { blueprint: 'Add to Blueprint Convert', niagara: 'Add to Niagara Convert', shader: 'Add to Convert' }
+
+function addLabelFor(paths) {
+  const kinds = new Set(paths.map(convertKindOf))
+  return kinds.size === 1 ? CONVERT_LABEL[Array.from(kinds)[0]] : CONVERT_LABEL.shader
+}
+
+// Shader paths go to the Shader Converter box, Niagara systems to the Niagara Converter box, Blueprints to the Blueprint Converter box. They never mix.
 function addToConvert(paths) {
-  const objects = paths.map(toObjectPath).filter(Boolean)
+  const objects = paths.map(p => ({ obj: toObjectPath(p), kind: convertKindOf(p) })).filter(x => x.obj)
   let added = 0
-  ;[['materials', p => !isNiagaraPath(p)], ['niagaraPaths', isNiagaraPath]].forEach(([id, pick]) => {
+  ;[['materials', 'shader'], ['niagaraPaths', 'niagara'], ['blueprintPaths', 'blueprint']].forEach(([id, kind]) => {
     const box = $(id)
     const have = new Set(box.value.split('\n').map(x => x.trim()).filter(Boolean))
-    const fresh = objects.filter(pick).filter(p => !have.has(p))
+    const fresh = objects.filter(x => x.kind === kind).map(x => x.obj).filter(p => !have.has(p))
     if (fresh.length) box.value = (box.value.trim() ? box.value.replace(/\s+$/, '') + '\n' : '') + fresh.join('\n')
     added += fresh.length
   })
@@ -3022,8 +3121,9 @@ $('fileMenuAdd').onclick = () => {
   const item = fileCtx
   hideFileMenu()
   if (!item || item.kind !== 'file') return
+  const label = CONVERT_LABEL[convertKindOf(item.path)].replace('Add to ', '')
   const n = addToConvert([item.path])
-  setStatus(n ? 'Added 1 to Convert' : 'Already in Convert')
+  setStatus(n ? 'Added 1 to ' + label : 'Already in ' + label)
 }
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#fileMenu')) hideFileMenu()
@@ -3196,9 +3296,10 @@ async function runExportSelected() {
       if (/^Material/.test(it.cls || '') || /^Material/.test(it.type || '')) return true
       return !it.cls && it.type === 'Other'
     }
-    const mats = paths.filter(isMat)
-    const skipped = paths.length - mats.length
-    if (mats.length) convertSelected(mats)
+    const routed = paths.filter(pth => convertKindOf(pth) !== 'shader')
+    const mats = paths.filter(pth => convertKindOf(pth) === 'shader' && isMat(pth))
+    const skipped = paths.length - mats.length - routed.length
+    if (mats.length || routed.length) convertSelected(mats.concat(routed))
     if (skipped) {
       showNotice({
         title: 'Not available for Unity yet',
@@ -3432,16 +3533,22 @@ function convertSelected(paths) {
   addToConvert(paths)
   fileSel.clear()
   renderFileSelection()
-  const objs = paths.map(toObjectPath).filter(Boolean)
-  const hasShader = objs.some(p => !isNiagaraPath(p))
-  const hasNiagara = objs.some(isNiagaraPath)
-  if (hasNiagara && !hasShader) {
-    showTab('niagara')
+  const kinds = paths.filter(toObjectPath).map(convertKindOf)
+  const hasShader = kinds.includes('shader')
+  const hasNiagara = kinds.includes('niagara')
+  const hasBlueprint = kinds.includes('blueprint')
+  if (hasBlueprint && !hasShader && !hasNiagara) {
+    showConverterSub('blueprint')
+    $('blueprintBtn').click()
+  } else if (hasNiagara && !hasShader) {
+    showConverterSub('particle')
     $('niagaraBtn').click()
+    if (hasBlueprint) setStatus('Blueprints were added to the Blueprint Converter button')
   } else {
-    showTab('convert')
+    showConverterSub('shader')
     $('convertBtn').click()
-    if (hasNiagara) setStatus('Niagara systems were added to the Niagara Converter tab')
+    if (hasNiagara) setStatus('Niagara systems were added to the Particle Converter button')
+    else if (hasBlueprint) setStatus('Blueprints were added to the Blueprint Converter button')
   }
 }
 $('fileUnity').onclick = () => { runExportSelected() }

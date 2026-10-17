@@ -17,6 +17,7 @@ namespace FortnitePorting.MaterialPorter;
 ///   GET /graph?path=/Game/.../MF_X   {"file"}  a material or function graph
 ///   GET /texture?path=/Game/.../T_X  {"file", "srgb", "kind", "depth", ...}
 ///   GET /collection?path=...         {"scalars", "vectors"}
+///   GET /day                         the season's day sequence as hourly keyframes
 ///   GET /material?path=...           the instance, described
 ///   GET /find-materials?path=A,B     {"A": [object path, ...]}  material assets by name
 ///   GET /file?path=C:\...            the bytes of a file the app exported
@@ -90,6 +91,8 @@ public sealed class Bridge : IDisposable
                 "asset" => new { file = await materials.AssetAsync(Need(path)) },
                 "texture" => await materials.TextureAsync(Need(path)),
                 "collection" => await materials.CollectionAsync(Need(path)),
+                "day" => await materials.DayCurvesAsync(),
+                "blueprint" => await materials.BlueprintAsync(Need(path)),
                 "material" => (await materials.DescribeAsync(Need(path))).ToJson(),
                 "find-materials" => await materials.FindMaterialsAsync(Need(path).Split(',')),
                 _ => Extra != null && await Extra(route, q) is { } extra ? extra : throw new KeyNotFoundException("no route " + route),

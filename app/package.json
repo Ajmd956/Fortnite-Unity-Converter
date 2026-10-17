@@ -48,6 +48,13 @@
         ]
       },
       {
+        "from": "engine/unity",
+        "to": "engine/unity",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "engine/tools",
         "to": "engine/tools",
         "filter": [

@@ -95,6 +95,8 @@ function collect(json, bin) {
   const nor = []
   const uv = []
   const idx = []
+  const slotOfTri = []
+  let slotCount = 0
   let hasNormals = true
   let hasUv = true
   const visit = (ni, parent, depth) => {
@@ -132,12 +134,16 @@ function collect(json, bin) {
         } else {
           hasUv = false
         }
+        const before = idx.length
         if (prim.indices !== undefined) {
           const ix = readAccessor(json, bin, prim.indices)
           for (let i = 0; i + 2 < ix.length; i += 3) idx.push(base + ix[i], base + ix[i + 1], base + ix[i + 2])
         } else {
           for (let i = 0; i + 2 < count; i += 3) idx.push(base + i, base + i + 1, base + i + 2)
         }
+        const added = (idx.length - before) / 3
+        for (let i = 0; i < added; i++) slotOfTri.push(slotCount)
+        if (added > 0) slotCount++
       }
     }
     for (const c of node.children || []) visit(c, world, depth + 1)
@@ -145,7 +151,7 @@ function collect(json, bin) {
   const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
   for (const r of roots) visit(r, identity, 0)
   if (!pos.length || !idx.length) throw new Error('the model has no triangle mesh')
-  return { pos, nor: hasNormals ? nor : null, uv: hasUv ? uv : null, idx }
+  return { pos, nor: hasNormals ? nor : null, uv: hasUv ? uv : null, idx, slotOfTri, slotCount }
 }
 
 function num(v) {
@@ -159,7 +165,8 @@ function arr(values, fmt) {
 }
 
 function buildFbx(name, mesh) {
-  const { pos, nor, uv, idx } = mesh
+  const { pos, nor, uv, idx, slotOfTri, slotCount } = mesh
+  const slots = slotCount > 1 ? slotCount : 0
   const tris = idx.length / 3
   const polyIdx = new Array(idx.length)
   for (let i = 0; i < idx.length; i += 3) {
@@ -199,7 +206,7 @@ function buildFbx(name, mesh) {
   L.push('}')
   L.push('Definitions:  {')
   L.push('\tVersion: 100')
-  L.push('\tCount: 3')
+  L.push('\tCount: ' + (slots ? 4 : 3))
   L.push('\tObjectType: "GlobalSettings" {')
   L.push('\t\tCount: 1')
   L.push('\t}')
@@ -209,6 +216,11 @@ function buildFbx(name, mesh) {
   L.push('\tObjectType: "Geometry" {')
   L.push('\t\tCount: 1')
   L.push('\t}')
+  if (slots) {
+    L.push('\tObjectType: "Material" {')
+    L.push('\t\tCount: ' + slots)
+    L.push('\t}')
+  }
   L.push('}')
   L.push('Objects:  {')
   L.push('\tGeometry: ' + geomId + ', "Geometry::' + safe + '", "Mesh" {')
@@ -246,6 +258,17 @@ function buildFbx(name, mesh) {
     L.push('\t\t\t}')
     L.push('\t\t}')
   }
+  if (slots) {
+    L.push('\t\tLayerElementMaterial: 0 {')
+    L.push('\t\t\tVersion: 101')
+    L.push('\t\t\tName: ""')
+    L.push('\t\t\tMappingInformationType: "ByPolygon"')
+    L.push('\t\t\tReferenceInformationType: "IndexToDirect"')
+    L.push('\t\t\tMaterials: *' + slotOfTri.length + ' {')
+    L.push('\t\t\t\ta: ' + slotOfTri.join(','))
+    L.push('\t\t\t}')
+    L.push('\t\t}')
+  }
   L.push('\t\tLayer: 0 {')
   L.push('\t\t\tVersion: 100')
   if (nor) {
@@ -260,6 +283,12 @@ function buildFbx(name, mesh) {
     L.push('\t\t\t\tTypedIndex: 0')
     L.push('\t\t\t}')
   }
+  if (slots) {
+    L.push('\t\t\tLayerElement:  {')
+    L.push('\t\t\t\tType: "LayerElementMaterial"')
+    L.push('\t\t\t\tTypedIndex: 0')
+    L.push('\t\t\t}')
+  }
   L.push('\t\t}')
   L.push('\t}')
   L.push('\tModel: ' + modelId + ', "Model::' + safe + '", "Mesh" {')
@@ -271,10 +300,21 @@ function buildFbx(name, mesh) {
   L.push('\t\tShading: T')
   L.push('\t\tCulling: "CullingOff"')
   L.push('\t}')
+  for (let k = 0; k < slots; k++) {
+    L.push('\tMaterial: ' + (2000001 + k) + ', "Material::Slot' + k + '", "" {')
+    L.push('\t\tVersion: 102')
+    L.push('\t\tShadingModel: "lambert"')
+    L.push('\t\tMultiLayer: 0')
+    L.push('\t\tProperties70:  {')
+    L.push('\t\t\tP: "DiffuseColor", "Color", "", "A",0.8,0.8,0.8')
+    L.push('\t\t}')
+    L.push('\t}')
+  }
   L.push('}')
   L.push('Connections:  {')
   L.push('\tC: "OO",' + modelId + ',0')
   L.push('\tC: "OO",' + geomId + ',' + modelId)
+  for (let k = 0; k < slots; k++) L.push('\tC: "OO",' + (2000001 + k) + ',' + modelId)
   L.push('}')
   return { text: L.join('\n') + '\n', tris }
 }
