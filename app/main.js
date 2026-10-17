@@ -825,13 +825,14 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.whenReady().then(() => {
     const w = new BrowserWindow({
-      width: 460,
-      height: 400,
+      width: 420,
+      height: 380,
+      frame: false,
       resizable: false,
       maximizable: false,
       minimizable: false,
       autoHideMenuBar: true,
-      backgroundColor: '#0D0C12',
+      backgroundColor: '#181620',
       title: 'Fortnite Unity Converter',
       icon: path.join(__dirname, 'assets', 'icon.ico'),
       webPreferences: { contextIsolation: true, nodeIntegration: false }
