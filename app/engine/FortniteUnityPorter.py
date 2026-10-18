@@ -2693,7 +2693,10 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         pragma += " alpha:fade"
     elif bm == "BLEND_AlphaComposite":
         pragma += " alpha:premul"
-    pragma += " nofog" if unlit else ""
+    # Unlit shaders never use lightmaps, spherical harmonics, vertex lights or the additive light pass. Without these keywords Unity still
+    # adds a lightmap-UV and an SH interpolator to ForwardBase, which pushes particle shaders (tc01, color, pcol, objPos, screenPos and
+    # the 3 tangent-to-world rows from INTERNAL_DATA) from 9 to 11 and fails "Too many texture interpolators" on target 3.0 (max 10).
+    pragma += " nofog noforwardadd nolightmap nodynlightmap nodirlightmap novertexlights noambient" if unlit else ""
     o.append("        " + pragma)
     o.append("        #pragma target %s" % ("4.0" if "atmosphere" in tr.uses else "3.0"))
     o.append("        #include \"UnityCG.cginc\"")
