@@ -1491,7 +1491,6 @@ async function buildBlueprintPrefabs(made) {
     }
     for (const n of keep) {
       syncTree(path.join(blueprintsDir, n), path.join(projRoot, n))
-      copyIfChanged(path.join(blueprintsDir, n + '.meta'), path.join(projRoot, n + '.meta'))
     }
     fs.rmSync(verdictFile, { force: true })
     send('engine:log', '\nUnity: building the prefab in a hidden project, no window opens. This takes a minute or two...\n')
@@ -1515,13 +1514,15 @@ async function buildBlueprintPrefabs(made) {
     for (const row of made) {
       if (built.has(row.name)) syncTree(path.join(projRoot, path.basename(row.dir)), row.dir, prefabOnly)
     }
+    // A folder's own .meta sits next to the folder, outside it. Nothing references a folder by its ID,
+    // so leave those out (and remove ones an earlier build left) and keep only the .meta files inside the folders.
     for (const n of keep) {
-      copyIfChanged(path.join(projRoot, n + '.meta'), path.join(blueprintsDir, n + '.meta'))
+      try { fs.rmSync(path.join(blueprintsDir, n + '.meta'), { force: true }) } catch (e) {}
     }
     for (const n of ['Editor', 'Scripts']) {
       syncTree(path.join(projRoot, n), path.join(blueprintsDir, n), x => /\.meta$/i.test(x))
     }
-    send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The prefab, its materials and their .meta files are saved in the Blueprint Conversions folder.\n')
+    send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The prefab and its materials are saved in the Blueprint Conversions folder with their .meta files inside the folders.\n')
   } catch (e) {
     send('engine:log', 'The Unity build stopped: ' + (e && e.message ? e.message : e) + '\n')
   }
