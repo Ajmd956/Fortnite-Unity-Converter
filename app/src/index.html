@@ -193,7 +193,11 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .presets{display:flex;flex-wrap:wrap;gap:8px;padding:0 4px;}
 .preset .dot{width:10px;height:10px;border-radius:50%;background:var(--pc);flex:0 0 10px;}
 .cz-val{min-width:48px;text-align:right;font-size:13px;color:var(--muted);}
-.color-row input[type=color]{width:44px;height:30px;border:1px solid var(--border-hi);border-radius:6px;background:none;cursor:pointer;padding:2px;}
+.color-row input[type=color]{-webkit-appearance:none;appearance:none;width:44px;height:30px;border:1px solid #ffffff3d;border-radius:8px;background:var(--input);cursor:pointer;padding:3px;transition:border-color var(--fade),background-color var(--fade);}
+.color-row input[type=color]::-webkit-color-swatch-wrapper{padding:0;}
+.color-row input[type=color]::-webkit-color-swatch{border:1px solid #ffffff66;border-radius:5px;}
+.color-row input[type=color]:hover{border-color:#ffffff7a;background:var(--btn-hover);}
+.color-row input[type=color]:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
 
 /* settings page: sub-sidebar + content (replaces the whole content area) */
 .page.split{flex-direction:row;gap:0;padding:0;overflow:hidden;flex:1 1 auto;}
@@ -490,6 +494,13 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 #instOverlay .btn:hover{background:#2a2733;}
 #instOverlay .btn:active{background:#1a1822;}
 #updDoneNotesBtn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
+#confirmOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;z-index:300;}
+#confirmNo{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
+#confirmNo:hover{background:#2a2733;}
+#confirmNo:active{background:#1a1822;}
+#confirmYes{background:var(--primary);color:var(--on-primary);}
+#confirmYes:hover{background:#a355fa;}
+#confirmYes:active{background:#8531e0;}
 #updDoneNotesBtn:hover{background:#2a2733;}
 #updDoneNotesBtn:active{background:#1a1822;}
 #updDoneOk{background:var(--primary);color:var(--on-primary);}
@@ -597,7 +608,6 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 #fileQuery::placeholder{letter-spacing:.15px;}
 .fb-bar #fileProps{padding-left:14px;}
 </style>
-<link rel="stylesheet" href="ai-helper.css">
 </head>
 <body>
 <div id="splash">
@@ -790,7 +800,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       <div class="row-card">
         <div class="rc-ctl"><button class="btn sm" id="addFiles">Add files</button><button class="btn sm" id="addFolder">Add folder</button></div>
         <div class="grow"></div>
-        <div class="rc-ctl" style="gap:18px"><label class="check-row"><input type="checkbox" id="optFix"> Fix problems</label><label class="check-row"><input type="checkbox" id="optUnity"> Compile in Unity</label><label class="check-row"><input type="checkbox" id="optAi"> AI fix remaining errors<span id="aiOptNote" class="rc-desc"></span></label></div>
+        <div class="rc-ctl" style="gap:18px"><label class="check-row"><input type="checkbox" id="optFix"> Fix problems</label><label class="check-row"><input type="checkbox" id="optUnity"> Compile in Unity</label></div>
       </div>
       <div class="chips" id="chips"></div>
       <div class="row-card"><div class="rc-text"><div class="rc-desc" style="margin:0">Fixes are made on copies in the Fixed Conversions folder. Your original shaders are never changed.</div></div><div class="rc-ctl"><button class="btn sm" id="openFixed">Open folder</button><button class="btn primary" id="checkBtn">Check</button></div></div>
@@ -839,13 +849,6 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="row-card"><div class="rc-text"><div class="rc-title">Start Minimized</div><div class="rc-desc">Open the fallback program minimized.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setMinFnp"><span class="trk"></span><span class="lbl" data-for="setMinFnp"></span></label></div></div>
       </div>
         <div class="subpane" id="sub-experimental">
-        <div class="sec-head">Experimental</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">AI Helper</div><div class="rc-desc">Shows the helper button, which answers questions about the app and points at things, and adds AI repair to Check Shaders. Needs your own API key from the AI you pick below.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setAiHelper"><span class="trk"></span><span class="lbl" data-for="setAiHelper">Off</span></label></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">AI Provider</div><div class="rc-desc">Which AI answers in the helper and repairs shaders. The helper button shows that AI's icon. Each one needs its own API key.</div></div><div class="rc-ctl"><span class="ai-set-logo" id="aiSelLogo"></span><select class="ai-sel" id="setAiProvider"></select></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title"><span class="ai-set-logo" id="aiKeyLogo"></span><span id="aiKeyTitle">API Key</span></div><div class="rc-desc">Used by the helper and by AI shader fixes. Stored encrypted on this computer and sent only to the AI you picked. <span id="aiKeyNote"></span></div></div><div class="rc-ctl"><input type="password" id="setAiKey" spellcheck="false" autocomplete="off" placeholder="sk-..."><button class="btn sm" id="aiKeySave">Save</button><button class="btn sm" id="aiKeyClear">Remove</button></div></div>
-        <div class="row-card" id="rowAiUrl" style="display:none"><div class="rc-text"><div class="rc-title">API Address</div><div class="rc-desc">The chat completions address of any OpenAI-compatible service.</div></div><div class="rc-ctl"><input type="text" id="setAiUrl" spellcheck="false" placeholder="https://.../v1/chat/completions"></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Helper Model</div><div class="rc-desc">The model that answers questions in the helper.</div></div><div class="rc-ctl"><input type="text" id="setAiModel" spellcheck="false" placeholder="gpt-4o-mini"></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Shader Fix Model</div><div class="rc-desc">The model that repairs shader errors in Check Shaders. A stronger model fixes more.</div></div><div class="rc-ctl"><input type="text" id="setAiFixModel" spellcheck="false" placeholder="gpt-4o"></div></div>
         <div class="sec-head">Converters</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Converter</div><div class="rc-desc">Turns the Particle Converter on. It converts Niagara particle systems to Unity particles.</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpParticle"><span class="trk"></span><span class="lbl" data-for="setExpParticle">Off</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Blueprint Converter</div><div class="rc-desc">Turns the Blueprint Converter on. It converts sky domes and props to Unity prefabs.</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpBlueprint"><span class="trk"></span><span class="lbl" data-for="setExpBlueprint">Off</span></label></div></div>
@@ -912,6 +915,17 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <div class="done-sub" id="doneSub"></div>
     <div class="done-list" id="doneList"></div>
     <button class="btn" id="doneClose" style="width:100%;justify-content:center">Close</button>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay">
+  <div class="panel upd-panel">
+    <h2 id="confirmTitle">Confirm</h2>
+    <div class="upd-sub" id="confirmBody"></div>
+    <div class="upd-btns">
+      <button class="btn" id="confirmNo">Cancel</button>
+      <button class="btn primary" id="confirmYes">OK</button>
+    </div>
   </div>
 </div>
 
@@ -1457,7 +1471,7 @@ async function runCheck(paths) {
   if (running) return
   showTab('check')
   addLine('')
-  const res = await window.api.check({ paths, fix: $('optFix').checked, useUnity: $('optUnity').checked, ai: $('optAi').checked })
+  const res = await window.api.check({ paths, fix: $('optFix').checked, useUnity: $('optUnity').checked })
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }
@@ -1496,6 +1510,31 @@ function closeUpdate() {
 $('updCancel').onclick = closeUpdate
 $('updateOverlay').addEventListener('mousedown', e => { if (e.target === $('updateOverlay')) closeUpdate() })
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('updateOverlay').classList.contains('open')) closeUpdate() })
+
+let confirmDone = null
+function askConfirm(title, body, okText) {
+  if (confirmDone) confirmDone(false)
+  $('confirmTitle').textContent = title
+  $('confirmBody').textContent = body
+  $('confirmYes').textContent = okText || 'OK'
+  $('confirmOverlay').classList.add('open')
+  $('confirmYes').focus()
+  return new Promise(resolve => { confirmDone = resolve })
+}
+function closeConfirm(answer) {
+  $('confirmOverlay').classList.remove('open')
+  const done = confirmDone
+  confirmDone = null
+  if (done) done(answer)
+}
+$('confirmYes').onclick = () => closeConfirm(true)
+$('confirmNo').onclick = () => closeConfirm(false)
+$('confirmOverlay').addEventListener('mousedown', e => { if (e.target === $('confirmOverlay')) closeConfirm(false) })
+document.addEventListener('keydown', e => {
+  if (!$('confirmOverlay').classList.contains('open')) return
+  if (e.key === 'Escape') { e.preventDefault(); closeConfirm(false) }
+  else if (e.key === 'Enter') { e.preventDefault(); closeConfirm(true) }
+})
 
 let updWarned = false
 $('updGo').onclick = async () => {
@@ -1811,7 +1850,6 @@ function fillSettings() {
   $('setExpParticle').checked = !!settings.expParticle
   $('setExpBlueprint').checked = !!settings.expBlueprint
   applyBuildLocks()
-  if (window.aiFillSettings) window.aiFillSettings()
   applyDev()
   $('setVolume').value = settings.volume == null ? 1 : settings.volume
   paintVolume()
@@ -1897,10 +1935,12 @@ $('openFixed').onclick = () => window.api.open(info.fixed)
 $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
-const NEWS_DATE = 'Oct 18'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Blueprint prefabs now build themselves', date: NEWS_DATE }
+const NEWS_DATE = 'Oct 19'
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Live update checks and cleaner pop-ups', date: NEWS_DATE }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'Updates', title: 'Live update checks', sub: 'New versions show up within a minute.', body: 'While the app is open it now looks for a new version every 30 seconds, so you do not have to click Check now. It only asks GitHub for the latest version number, and does the full check once a newer one exists. The Check for updates switch still turns this off.' },
+  { tag: 'Settings', title: 'Cleaner pop-ups', sub: 'Confirmations now match the app.', body: 'Clearing the cache, resetting settings and restarting now ask in a pop-up that matches the app instead of a plain Windows box. The color swatches in Customizability are also easier to see. The AI Helper has been removed.' },
   { tag: 'Blueprint', title: 'Prefab built for you', sub: 'Unity builds it in the background.', body: 'When a Blueprint finishes converting, the app now opens Unity in the background with no window, builds the prefab in a separate project, and saves the prefab, its materials and their .meta files in the Blueprint Conversions folder. The finished popup appears after Unity is done, and the links to textures and shaders survive when you copy the folder into your project.\n\nThis needs the Unity Editor to be found (App Settings, Installation). Without it, the prefab is built when you copy the folder into your project, as before.' },
   { tag: 'Check Shaders', title: 'Fixed Conversions', sub: 'Fixes go to copies, not your originals.', body: 'Check Shaders no longer changes your shaders and no longer writes .bak files. Fixes are made on copies in the new Fixed Conversions folder inside Documents\\Fortnite Unity Converter, next to each shader\'s textures.\n\nWith Compile in Unity on, it compiles, fixes and compiles again until Unity reports no errors or no fix applies, and lists what it could not fix. It also fixes more kinds of errors: too many interpolators in unlit shaders, properties Unity does not know, duplicate declarations and loops Unity cannot unroll.' },
   { tag: 'Settings', title: 'Customizability', sub: 'Make the app look the way you like.', body: 'App Settings has a new Customizability tab. The theme and every colour moved there, and you can now change corner roundness, UI scale, text size, spacing and the font. Reset puts everything back to the theme\'s defaults.' },
@@ -2267,8 +2307,8 @@ makeDD('ddUtil', [
   { t: 'Open Data Folder', i: MDI.folder, f: () => window.api.open(info.conversions.replace(/[\\/][^\\/]*$/, '')) },
   { t: 'Clear Cache', i: MDI.sweep, f: async () => { await window.api.previewClearCache(); refreshCacheSize(); setStatus('Cache cleared') } },
   { t: 'Save Settings', i: MDI.save, f: async () => { await saveSetting({}); setStatus('Settings saved') } },
-  { t: 'Reset Settings', i: MDI.del, f: () => { if (confirm('To reset all settings, the app must restart. Restart now?')) window.api.resetSettings() } },
-  { t: 'Restart Application', i: MDI.restart, f: () => { if (confirm('Are you sure you would like to restart?')) window.api.relaunch() } }
+  { t: 'Reset Settings', i: MDI.del, f: async () => { if (await askConfirm('Reset Settings', 'To reset all settings, the app must restart. Restart now?', 'Restart')) window.api.resetSettings() } },
+  { t: 'Restart Application', i: MDI.restart, f: async () => { if (await askConfirm('Restart Application', 'Are you sure you would like to restart?', 'Restart')) window.api.relaunch() } }
 ], null, it => it.f())
 $('clearConsole').onclick = () => { $('consoleLog').innerHTML = '' }
 $('clearLog').onclick = () => {
@@ -2353,7 +2393,7 @@ async function refreshConvCacheSize() {
   $('convCacheSize').textContent = 'Textures and files pulled in by conversions are kept here so repeat conversions are faster. Currently using ' + (n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : (n / 1048576).toFixed(1) + ' MB') + '. Clearing it does not delete your converted shaders, particles or Blueprints.'
 }
 $('convCacheClear').onclick = async () => {
-  if (!confirm('Clear the conversion cache? It is rebuilt the next time you convert, which can take longer.')) return
+  if (!(await askConfirm('Clear Conversion Cache', 'Clear the conversion cache? It is rebuilt the next time you convert, which can take longer.', 'Clear'))) return
   const r = await window.api.convCacheClear()
   if (r && r.error === 'busy') setStatus('Wait for the current conversion to finish, then clear the cache')
   else setStatus(r && r.ok ? 'Conversion cache cleared' : 'Could not clear the conversion cache')
@@ -3925,6 +3965,5 @@ $('spSkip').onclick = () => {
 
 init().then(runStartup)
 </script>
-<script src="ai-helper.js"></script>
 </body>
 </html>

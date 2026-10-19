@@ -8,8 +8,7 @@ const os = require('os')
 const net = require('net')
 const { spawn, spawnSync } = require('child_process')
 const store = require('./store')
-const { createUpdater, wasUpdated } = require('./updater')
-const { createAi } = require('./ai')
+const { createUpdater, wasUpdated, compareVersions: compareReleaseVersions } = require('./updater')
 
 let publicBuild = true
 try { publicBuild = JSON.parse(fs.readFileSync(path.join(__dirname, 'build-flavor.json'), 'utf8')).public !== false } catch (e) { publicBuild = true }
@@ -770,7 +769,28 @@ function startUpdateChecks() {
   const exe = updateExePath()
   if (exe) fs.promises.rm(path.join(path.dirname(exe), path.basename(exe, '.exe') + '.update.exe'), { force: true }).catch(() => {})
   setTimeout(() => runUpdateCheck(false), 6000)
-  if (!updateTimer) updateTimer = setInterval(() => runUpdateCheck(false), 6 * 60 * 60 * 1000)
+  if (!updateTimer) updateTimer = setInterval(pollUpdate, 30 * 1000)
+}
+
+let polling = false
+let lastFullCheck = 0
+
+// Every 30 seconds ask only for the latest release tag. The full (rate-limited) check runs
+// only when that tag is newer than this app, and never more than once every 2 minutes.
+async function pollUpdate() {
+  if (polling || !updateExePath() || settings.checkUpdates === false) return
+  polling = true
+  try {
+    const tag = await initUpdater().peekLatest()
+    if (!tag || compareReleaseVersions(tag, app.getVersion()) <= 0) return
+    if (updateOffered && compareReleaseVersions(updateOffered.version, tag) >= 0) return
+    if (Date.now() - lastFullCheck < 2 * 60 * 1000) return
+    lastFullCheck = Date.now()
+    await runUpdateCheck(false)
+  } catch (e) {
+  } finally {
+    polling = false
+  }
 }
 
 // Set at startup when this is the first run after an update; the page asks for it once and then it is gone
@@ -861,6 +881,13 @@ if (!gotLock) {
     const hadSettings = fs.existsSync(settingsFile)
     settings = store.load(settingsFile)
     {
+      let scrubbed = false
+      ;['aiHelperOn', 'aiKeyStored', 'aiProvider', 'aiKeys', 'aiModels', 'aiCustomUrl', 'aiModel', 'aiFixModel'].forEach(k => {
+        if (k in settings) { delete settings[k]; scrubbed = true }
+      })
+      if (scrubbed) { try { store.save(settingsFile, settings) } catch (e) {} }
+    }
+    {
       const cur = app.getVersion()
       const prev = String(settings.lastVersion || '')
       if (wasUpdated({ packaged: app.isPackaged, prev, cur, hadSettings })) {
@@ -926,42 +953,16 @@ ipcMain.handle('app:reset', () => {
 })
 
 function publicSettings() {
-  const flags = {}
-  Object.keys(settings.aiKeys || {}).forEach(k => { flags[k] = !!settings.aiKeys[k] })
-  if (settings.aiKeyStored && !flags.openai) flags.openai = true
-  const out = Object.assign({}, settings, { aiHasKey: !!flags[settings.aiProvider || 'openai'], aiKeyFlags: flags })
-  delete out.aiKeyStored
-  delete out.aiKeys
+  const out = Object.assign({}, settings)
+  ;['aiHelperOn','aiKeyStored','aiProvider','aiKeys','aiModels','aiCustomUrl','aiModel','aiFixModel'].forEach(k => { delete out[k] })
   return out
 }
 
-const ai = createAi({
-  safeStorage,
-  getSettings: () => settings,
-  saveSettings: patch => {
-    settings = Object.assign({}, settings, patch)
-    store.save(settingsFile, settings)
-  },
-  runEngine: args => runEngine(args),
-  send: (channel, data) => send(channel, data),
-  isStopped: () => stopped
-})
-
 ipcMain.handle('settings:get', () => publicSettings())
-ipcMain.handle('ai:status', () => ai.status())
-ipcMain.handle('ai:setKey', (_e, key, providerId) => {
-  ai.setKey(key, providerId)
-  return publicSettings()
-})
-ipcMain.handle('ai:chat', (_e, payload) => ai.chat(payload))
 
 ipcMain.handle('settings:set', (_e, next) => {
   if (!next || typeof next !== 'object' || Array.isArray(next)) return publicSettings()
   next = Object.assign({}, next)
-  delete next.aiKeyStored
-  delete next.aiKeys
-  delete next.aiHasKey
-  delete next.aiKeyFlags
   const before = (settings.fortniteArchive || '') + '|' + (settings.bridge || '')
   settings = Object.assign({}, settings, next)
   if (typeServer && before !== (settings.fortniteArchive || '') + '|' + (settings.bridge || '')) {
@@ -1686,14 +1687,6 @@ ipcMain.handle('engine:check', async (_e, payload) => {
   for (const mm of checked.output.matchAll(/^fixed: (.+)$/gm)) {
     const f = mm[1].trim()
     if (f && fs.existsSync(f) && !fixedPaths.includes(f)) fixedPaths.push(f)
-  }
-  if (payload.ai && !stopped) {
-    send('engine:state', { running: true, label: 'AI fixing' })
-    try {
-      await ai.fixShaders({ paths: fixedPaths.length ? fixedPaths : paths, output: checked.output, useUnity: !!payload.useUnity })
-    } catch (e) {
-      send('engine:log', 'AI fix failed: ' + e.message + '\n')
-    }
   }
   busy = false
   send('engine:state', { running: false, label: '' })

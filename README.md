@@ -68,22 +68,14 @@ or Unity. Fortnite is a trademark of Epic Games.
 
 ## What's new in this update
 
-- Check Shaders now works on copies. Fixes are saved in Documents\Fortnite
-  Unity Converter\Fixed Conversions (with each shader's textures), your
-  original shaders are never changed, and no .bak files are written.
-- With "Compile in Unity" on, Check Shaders compiles, fixes and compiles again
-  until Unity reports no errors or no fix applies, then lists what it could not
-  fix.
-- New automatic fixes: too many interpolators in unlit shaders (the unused
-  lightmap, ambient and vertex-light data is switched off first, then the
-  target is raised if needed), properties Unity does not know, duplicate
-  declarations, and loops Unity cannot unroll.
-- The Blueprint Converter builds the prefab itself. After converting, it runs
-  Unity hidden in a throwaway project and saves the prefab, its materials and
-  their .meta files in Blueprint Conversions, so links to textures and shaders
-  survive when you copy the folder into your project. The finished popup waits
-  for Unity. Without a Unity editor, the prefab is built when you copy the
-  folder into your project, as before.
-- New Customizability tab in App Settings: the theme and every colour, corner
-  roundness, UI scale, text size, spacing, font, and a Reset button.
-- News & Updates shows three rows of cards.
+- The app looks for a new version every 30 seconds while it is open (the
+  portable exe), so you no longer have to click Check now. It only asks GitHub
+  for the latest version number and runs the full check when a newer one
+  exists, so it stays within GitHub's limits. The Check for Updates switch still
+  turns it off.
+- Clearing the cache, resetting settings and restarting now ask in a pop-up that
+  matches the app's theme instead of a plain Windows box. Enter confirms and Esc
+  cancels.
+- The color swatches in Customizability are easier to see.
+- The AI Helper is removed, including its settings and the AI fix option in
+  Check Shaders. Any saved AI keys are deleted from your settings.

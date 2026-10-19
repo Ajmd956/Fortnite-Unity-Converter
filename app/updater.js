@@ -33,6 +33,7 @@ function wasUpdated(o) {
 
 function createUpdater(opts) {
   const api = (opts.apiBase || 'https://api.github.com').replace(/\/$/, '')
+  const web = (opts.webBase || 'https://github.com').replace(/\/$/, '')
   const state = { offered: null, downloading: false, ready: null }
   const auth = () => {
     const t = typeof opts.getToken === 'function' ? opts.getToken() : opts.token
@@ -63,6 +64,24 @@ function createUpdater(opts) {
       published: rel.published_at || ''
     }
     return state.offered
+  }
+
+  // Cheap check: follows no redirect and reads the latest release tag from the Location header.
+  // This is not counted against the GitHub API limit, so it is safe to call every 30 seconds.
+  async function peekLatest() {
+    if (!opts.repo || !/^[\w.-]+\/[\w.-]+$/.test(opts.repo)) return null
+    const res = await fetch(web + '/' + opts.repo + '/releases/latest', {
+      redirect: 'manual',
+      headers: { 'User-Agent': 'FortniteUnityConverter-Updater' },
+      signal: AbortSignal.timeout(10000)
+    })
+    if (res.status >= 300 && res.status < 400) {
+      const m = /\/releases\/tag\/([^/?#]+)/.exec(res.headers.get('location') || '')
+      return m ? decodeURIComponent(m[1]) : null
+    }
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error('Update check failed (' + res.status + ').')
+    return null
   }
 
   // What changed: the notes of every release after "from", up to and including "to" (newest first)
@@ -170,7 +189,7 @@ function createUpdater(opts) {
     return script
   }
 
-  return { check, download, applyScript, notesSince, state }
+  return { check, peekLatest, download, applyScript, notesSince, state }
 }
 
 module.exports = { createUpdater, compareVersions, wasUpdated }
