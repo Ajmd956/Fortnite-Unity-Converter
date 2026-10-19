@@ -7,6 +7,7 @@ using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.IO;
+using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.VirtualFileSystem;
@@ -16,11 +17,19 @@ using CUE4Parse.UE4.Versions;
 // cache for when it is down), mappings from your own .usmap, the cache, or the Fortnite Central list.
 const string KeysUrl = "https://fortnite-api.com/v2/aes";
 const string PortingVersionUrl = "https://api.fortniteporting.app/v2/fortnite/versions/latest";
+// Same service Fortnite Porting uses for "Fetch Version": keys and mappings for any game version, e.g. .../versions/38.11
+const string PortingVersionBase = "https://api.fortniteporting.app/v2/fortnite/versions/";
 const string MappingsListUrl = "https://fortnitecentral.genxgames.gg/api/v1/mappings";
 
 var archive = ArgValue(args, "--archive");
 var output = ArgValue(args, "--out");
 var cache = ArgValue(args, "--cache");
+// --version 38.11 : read keys and mappings saved for that game version only (never the latest ones from the internet).
+// --local-textures : never download texture data from Epic's servers; only what is already on disk is used.
+var gameVersion = ArgValue(args, "--version").Trim();
+var localTextures = Array.IndexOf(args, "--local-textures") >= 0;
+// --ue GAME_UE5_5 : Unreal Engine version used to read the files. Leave out for the newest (what Fortnite Porting uses by default).
+var gameEngine = Enum.TryParse<EGame>(ArgValue(args, "--ue").Trim(), true, out var parsedEngine) ? parsedEngine : EGame.GAME_UE6_0;
 
 var serve = Array.IndexOf(args, "--serve") >= 0;
 var noApi = Array.IndexOf(args, "--no-api") >= 0;
@@ -47,10 +56,10 @@ try
     using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
     http.DefaultRequestHeaders.UserAgent.ParseAdd("FortniteUnityConverter");
 
-    var info = await LoadKeysAsync(http, cache);
+    var info = await LoadKeysAsync(http, cache, gameVersion);
     if (info is null)
     {
-        Say("error: api-unreachable");
+        Say(gameVersion.Length > 0 ? "error: no-keys-version" : "error: api-unreachable");
         return 4;
     }
 
@@ -60,7 +69,7 @@ try
         return 4;
     }
 
-    var mappingsPath = await FindMappingsAsync(http, cache);
+    var mappingsPath = await FindMappingsAsync(http, cache, gameVersion);
     if (mappingsPath is null)
     {
         if (serve)
@@ -85,18 +94,20 @@ try
     }
 
     Say("status: Reading game archives");
-    var provider = new DefaultFileProvider(archive, SearchOption.TopDirectoryOnly, new VersionContainer(EGame.GAME_UE6_0, optionOverrides: new Dictionary<string, bool> { ["StaticMesh.KeepMobileMinLODSettingOnDesktop"] = true }), StringComparer.OrdinalIgnoreCase);
+    var provider = new DefaultFileProvider(archive, SearchOption.TopDirectoryOnly, new VersionContainer(gameEngine, optionOverrides: new Dictionary<string, bool> { ["StaticMesh.KeepMobileMinLODSettingOnDesktop"] = true }), StringComparer.OrdinalIgnoreCase);
     provider.OnDemandOptions = new IoStoreOnDemandOptions
     {
         ChunkHostUri = new Uri("https://egdownload.fastly-edge.com/", UriKind.Absolute),
         ChunkCacheDirectory = Directory.CreateDirectory(Path.Combine(cache, "chunks")),
-        DownloaderClient = new HttpClient(new StreamGuardHandler()) { Timeout = TimeSpan.FromSeconds(30) },
+        // local-textures: every download request fails at once, so only chunks already in the cache folder are read
+        DownloaderClient = localTextures ? new HttpClient(new OfflineHandler()) : new HttpClient(new StreamGuardHandler()) { Timeout = TimeSpan.FromSeconds(30) },
         Timeout = TimeSpan.FromSeconds(30)
     };
     provider.Initialize();
     provider.ReadNaniteData = true; // Fortnite Porting turns this on by default; Nanite meshes fail to read without it
 
-    await LoadTextureStreamingAsync(http, provider, archive, cache);
+    await LoadInstalledBundlesAsync(provider);
+    await LoadTextureStreamingAsync(http, provider, archive, cache, localTextures);
 
     await provider.SubmitKeyAsync(new FGuid(), new FAesKey(info.Keys.MainKey.Key));
     foreach (var extra in info.Keys.ExtraKeys ?? [])
@@ -319,7 +330,46 @@ static string? ToObjectPath(string packagePath)
     return "/" + mount + "/" + rest + "." + name;
 }
 
-static async Task LoadTextureStreamingAsync(HttpClient http, DefaultFileProvider provider, string archive, string cache)
+static async Task LoadInstalledBundlesAsync(DefaultFileProvider provider)
+{
+    // The Epic Games Launcher option "Pre-Download Streamed Assets" puts the full-size texture data on your PC in this
+    // folder. Fortnite Porting mounts it ("Load Installed Bundles"), so textures come from your files instead of Epic's servers.
+    try
+    {
+        var dir = new DirectoryInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "FortniteGame", "Saved", "PersistentDownloadDir", "GameCustom", "InstalledBundles"));
+        if (!dir.Exists)
+        {
+            Say("status: No pre-downloaded streamed assets on this PC (Epic Games Launcher > Fortnite > Options > Pre-Download Streamed Assets)");
+            return;
+        }
+
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+        var containers = 0;
+        foreach (var file in dir.EnumerateFiles("*.*", options))
+        {
+            var extension = file.Extension.TrimStart('.').ToLowerInvariant();
+            if (extension is "pak" or "utoc")
+            {
+                provider.RegisterVfs(file.FullName, [file.OpenRead()], it => new FStreamArchive(it, File.OpenRead(it), provider.Versions));
+                containers++;
+            }
+            else if (extension is "uondemandtoc")
+            {
+                await provider.RegisterVfsAsync(new IoChunkToc(file.FullName, provider.Versions));
+                containers++;
+            }
+        }
+
+        Say(containers > 0 ? "status: Loaded " + containers + " pre-downloaded streamed asset files" : "status: The pre-downloaded streamed assets folder is empty");
+    }
+    catch (Exception ex)
+    {
+        Say("status: Pre-downloaded streamed assets failed to load (" + ex.Message.Replace('\r', ' ').Replace('\n', ' ') + ")");
+    }
+}
+
+static async Task LoadTextureStreamingAsync(HttpClient http, DefaultFileProvider provider, string archive, string cache, bool localOnly)
 {
     // Fortnite keeps the large texture mips in streamed (on-demand) chunks, not in the paks. Without them every
     // texture can only be read at its smallest stored mip (64x64). Same steps as Fortnite Porting's texture streaming.
@@ -341,6 +391,12 @@ static async Task LoadTextureStreamingAsync(HttpClient http, DefaultFileProvider
 
         var tocPath = match.Groups[1].Value.Trim().TrimStart('/');
         var tocFile = new FileInfo(Path.Combine(cache, "chunks", tocPath.Substring(tocPath.LastIndexOf('/') + 1)));
+        if (localOnly && (!tocFile.Exists || tocFile.Length == 0))
+        {
+            Say("status: Local textures only: no streamed texture index on disk, textures use the mips stored in the game files");
+            return;
+        }
+
         if (!tocFile.Exists || tocFile.Length == 0)
         {
             Say("status: Downloading streamed texture index");
@@ -358,8 +414,52 @@ static async Task LoadTextureStreamingAsync(HttpClient http, DefaultFileProvider
     }
 }
 
-static async Task<VersionInfo?> LoadKeysAsync(HttpClient http, string cache)
+static async Task<VersionInfo?> LoadKeysAsync(HttpClient http, string cache, string version)
 {
+    if (version.Length > 0)
+    {
+        // A chosen game version never uses the live keys (they belong to the newest build). Only keys saved for
+        // that version are used: keys.manual.<version>.json or keys.<version>.json in the cache folder.
+        var safe = SafeVersion(version);
+        foreach (var name in new[] { "keys.manual." + safe + ".json" })
+        {
+            try
+            {
+                var file = Path.Combine(cache, name);
+                if (!File.Exists(file)) continue;
+                var v = JsonSerializer.Deserialize<VersionInfo>(await File.ReadAllTextAsync(file), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (!string.IsNullOrWhiteSpace(v?.Keys?.MainKey?.Key)) return v;
+            }
+            catch (Exception) { }
+        }
+        // Same lookup Fortnite Porting's "Fetch Version" does: keys for exactly this version.
+        try
+        {
+            var fetchOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, WriteIndented = true };
+            var fetched = JsonSerializer.Deserialize<VersionInfo>(await http.GetStringAsync(PortingVersionBase + Uri.EscapeDataString(version)), fetchOpts);
+            if (!string.IsNullOrWhiteSpace(fetched?.Keys?.MainKey?.Key))
+            {
+                try { await File.WriteAllTextAsync(Path.Combine(cache, "keys." + safe + ".json"), JsonSerializer.Serialize(fetched, fetchOpts)); } catch (Exception) { }
+                return fetched;
+            }
+        }
+        catch (Exception) { }
+
+        try
+        {
+            var saved = Path.Combine(cache, "keys." + safe + ".json");
+            if (File.Exists(saved))
+            {
+                var v = JsonSerializer.Deserialize<VersionInfo>(await File.ReadAllTextAsync(saved), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (!string.IsNullOrWhiteSpace(v?.Keys?.MainKey?.Key)) return v;
+            }
+        }
+        catch (Exception) { }
+
+        Say("status: No keys found for version " + version + " (not available online, and no keys.manual." + safe + ".json in the cache folder)");
+        return null;
+    }
+
     var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, WriteIndented = true };
     var cached = Path.Combine(cache, "keys.json");
     var manual = Path.Combine(cache, "keys.manual.json");   // your own keys, same layout as keys.json: wins over everything
@@ -455,7 +555,8 @@ static string KeepOnlyMappings(string cache, string keep)
         var keepFull = Path.GetFullPath(keep);
         foreach (var file in Directory.EnumerateFiles(cache, "*.usmap").ToList())
         {
-            if (Path.GetFileName(file).Equals("custom.usmap", StringComparison.OrdinalIgnoreCase)) continue;
+            var fileName = Path.GetFileName(file);
+            if (fileName.Equals("custom.usmap", StringComparison.OrdinalIgnoreCase) || fileName.StartsWith("custom.", StringComparison.OrdinalIgnoreCase)) continue;
             if (Path.GetFullPath(file).Equals(keepFull, StringComparison.OrdinalIgnoreCase)) continue;
             try { File.Delete(file); } catch (Exception) { }
         }
@@ -464,7 +565,49 @@ static string KeepOnlyMappings(string cache, string keep)
     return keep;
 }
 
-static async Task<string?> FindMappingsAsync(HttpClient http, string cache)
+static string SafeVersion(string v) => new string(v.Where(c => char.IsLetterOrDigit(c) || c == '.' || c == '-' || c == '_').ToArray());
+
+static async Task<string?> FindMappingsAsync(HttpClient http, string cache, string version)
+{
+    if (version.Length == 0) return await FindLatestMappingsAsync(http, cache);
+
+    // Your own custom.<version>.usmap always wins. Otherwise the mappings for exactly this version are fetched from
+    // the same service Fortnite Porting uses, and kept as custom.<version>.fetched.usmap.
+    var safe = SafeVersion(version);
+    var own = Path.Combine(cache, "custom." + safe + ".usmap");
+    if (File.Exists(own) && IsUsmap(own)) return own;
+
+    try
+    {
+        using var doc = JsonDocument.Parse(await http.GetStringAsync(PortingVersionBase + Uri.EscapeDataString(version)));
+        var mappings = Prop(doc.RootElement, "mappings");
+        var url = mappings is { } m ? Prop(m, "url")?.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            var md5 = Prop(mappings!.Value, "md5Hash")?.GetString();
+            var target = Path.Combine(cache, "custom." + safe + ".fetched.usmap");
+            if (File.Exists(target) && IsUsmap(target) && (string.IsNullOrWhiteSpace(md5) || HashMatches(target, md5))) return target;
+            Say("status: Downloading mappings for " + version);
+            if (await DownloadUsmapAsync(http, url, target)) return target;
+        }
+    }
+    catch (Exception) { }
+
+    return FindVersionMappings(cache, version);
+}
+
+static string? FindVersionMappings(string cache, string version)
+{
+    // Mappings for a chosen version come from a file you saved: custom.<version>.usmap, or any .usmap whose name contains the version.
+    var safe = SafeVersion(version);
+    var exact = Path.Combine(cache, "custom." + safe + ".usmap");
+    if (File.Exists(exact) && IsUsmap(exact)) return exact;
+    return Directory.EnumerateFiles(cache, "*.usmap")
+        .Where(f => Path.GetFileName(f).Contains(safe, StringComparison.OrdinalIgnoreCase) && IsUsmap(f))
+        .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+}
+
+static async Task<string?> FindLatestMappingsAsync(HttpClient http, string cache)
 {
     try
     {

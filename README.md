@@ -68,14 +68,12 @@ or Unity. Fortnite is a trademark of Epic Games.
 
 ## What's new in this update
 
+- Installation profiles: App Settings, Installation now keeps a list of
+  profiles, one per Fortnite build. Each has its own archive folder, version
+  (Latest Installed or Custom), encryption keys, mappings file, game language
+  and Nanite and bundle switches. Pick the active one and press Reload.
+- Custom profiles can fetch the keys and mappings for a game version.
+- Right-click a profile to duplicate or delete it, and drag to reorder.
+- Latest (On-Demand) is listed but not available yet.
 - The app looks for a new version every 30 seconds while it is open (the
-  portable exe), so you no longer have to click Check now. It only asks GitHub
-  for the latest version number and runs the full check when a newer one
-  exists, so it stays within GitHub's limits. The Check for Updates switch still
-  turns it off.
-- Clearing the cache, resetting settings and restarting now ask in a pop-up that
-  matches the app's theme instead of a plain Windows box. Enter confirms and Esc
-  cancels.
-- The color swatches in Customizability are easier to see.
-- The AI Helper is removed, including its settings and the AI fix option in
-  Check Shaders. Any saved AI keys are deleted from your settings.
+  portable exe). The Check for Updates switch still turns it off.

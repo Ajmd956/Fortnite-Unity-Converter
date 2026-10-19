@@ -128,10 +128,16 @@ button:disabled{opacity:.5;cursor:default !important;}
 
 /* ---------- setting rows (FP style) ---------- */
 .row-card{display:flex;align-items:center;gap:8px;min-height:68px;padding:16px;background:linear-gradient(var(--card),var(--card2));border:none;border-radius:16px;box-shadow:var(--card-shadow);}
+.row-card{flex-shrink:0;}
 .row-card.col{flex-direction:column;align-items:stretch;gap:10px;}
 .rc-text{flex:1 1 0;min-width:0;}
-.rc-title{font-size:14px;font-weight:400;color:var(--text);}
-.rc-desc{font-size:12px;color:var(--muted);}
+.rc-title{font-size:14px;font-weight:400;line-height:16px;color:var(--text);}
+.rc-desc{font-size:12px;font-weight:400;line-height:15px;color:var(--muted);}
+.rc-ctl input[type=text],.row-card .dd-btn,.tgl .lbl{font-weight:600;}
+.rc-ctl input[type=text]{color:var(--text);}
+.rc-ctl input[type=text]::placeholder{font-weight:400;}
+.row-card .dd-btn{color:var(--text);font-weight:500;}
+.rc-ctl input.fit{width:auto;max-width:100%;padding:0 10px 0 22px;}
 .rc-ctl{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:2 1 0;min-width:0;}
 .rc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .rc-head .rc-text{flex:1 1 auto;}
@@ -205,6 +211,61 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .sub .sec{margin:0 8px 8px;padding:0;}
 .subpane{flex:5 1 0;min-width:0;overflow-y:auto;padding:16px 8px 8px;display:none;flex-direction:column;gap:8px;}
 .subpane.active{display:flex;}
+#sub-installation{padding:0;}
+#sub-installation.active{flex-direction:row;gap:0;align-items:stretch;overflow:hidden;}
+.inst-prof{flex:0 0 190px;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px 12px;border-left:1px solid var(--sep);}
+.inst-main{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding:16px 8px 8px;}
+#profReload{margin-top:auto;justify-content:center;width:100%;}
+#profReload svg{width:16px;height:16px;}
+#profReload:disabled{opacity:.5;cursor:default;}
+.btn.flat{background:none;box-shadow:none;justify-content:flex-start;}
+.btn.flat:hover{background:var(--btn-hover);}
+.btn.flat svg{width:16px;height:16px;}
+.btn.ghost{background:none;box-shadow:none;}
+.btn.ghost:hover{background:#ffffff20;}
+#profKeysToggle{width:32px;margin-left:8px;}
+#profKeysCard .rc-head{gap:0;}
+.btn:disabled{opacity:.5;cursor:default;}
+#profKeysCh{transition:transform .15s ease;}
+#profKeysCard.open #profKeysCh{transform:rotate(180deg);}
+#profKeysCard{padding:0;gap:0;}
+#profKeysCard .rc-head{padding:16px;}
+#profKeysCard #profKeysBody{padding:0 16px 15px;}
+#profKeysCard.open #profKeysBody:before{content:'';display:block;height:1px;background:var(--sep);margin:0 -0px 16px;}
+#profKeysCard .rc-head{align-items:center;cursor:pointer;}
+#profKeysCard .rc-head .rc-text{flex:1 1 0;min-width:0;}
+#profKeysCard .rc-head .rc-ctl{flex:2 1 0;}
+#profKeysCard .rc-head:after{content:none;}
+#profKeysCard #errMainKey{margin:-4px 0 8px 0;}
+.rc-ctl{flex-wrap:wrap;}
+.rc-col{display:flex;flex-direction:column;align-items:flex-start;gap:5px;max-width:100%;min-width:0;}
+.rc-pair{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;max-width:100%;min-width:0;}
+.rc-pair input[type=text]{width:312px;flex:0 1 312px;padding:8px 14px;min-width:0;max-width:100%;}
+.rc-pair .btn{flex:0 0 auto;}
+.rc-err{text-align:left;font-size:14px;font-weight:400;color:var(--text);}
+.rc-ctl>.rc-err{flex:0 0 100%;}
+.rc-err:empty{display:none;}
+.dd-menu.scroll{max-height:340px;overflow-y:auto;}
+.prof-row{display:flex;align-items:center;gap:10px;}
+.prof-row.drag-over{box-shadow:0 -2px 0 var(--cyan);}
+.prof-item{flex:0 0 130px;width:130px;display:flex;align-items:center;height:32px;padding:0 16px;border-radius:16px;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);}
+.prof-item:hover{background:var(--btn-hover);}
+.prof-item.sel{background:var(--active);box-shadow:var(--card-shadow);padding-left:24px;}
+.prof-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.prof-dot{width:20px;height:20px;flex:0 0 20px;border-radius:50%;background:var(--btn-hover);box-shadow:var(--card-shadow),inset 0 0 0 1.5px #ffffff0d;display:grid;place-content:center;cursor:pointer;margin-right:4px;}
+.prof-dot.on::after{content:"";width:12px;height:12px;border-radius:50%;background:var(--cyan);}
+.key-row{display:flex;gap:4px;align-items:center;margin-bottom:8px;}
+.key-row input.kk{flex:1 1 0;min-width:0;}
+.key-row .btn{visibility:hidden;}
+.key-row:hover .btn{visibility:visible;}
+.pmenu{position:fixed;z-index:900;min-width:180px;padding:4px;background:linear-gradient(var(--popup),var(--popup2));border-radius:16px;box-shadow:inset 0 1px 2px -1px #ffffff50,0 0 12px #00000040;}
+.pmenu div{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;font-size:14px;cursor:pointer;}
+.pmenu div:hover{background:var(--btn-hover);}
+.pmenu div.off{opacity:.4;pointer-events:none;}
+.pmenu svg{width:16px;height:16px;}
+#profList{display:flex;flex-direction:column;gap:4px;}
+.sub-nav{color:#c9c6e3;font-weight:500;}
+#themeRows{display:flex;flex-direction:column;gap:8px;}
 .exppane{flex:1 1 0;min-width:0;overflow-y:auto;padding:16px 8px 8px;display:flex;flex-direction:column;gap:8px;}
 .path-line{font-size:12px;color:var(--muted);word-break:break-all;user-select:text;margin-top:2px;}
 
@@ -236,7 +297,7 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .fb-pill svg:last-child{width:16px;height:16px;flex:0 0 16px;}
 .dd-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:400;min-width:200px;padding:4px;background:linear-gradient(var(--popup),var(--popup2));border:none;border-radius:16px;box-shadow:inset 0 1px 2px -1px #ffffff50,inset 0 -1px 2px -2px #ffffff50,0 0 8px #00000020,0 0 12px #00000010;}
 .dd-menu.open{display:block;}
-.dd-menu div{padding:7px 12px;border-radius:12px;font-size:14px;cursor:pointer;transition:background-color var(--fade) ease;}
+.dd-menu div{white-space:nowrap;padding:7px 12px;border-radius:12px;font-size:14px;cursor:pointer;transition:background-color var(--fade) ease;}
 .dd-menu div:hover{background:var(--btn-hover);}
 .dd-menu div.on{background:var(--sel);box-shadow:var(--card-shadow);}
 .dd-menu div.on:hover{background:var(--sel-hover);}
@@ -357,6 +418,9 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .dd-btn{height:32px;border-radius:16px;gap:8px;padding:0 14px;}
 .dd-btn svg{width:18px;height:18px;flex:0 0 auto;}
 .dd-btn svg:last-child{width:16px;height:16px;}
+.row-card .dd-btn{gap:6px;padding:0 10px 0 12px;}
+.row-card .dd-btn svg,.row-card .dd-btn svg:last-child{width:20px !important;height:20px !important;}
+.row-card .tgl{gap:12px;margin-right:4px;position:relative;top:4px;}
 .dd-btn.wide{width:100%;justify-content:space-between;}
 .dd-btn.wide .v{flex:1;text-align:left;}
 .dd .dd-menu{left:auto;right:0;min-width:160px;}
@@ -820,7 +884,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       </div>
       <div class="subpane active" id="sub-application">
         <div class="sec-head">General</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Assets Folder (Optional)</div><div class="rc-desc">The folder that exports from the Files tab are saved to. Defaults to Documents\Fortnite Unity Converter\Exports.</div></div><div class="rc-ctl"><label class="check-row"><input type="checkbox" id="setUseExports"></label><input type="text" id="setExports" spellcheck="false" placeholder="Ex. D:/Art/FortniteUnity/Assets"><button class="btn sm ico" id="browseExports" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Assets Folder (Optional)</div><div class="rc-desc">The folder in which all assets will export to. Defaults to Documents/Fortnite Unity Converter/Exports.</div></div><div class="rc-ctl"><label class="check-row"><input type="checkbox" id="setUseExports"></label><input type="text" id="setExports" spellcheck="false" placeholder="Ex. D:/Art/FortniteUnity/Assets"><button class="btn sm ico" id="browseExports" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="sec-head">Display</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Tab Transitions</div><div class="rc-desc">Toggles the transition that plays when switching between tabs.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setTransitions"><span class="trk"></span><span class="lbl" data-for="setTransitions">Off</span></label></div></div>
         <div class="sec-head">Audio</div>
@@ -834,7 +898,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="row-card"><div class="rc-text"><div class="rc-title">Check for Updates</div><div class="rc-desc">Checks for a new version when the app starts and every few hours.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setCheckUpd"><span class="trk"></span><span class="lbl" data-for="setCheckUpd">Off</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc"><span id="updVersion">Fortnite Unity Converter</span></div></div><div class="rc-ctl"><button class="btn sm" id="updCheckBtn">Check now</button></div></div>
         <div class="sec-head">Files</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Double-Click Action</div><div class="rc-desc">What double-clicking a file in the Files tab does. Folders always open.</div></div><div class="rc-ctl"><div class="dd" id="ddDbl"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4H8V6H6V8H4V4M20,4V8H18V6H16V4H20M4,20V16H6V18H8V20H4M20,20H16V18H18V16H20V20M12,7L16,9.2V13.8L12,16L8,13.8V9.2L12,7Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Double-Click Action</div><div class="rc-desc">What double-clicking a file does</div></div><div class="rc-ctl"><div class="dd" id="ddDbl"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4H8V6H6V8H4V4M20,4V8H18V6H16V4H20M4,20V16H6V18H8V20H4M20,20H16V18H18V16H20V20M12,7L16,9.2V13.8L12,16L8,13.8V9.2L12,7Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Grid Item Size</div><div class="rc-desc">How large the folders and files are in the grid view.</div></div><div class="rc-ctl"><div class="dd" id="ddGrid"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="sec-head">Preview</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Cache Previews</div><div class="rc-desc">Keep exported previews so opening the same file again is instant.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setPvCache"><span class="trk"></span><span class="lbl" data-for="setPvCache">Off</span></label></div></div>
@@ -844,14 +908,14 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       </div>
       <div class="subpane" id="sub-developer">
         <div class="sec-head">Fallback</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Use a separate program</div><div class="rc-desc">Only used when the built-in API can't start. Opens the program below and talks to its API instead.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setAutoFnp"><span class="trk"></span><span class="lbl" data-for="setAutoFnp"></span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Use a separate program</div><div class="rc-desc">Used only if the built-in API can't start</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setAutoFnp"><span class="trk"></span><span class="lbl" data-for="setAutoFnp"></span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Fallback Program</div><div class="rc-desc">Path to the program's .exe. Leave empty to auto-detect.</div></div><div class="rc-ctl"><input type="text" id="setFnp" spellcheck="false" placeholder="Auto-detect"><button class="btn sm ico" id="browseFnp" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Start Minimized</div><div class="rc-desc">Open the fallback program minimized.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setMinFnp"><span class="trk"></span><span class="lbl" data-for="setMinFnp"></span></label></div></div>
       </div>
         <div class="subpane" id="sub-experimental">
         <div class="sec-head">Converters</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Converter</div><div class="rc-desc">Turns the Particle Converter on. It converts Niagara particle systems to Unity particles.</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpParticle"><span class="trk"></span><span class="lbl" data-for="setExpParticle">Off</span></label></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Blueprint Converter</div><div class="rc-desc">Turns the Blueprint Converter on. It converts sky domes and props to Unity prefabs.</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpBlueprint"><span class="trk"></span><span class="lbl" data-for="setExpBlueprint">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Converter</div><div class="rc-desc">Converts Niagara particles to Unity</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpParticle"><span class="trk"></span><span class="lbl" data-for="setExpParticle">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Blueprint Converter</div><div class="rc-desc">Converts sky domes and props to prefabs</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpBlueprint"><span class="trk"></span><span class="lbl" data-for="setExpBlueprint">Off</span></label></div></div>
       </div>
       <div class="subpane" id="sub-console">
         <div class="rc-head"><div class="sec-head" style="padding:0 8px">Console</div><button class="btn sm" id="clearConsole">Clear</button></div>
@@ -862,28 +926,52 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="row-card"><div class="rc-text"><div class="rc-title">Theme</div><div class="rc-desc">The theme that should be used for Fortnite Unity.</div></div><div class="rc-ctl"><div class="dd" id="ddTheme"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16,9H19L14,16M10,9H14L12,17M5,9H8L10,16M15,4H17L19,7H5L7,4H9L10,2H14L15,4M12,22L2,9H22L12,22Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="sec-head">Layout</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Corner Roundness</div><div class="rc-desc">How round buttons, cards and panels are. 100% is the default look.</div></div><div class="rc-ctl"><div class="sld-wrap"><input type="range" class="sld" id="czRadius" min="0" max="150" step="10" value="100"></div><span class="cz-val" id="czRadiusV">100%</span></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">UI Scale</div><div class="rc-desc">Makes the whole app bigger or smaller. Applies when you let go of the slider.</div></div><div class="rc-ctl"><div class="sld-wrap"><input type="range" class="sld" id="czScale" min="80" max="130" step="5" value="100"></div><span class="cz-val" id="czScaleV">100%</span></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">UI Scale</div><div class="rc-desc">Makes the whole app bigger or smaller</div></div><div class="rc-ctl"><div class="sld-wrap"><input type="range" class="sld" id="czScale" min="80" max="130" step="5" value="100"></div><span class="cz-val" id="czScaleV">100%</span></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Text Size</div><div class="rc-desc">The size of all text.</div></div><div class="rc-ctl"><div class="sld-wrap"><input type="range" class="sld" id="czText" min="80" max="140" step="5" value="100"></div><span class="cz-val" id="czTextV">100%</span></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Spacing</div><div class="rc-desc">The gaps between items and inside setting rows.</div></div><div class="rc-ctl"><div class="sld-wrap"><input type="range" class="sld" id="czSpacing" min="60" max="150" step="10" value="100"></div><span class="cz-val" id="czSpacingV">100%</span></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Font</div><div class="rc-desc">The font used for all text.</div></div><div class="rc-ctl"><div class="dd" id="ddFont"><button class="btn dd-btn"><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div id="themeRows"></div>
         <div class="sec-head">Reset</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Reset Customization</div><div class="rc-desc">Puts the colors, roundness, scale, text size, spacing and font back to the selected theme's defaults.</div></div><div class="rc-ctl"><button class="btn" id="czReset">Reset</button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Reset Customization</div><div class="rc-desc">Puts everything back to the theme's defaults</div></div><div class="rc-ctl"><button class="btn" id="czReset">Reset</button></div></div>
       </div>
       <div class="subpane" id="sub-installation">
+        <div class="inst-prof">
+          <div class="sec-head">Profiles</div>
+          <div id="profList"></div>
+          <button class="btn flat" id="profAdd"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>Add Profile</button>
+          <button class="btn" id="profReload" title="Reload Installation"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/></svg>Reload</button>
+        </div>
+        <div class="inst-main">
         <div class="sec-head">General</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">API Address</div><div class="rc-desc">Where the API listens. The built-in one uses this port when it starts.</div></div><div class="rc-ctl"><input type="text" id="setBridge" spellcheck="false" placeholder="http://localhost:24320"></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Game Archive Folder</div><div class="rc-desc">The Fortnite Paks folder the API and the Files tab read. Leave empty to auto-detect from the Epic Games Launcher.</div></div><div class="rc-ctl"><input type="text" id="setArchive" spellcheck="false" placeholder="Auto-detect"><button class="btn sm ico" id="browseArchive" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Profile Name</div><div class="rc-desc">The name used to identify your installation profile</div></div><div class="rc-ctl"><input type="text" id="setProfName" spellcheck="false"></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Fortnite Version</div><div class="rc-desc">The version of Fortnite that Fortnite Unity will be loading.</div></div><div class="rc-ctl"><div class="dd" id="ddProfMode"><button class="btn dd-btn"><svg class="ni" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;display:none"><path d=""/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
+        <div class="row-card" id="rowArchive"><div class="rc-text"><div class="rc-title">Archive Directory</div><div class="rc-desc">The directory that contains all of the required game files.</div></div><div class="rc-ctl"><div class="rc-col"><div class="rc-pair"><input type="text" id="setArchive" spellcheck="false" placeholder="Ex. C:/Fortnite/FortniteGame/Content/Paks"><button class="btn sm ico" id="browseArchive" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div><div class="rc-err" id="errArchive"></div></div></div></div>
+        <div class="sec-head">Config</div>
+        <div class="row-card" id="rowFetch"><div class="rc-text"><div class="rc-title">Fetch Data</div><div class="rc-desc">Download encryption keys and mappings for a specific Fortnite version and apply them to this profile.</div></div><div class="rc-ctl"><input type="text" id="setFetchVer" spellcheck="false" placeholder="Ex. 32.10"><button class="btn sm ico" id="profFetch" title="Fetch"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button></div></div>
+        <div class="row-card" id="rowUnreal"><div class="rc-text"><div class="rc-title">Unreal Version</div><div class="rc-desc">The Unreal Version that aligns with your Fortnite installation.</div></div><div class="rc-ctl"><div class="dd" id="ddProfUnreal"><button class="btn dd-btn"><svg class="ni" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;display:none"><path d=""/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
+        <div class="row-card col" id="profKeysCard">
+          <div class="rc-head"><div class="rc-text"><div class="rc-title">Encryption Keys</div><div class="rc-desc">The encryption keys required to decrypt Fortnite's game files.</div></div><div class="rc-ctl"></div><button class="btn ghost ico" id="profKeysToggle" title="Expand"><span id="profKeysCh" style="display:flex"><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></span></button></div>
+          <div id="profKeysBody" style="display:none"><div class="key-row" id="mainKeyRow"><input type="text" class="kk" id="setMainKey" spellcheck="false" placeholder="Ex. 0x0000000000000000000000000000000000000000000000000000000000000000"></div><div class="rc-err" id="errMainKey"></div><div id="profKeys"></div><button class="btn flat" id="profKeyAdd"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>Add Key</button></div>
+        </div>
+        <div class="row-card" id="rowMappings"><div class="rc-text"><div class="rc-title">Mappings File</div><div class="rc-desc">The mappings file required for asset parsing to work properly. Required for Fortnite v14.40+</div></div><div class="rc-ctl"><label class="check-row"><input type="checkbox" id="setUseMap"></label><div class="rc-pair"><input type="text" id="setMapFile" spellcheck="false" placeholder="Ex. C:/Users/FortnitePorting/Downloads/Mappings.usmap"><button class="btn sm ico" id="browseMap" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div></div>
+        <div class="sec-head">Options</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Game Language</div><div class="rc-desc">The language used for in-game text strings such as names, descriptions, styles, etc.</div></div><div class="rc-ctl"><div class="dd" id="ddProfLang"><button class="btn dd-btn"><svg class="ni" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;display:none"><path d=""/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
+        <div class="row-card" id="rowOnDemand"><div class="rc-text"><div class="rc-title">On-Demand Assets</div><div class="rc-desc">Allows the streaming of on-demand assets, served from Fortnite's servers.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setOnDemand"><span class="trk"></span><span class="lbl" data-for="setOnDemand"></span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Load Nanite Data</div><div class="rc-desc">Enable the loading and exporting of Nanite geometry.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setNanite"><span class="trk"></span><span class="lbl" data-for="setNanite"></span></label></div></div>
+        <div class="row-card" id="rowBundles"><div class="rc-text"><div class="rc-title">Load Installed Bundles</div><div class="rc-desc">Whether or not to load installed bundles from Fortnite's AppData directory.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setBundles"><span class="trk"></span><span class="lbl" data-for="setBundles"></span></label></div></div>
+        <div class="sec-head">API</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">API Address</div><div class="rc-desc">Where the API listens</div></div><div class="rc-ctl"><input type="text" id="setBridge" spellcheck="false" placeholder="http://localhost:24320"></div></div>
         <div class="sec-head">Startup</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Start the API</div><div class="rc-desc">Start the built-in API in the background when this app opens.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setAutoApi"><span class="trk"></span><span class="lbl" data-for="setAutoApi"></span></label></div></div>
         <div class="sec-head">Unity</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Unity Editor</div><div class="rc-desc">Path to Unity.exe, used for compile checks. Leave empty to auto-detect.</div></div><div class="rc-ctl"><input type="text" id="setUnity" spellcheck="false" placeholder="Auto-detect"><button class="btn sm ico" id="browseUnity" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Unity Editor</div><div class="rc-desc">Path to Unity.exe. Empty means auto-detect</div></div><div class="rc-ctl"><input type="text" id="setUnity" spellcheck="false" placeholder="Auto-detect"><button class="btn sm ico" id="browseUnity" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="sec-head">Locations</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Shader Conversions Folder</div><div class="path-line" id="pathConversions"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openConv2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Fixed Conversions Folder</div><div class="path-line" id="pathFixed"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openFixed2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Conversions Folder</div><div class="path-line" id="pathParticles"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openParticles" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Conversion Cache</div><div class="rc-desc"><span id="convCacheSize">Calculating...</span></div></div><div class="rc-ctl"><button class="btn sm" id="convCacheClear">Clear cache</button></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Cache Folder</div><div class="path-line" id="pathCache"></div></div><div class="rc-ctl"><button class="btn sm ico" id="openCache2" title="Open folder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
+        </div>
       </div>
     </div>
 
@@ -1839,7 +1927,7 @@ function fillSettings() {
   $('setUnity').value = settings.unity || ''
   $('setFnp').value = settings.fnpPath || ''
   $('setAutoApi').checked = settings.autoStartApi !== false
-  $('setArchive').value = settings.fortniteArchive || ''
+  paintProfiles()
   $('setAutoFnp').checked = !!settings.autoStartFnp
   $('setMinFnp').checked = !!settings.minimizeFnp
   $('setTransitions').checked = settings.tabTransitions !== false
@@ -1866,8 +1954,12 @@ function fillSettings() {
   syncToggleLabels()
 }
 
+let profTimer = null
 async function saveSetting(patch) {
+  // A profile edit waiting for its delayed save must survive another setting being saved first
+  const keepP = profTimer ? { profiles: settings.profiles, activeProfile: settings.activeProfile } : null
   settings = await window.api.setSettings(patch)
+  if (keepP) Object.assign(settings, keepP)
   syncToggleLabels()
 }
 
@@ -1941,9 +2033,10 @@ $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
 const NEWS_DATE = 'Oct 19'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Live update checks and cleaner pop-ups', date: NEWS_DATE }
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Installation profiles and live update checks', date: NEWS_DATE }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'Settings', title: 'Installation profiles', sub: 'Keep a profile for each Fortnite build.', body: 'App Settings, Installation now has profiles. Make one for the game you have installed and others for older builds, then pick the active one and press Reload. Each profile has its own archive folder, version, encryption keys, mappings file, game language and Nanite and bundle switches. Custom profiles can fetch the keys and mappings for a version for you. Right-click a profile to duplicate or delete it, and drag to reorder.\n\nLatest (On-Demand) is listed but not available yet; Reload tells you so.' },
   { tag: 'Updates', title: 'Live update checks', sub: 'New versions show up within a minute.', body: 'While the app is open it now looks for a new version every 30 seconds, so you do not have to click Check now. It only asks GitHub for the latest version number, and does the full check once a newer one exists. The Check for updates switch still turns this off.' },
   { tag: 'Settings', title: 'Cleaner pop-ups', sub: 'Confirmations now match the app.', body: 'Clearing the cache, resetting settings and restarting now ask in a pop-up that matches the app instead of a plain Windows box. The color swatches in Customizability are also easier to see. The AI Helper has been removed.' },
   { tag: 'Blueprint', title: 'Prefab built for you', sub: 'Unity builds it in the background.', body: 'When a Blueprint finishes converting, the app now opens Unity in the background with no window, builds the prefab in a separate project, and saves the prefab, its materials and their .meta files in the Blueprint Conversions folder. The finished popup appears after Unity is done, and the links to textures and shaders survive when you copy the folder into your project.\n\nThis needs the Unity Editor to be found (App Settings, Installation). Without it, the prefab is built when you copy the folder into your project, as before.' },
@@ -2329,7 +2422,8 @@ $('browseFnp').onclick = async () => {
 }
 $('browseArchive').onclick = async () => {
   const picked = await window.api.pickFolder()
-  if (picked && picked[0]) { $('setArchive').value = picked[0]; saveTexts() }
+  const p = curProf()
+  if (picked && picked[0] && p) { p.archive = picked[0]; $('setArchive').value = picked[0]; saveProfiles(p) }
 }
 $('browseUnity').onclick = async () => {
   const p = await window.api.pickUnity()
@@ -2404,6 +2498,311 @@ $('convCacheClear').onclick = async () => {
   else setStatus(r && r.ok ? 'Conversion cache cleared' : 'Could not clear the conversion cache')
   refreshConvCacheSize()
 }
+
+const EGAMES = ["GAME_UE3_0", "GAME_RocketLeague", "GAME_SuddenAttack2", "GAME_LifeIsStrange", "GAME_MortalRoyale", "GAME_AmericanArmy3", "GAME_APBReloaded", "GAME_ScourgeOutbreak", "GAME_DirtyBomb", "GAME_Dishonored", "GAME_AvaGlobal", "GAME_LetItDie", "GAME_Paladins", "GAME_UE4_0", "GAME_UE4_1", "GAME_UE4_2", "GAME_UE4_3", "GAME_UE4_4", "GAME_UE4_5", "GAME_ArkSurvivalEvolved", "GAME_UE4_6", "GAME_UE4_7", "GAME_UE4_8", "GAME_UE4_9", "GAME_UE4_10", "GAME_SeaOfThieves", "GAME_WhatRemainsofEdithFinch", "GAME_UE4_11", "GAME_GearsOfWar4", "GAME_DaysGone", "GAME_UE4_12", "GAME_Abzu", "GAME_UE4_13", "GAME_StateOfDecay2", "GAME_WeHappyFew", "GAME_UE4_14", "GAME_TEKKEN7", "GAME_TransformersOnline", "GAME_UE4_15", "GAME_ConanExiles", "GAME_UE4_16", "GAME_PlayerUnknownsBattlegrounds", "GAME_TrainSimWorld2020", "GAME_NarutotoBorutoShinobiStriker", "GAME_NewGundamBreaker", "GAME_UE4_17", "GAME_AWayOut", "GAME_Overhit", "GAME_UE4_18", "GAME_KingdomHearts3", "GAME_FinalFantasy7Remake", "GAME_AceCombat7", "GAME_FridayThe13th", "GAME_GameForPeace", "GAME_DragonQuestXI", "GAME_CodeVein", "GAME_PUBGMobile", "GAME_PUBGLite", "GAME_UE4_19", "GAME_Paragon", "GAME_Ashen", "GAME_UE4_20", "GAME_Borderlands3", "GAME_UE4_21", "GAME_StarWarsJediFallenOrder", "GAME_Undawn", "GAME_UE4_22", "GAME_UE4_23", "GAME_ApexLegendsMobile", "GAME_UE4_24", "GAME_TonyHawkProSkater12", "GAME_BigRumbleBoxingCreedChampions", "GAME_AssaultFireFuture", "GAME_UE4_25", "GAME_UE4_25_Plus", "GAME_RogueCompany", "GAME_DeadIsland2", "GAME_KenaBridgeofSpirits", "GAME_Strinova", "GAME_SYNCED", "GAME_OperationApocalypse", "GAME_Farlight84", "GAME_StarWarsHunters", "GAME_ThePathless", "GAME_SuicideSquad", "GAME_HellLetLoose", "GAME_Placeholder3", "GAME_Back4Blood", "GAME_NiNoKuniCrossWorlds", "GAME_UE4_26", "GAME_GTATheTrilogyDefinitiveEdition", "GAME_UE4_26_Plus", "GAME_BladeAndSoul", "GAME_TowerOfFantasy", "GAME_FinalFantasy7Rebirth", "GAME_TheDivisionResurgence", "GAME_StarWarsJediSurvivor", "GAME_Snowbreak", "GAME_TorchlightInfinite", "GAME_QQ", "GAME_WutheringWaves", "GAME_DreamStar", "GAME_MidnightSuns", "GAME_FragPunk", "GAME_RacingMaster", "GAME_StellarBlade", "GAME_EtheriaRestart", "GAME_EvilWest", "GAME_ArenaBreakoutInfinite", "GAME_Psychonauts2", "GAME_OctopathTravelerCoTC", "GAME_DarkPicturesAnthologyHouseOfAshes", "GAME_DarkPicturesAnthologyManofMedan", "GAME_DarkPicturesAnthologyTheDevilinMe", "GAME_DarkPicturesAnthologyLittleHope", "GAME_TheQuarry", "GAME_RocoKingdomWorld", "GAME_HonorofKingsWorld", "GAME_eFootball", "GAME_ArenaBreakoutMobile", "GAME_ValorantSource", "GAME_UE4_27", "GAME_Splitgate", "GAME_HYENAS", "GAME_HogwartsLegacy", "GAME_OutlastTrials", "GAME_Valorant_PRE_11_2", "GAME_Gollum", "GAME_Grounded", "GAME_DeltaForce", "GAME_MortalKombat1", "GAME_VisionsofMana", "GAME_Spectre", "GAME_KartRiderDrift", "GAME_ThroneAndLiberty", "GAME_MotoGP24", "GAME_Stray", "GAME_CrystalOfAtlan", "GAME_PromiseMascotAgency", "GAME_TerminullBrigade", "GAME_AshEchoes", "GAME_NeedForSpeedMobile", "GAME_TonyHawkProSkater34", "GAME_OnePieceAmbition", "GAME_UnchartedWatersOrigin", "GAME_LostSoulAside", "GAME_GhostsofTabor", "GAME_BlueProtocol", "GAME_LittleNightmares3", "GAME_Raven2", "GAME_DuetNightAbyss", "GAME_LiesofP", "GAME_BloodBowl3", "GAME_ChasingKaleidoRIDER", "GAME_Lego2KDrive", "GAME_CenturyAgeofAshes", "GAME_EmbersofTheUncrowned", "GAME_eBaseballProSpirit", "GAME_TheFirstBerserkerKhazan", "GAME_AliensFireteamElite2", "GAME_GangstarMirageCity", "GAME_ArcheAgeWar", "GAME_UE4_28", "GAME_UE4_LATEST", "GAME_UE5_0", "GAME_MeetYourMaker", "GAME_BlackMythWukong", "GAME_UE5_EA_Legacy", "GAME_TheMatrixAwakens", "GAME_UE5_EA", "GAME_UE5_1", "GAME_3on3FreeStyleRebound", "GAME_Placeholder", "GAME_TheCastingofFrankStone", "GAME_SilentHill2Remake", "GAME_Dauntless", "GAME_WorldofJadeDynasty", "GAME_LordsoftheFallen", "GAME_Palworld", "GAME_UE5_2", "GAME_Placeholder5", "GAME_PaxDei", "GAME_TheFirstDescendant", "GAME_MetroAwakening", "GAME_LostRecordsBloomAndRage", "GAME_DuneAwakening", "GAME_Placeholder4", "GAME_PUBGBlackBudget", "GAME_UE5_3", "GAME_MarvelRivals", "GAME_BlackStigma", "GAME_Valorant", "GAME_Placeholder7", "GAME_Aion2", "GAME_Placeholder6", "GAME_Avowed", "GAME_MetalGearSolidDelta", "GAME_Highguard", "GAME_DragonSwordAwakening", "GAME_UE5_4", "GAME_FunkoFusion", "GAME_InfinityNikki", "GAME_SilverPalace", "GAME_Gothic1Remake", "GAME_SplitFiction", "GAME_WildAssault", "GAME_AceCombat8WingsofTheve", "GAME_TempestRising", "GAME_MindsEye", "GAME_Placeholder1", "GAME_FantasyLifeTheGirlWhoStealsTime", "GAME_MafiaTheOldCountry", "GAME_2XKO", "GAME_Reanimal", "GAME_VEIN", "GAME_Placeholder2", "GAME_OuterWorlds2", "GAME_OctopathTraveler0", "GAME_CodeVein2", "GAME_UE5_5", "GAME_Brickadia", "GAME_Splitgate2", "GAME_DeadzoneRogue", "GAME_Directive8020", "GAME_Stalker2", "GAME_ARKSurvivalAscended", "GAME_SleeplessWilds", "GAME_FateTrigger", "GAME_MARVELTokonFightingSouls", "GAME_Borderlands4", "GAME_Rennsport", "GAME_GrayZoneWarfare", "GAME_IntotheRadius2", "GAME_HighOnLife2", "GAME_MongilStarDive", "GAME_TheBloodofDawnwalker", "GAME_UE5_6", "GAME_Grounded2", "GAME_AshesOfCreation", "GAME_Solasta2", "GAME_NevernessToEverness", "GAME_DeadByDaylight_Old", "GAME_Placeholder9", "GAME_Subnautica2", "GAME_LEGOBatmanLegacyoftheDarkKnight", "GAME_Fatekeeper", "GAME_Enginefall", "GAME_TamasShadowveil", "GAME_GearsofWarEDay", "GAME_Zeus", "GAME_InZOI", "GAME_DestroyAllHumans2Reprobed", "GAME_UE5_7", "GAME_TitanQuest2", "GAME_Squad", "GAME_Empulse", "GAME_LordOfMysteries", "GAME_Wildgate", "GAME_TheFinals", "GAME_DeadByDaylight", "GAME_Bringer", "GAME_ArcRaiders", "GAME_UE5_8", "GAME_ConanExilesEnhanced", "GAME_UE5_9", "GAME_UE5_LATEST", "GAME_UE6_0", "GAME_UE6_LATEST"]
+const LANGS = [["English", "English"], ["Australian English", "AustralianEnglish"], ["British English", "BritishEnglish"], ["Français", "French"], ["Deutsch", "German"], ["Italiano", "Italian"], ["Español", "Spanish"], ["Español (Latinoaméricano)", "SpanishLatin"], ["Español (Mexicano)", "SpanishMexico"], ["العربية (Arabic)", "Arabic"], ["日本語 (Japanese)", "Japanese"], ["한국어 (Korean)", "Korean"], ["Polski", "Polish"], ["Português", "Portuguese"], ["Português (Brasil)", "PortugueseBrazil"], ["Русский", "Russian"], ["Türkçe", "Turkish"], ["中文 (Chinese)", "Chinese"], ["中文(台灣) (Traditional Chinese)", "TraditionalChinese"], ["Svenska", "Swedish"], ["ไทย / Phasa Thai", "Thai"], ["Bahasa Indonesia", "Indonesian"], ["Việtnam", "VietnameseVietnam"], ["isiZulu", "Zulu"]]
+
+// ---- Installation profiles: same fields, rows and rules as Fortnite Porting's Installation settings ----
+const ZERO_KEY = '0x' + '0'.repeat(64)
+const FV_ICON = {
+  LatestInstalled: 'M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z',
+  LatestOnDemand: 'M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z',
+  Custom: 'M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z'
+}
+const FV_NAME = { LatestInstalled: 'Latest (Installed)', LatestOnDemand: 'Latest (On-Demand)', Custom: 'Custom' }
+let profEdit = ''
+let profReloading = false
+let profKeysOpen = false
+function profList() { return Array.isArray(settings.profiles) ? settings.profiles : [] }
+function curProf() { return profList().find(p => p.id === profEdit) || profList().find(p => p.id === settings.activeProfile) || profList()[0] || null }
+function newId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
+function saveProfiles(now) {
+  clearTimeout(profTimer)
+  const go = () => { profTimer = null; return saveSetting({ profiles: settings.profiles, activeProfile: settings.activeProfile }) }
+  if (now) return go()
+  profTimer = setTimeout(go, 450)
+  return Promise.resolve()
+}
+// A text box is as wide as its text (or its placeholder while empty), like Fortnite Porting's boxes
+let fitCtx = null
+function fitInput(el, minW) {
+  if (!fitCtx) fitCtx = document.createElement('canvas').getContext('2d')
+  fitCtx.font = '600 14px "SF Pro Text", "Segoe UI", sans-serif'
+  const text = el.value || el.placeholder || ''
+  el.style.width = Math.max(minW || 85, Math.ceil(fitCtx.measureText(text).width) + 34) + 'px'
+}
+function keyOk(v) { return /^(0x)?[0-9a-fA-F]{64}$/.test(String(v || '').trim()) }
+function ddFill(id, items, cur, pick, scroll) {
+  makeDD(id, items, cur, pick)
+  $(id).querySelector('.dd-menu').classList.toggle('scroll', !!scroll)
+  const on = $(id).querySelector('.dd-menu .on')
+  if (on && scroll) setTimeout(() => { try { on.scrollIntoView({ block: 'nearest' }) } catch (e) {} }, 0)
+}
+function setDDIcon(id, d) {
+  const svg = $(id).querySelector('.dd-btn svg.ni')
+  svg.style.display = d ? '' : 'none'
+  if (d) svg.firstElementChild.setAttribute('d', d)
+}
+function paintProfiles() {
+  const p = curProf()
+  if (!p) return
+  profEdit = p.id
+  const box = $('profList')
+  box.innerHTML = ''
+  profList().forEach((it, idx) => {
+    const row = document.createElement('div')
+    row.className = 'prof-row'
+    row.draggable = true
+    row.ondragstart = e => { e.dataTransfer.setData('text/plain', String(idx)); e.dataTransfer.effectAllowed = 'move' }
+    row.ondragover = e => { e.preventDefault(); row.classList.add('drag-over') }
+    row.ondragleave = () => row.classList.remove('drag-over')
+    row.ondrop = e => {
+      e.preventDefault()
+      row.classList.remove('drag-over')
+      const from = parseInt(e.dataTransfer.getData('text/plain'), 10)
+      if (!(from >= 0) || from === idx) return
+      const list = profList().slice()
+      const [moved] = list.splice(from, 1)
+      list.splice(idx, 0, moved)
+      settings.profiles = list
+      saveProfiles(true)
+      paintProfiles()
+    }
+    row.oncontextmenu = e => { e.preventDefault(); profMenu(e.clientX, e.clientY, it) }
+    const d = document.createElement('div')
+    d.className = 'prof-item' + (it.id === p.id ? ' sel' : '')
+    const nm = document.createElement('span')
+    nm.className = 'nm'
+    nm.textContent = it.profileName || ''
+    const dot = document.createElement('span')
+    dot.className = 'prof-dot' + (it.id === settings.activeProfile ? ' on' : '')
+    dot.onclick = e => {
+      e.stopPropagation()
+      settings.activeProfile = it.id
+      profEdit = it.id
+      saveProfiles(true)
+      paintProfiles()
+    }
+    d.onclick = () => { profEdit = it.id; paintProfiles() }
+    d.appendChild(nm)
+    row.appendChild(d)
+    row.appendChild(dot)
+    box.appendChild(row)
+  })
+  const v = p.fortniteVersion || 'LatestInstalled'
+  const custom = v === 'Custom'
+  const installed = v === 'LatestInstalled'
+  const focus = el => document.activeElement === el
+  if (!focus($('setProfName'))) $('setProfName').value = p.profileName || ''
+  if (!focus($('setArchive'))) $('setArchive').value = p.archiveDirectory || ''
+  if (!focus($('setMainKey'))) $('setMainKey').value = p.mainKey || ''
+  if (!focus($('setMapFile'))) $('setMapFile').value = p.mappingsFile || ''
+  $('setFetchVer').classList.add('fit'); fitInput($('setFetchVer'), 200)
+  $('rowArchive').style.display = v === 'LatestOnDemand' ? 'none' : ''
+  $('rowFetch').style.display = custom ? '' : 'none'
+  $('rowUnreal').style.display = custom ? '' : 'none'
+  $('rowMappings').style.display = custom ? '' : 'none'
+  $('mainKeyRow').style.display = custom ? '' : 'none'
+  $('rowOnDemand').style.display = installed ? '' : 'none'
+  $('rowBundles').style.display = installed ? '' : 'none'
+  $('setOnDemand').checked = p.useTextureStreaming !== false
+  $('setNanite').checked = p.loadNaniteData !== false
+  $('setBundles').checked = p.loadInstalledBundles !== false
+  $('setUseMap').checked = !!p.useMappingsFile
+  $('setMapFile').disabled = $('browseMap').disabled = !p.useMappingsFile
+  $('profFetch').disabled = !($('setFetchVer').value || '').trim()
+  ddFill('ddProfMode', Object.keys(FV_NAME).map(k => ({ t: FV_NAME[k], k, i: FV_ICON[k] })), FV_NAME[v], it => {
+    const c = curProf()
+    if (!c) return
+    c.fortniteVersion = it.k
+    saveProfiles(true)
+    paintProfiles()
+  })
+  setDDIcon('ddProfMode', FV_ICON[v])
+  ddFill('ddProfUnreal', EGAMES.map(g => ({ t: g, k: g })), p.unrealVersion || 'GAME_UE6_0', it => { const c = curProf(); if (c) { c.unrealVersion = it.k; saveProfiles(true); paintProfiles() } }, true)
+  const lang = LANGS.find(l => l[1] === (p.gameLanguage || 'English')) || LANGS[0]
+  ddFill('ddProfLang', LANGS.map(l => ({ t: l[0], k: l[1] })), lang[0], it => { const c = curProf(); if (c) { c.gameLanguage = it.k; saveProfiles(true); paintProfiles() } }, true)
+  $('profKeysCard').classList.toggle('open', profKeysOpen)
+  $('profKeysBody').style.display = profKeysOpen ? '' : 'none'
+  paintKeys()
+  paintErrors()
+  $('profReload').disabled = profReloading || (typeof fileBuilding !== 'undefined' && fileBuilding)
+  syncToggleLabels()
+}
+async function paintErrors() {
+  const p = curProf()
+  if (!p) return
+  const id = p.id
+  if (p.fortniteVersion === 'LatestOnDemand') $('errArchive').textContent = ''
+  else {
+    const msg = await window.api.profileCheckArchive(p.archiveDirectory || '')
+    if (curProf() && curProf().id === id) { $('errArchive').textContent = msg || '' }
+  }
+  const badKey = p.fortniteVersion === 'Custom' && !keyOk(p.mainKey)
+  $('errMainKey').textContent = badKey ? 'Invalid encryption key.' : ''
+  $('setMainKey').classList.toggle('bad', badKey)
+}
+function paintKeys() {
+  const p = curProf()
+  const box = $('profKeys')
+  box.innerHTML = ''
+  if (!p) return
+  if (!Array.isArray(p.extraKeys)) p.extraKeys = []
+  p.extraKeys.forEach((k, i) => {
+    const row = document.createElement('div')
+    row.className = 'key-row'
+    const v = document.createElement('input')
+    v.type = 'text'; v.className = 'kk'; v.spellcheck = false
+    v.placeholder = 'Ex. ' + ZERO_KEY
+    v.value = k
+    v.oninput = () => { const c = curProf(); if (c && c.extraKeys[i] !== undefined) { c.extraKeys[i] = v.value; saveProfiles() } }
+    const rm = document.createElement('button')
+    rm.className = 'btn ghost ico'; rm.title = 'Remove Key'
+    rm.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg>'
+    rm.onclick = () => { const c = curProf(); if (!c) return; c.extraKeys.splice(i, 1); saveProfiles(true); paintKeys() }
+    row.appendChild(v); row.appendChild(rm)
+    box.appendChild(row)
+  })
+}
+function toggleKeys() { profKeysOpen = !profKeysOpen; $('profKeysCard').classList.toggle('open', profKeysOpen); $('profKeysBody').style.display = profKeysOpen ? '' : 'none' }
+$('profKeysToggle').onclick = e => { e.stopPropagation(); toggleKeys() }
+document.querySelector('#profKeysCard .rc-head').onclick = e => { if (e.target.closest('input')) return; toggleKeys() }
+$('profKeyAdd').onclick = () => { const p = curProf(); if (!p) return; if (!Array.isArray(p.extraKeys)) p.extraKeys = []; p.extraKeys.push(ZERO_KEY); saveProfiles(true); paintKeys() }
+// Text boxes write straight into the profile being edited
+function bindProf(id, field, after) {
+  $(id).oninput = () => {
+    const p = curProf()
+    if (!p) return
+    p[field] = $(id).value
+    if ($(id).classList.contains('fit')) fitInput($(id), id === 'setFetchVer' ? 200 : 85)
+    if (after) after(p)
+    saveProfiles()
+  }
+}
+bindProf('setProfName', 'profileName', () => { const el = document.querySelector('.prof-item.sel .nm'); if (el) el.textContent = $('setProfName').value })
+bindProf('setArchive', 'archiveDirectory', () => paintErrors())
+bindProf('setMainKey', 'mainKey', () => paintErrors())
+bindProf('setMapFile', 'mappingsFile')
+$('setFetchVer').oninput = () => { fitInput($('setFetchVer'), 200); $('profFetch').disabled = !$('setFetchVer').value.trim() }
+$('setProfName').onkeydown = e => e.stopPropagation()
+$('setUseMap').onchange = () => { const p = curProf(); if (p) { p.useMappingsFile = $('setUseMap').checked; $('setMapFile').disabled = $('browseMap').disabled = !p.useMappingsFile; saveProfiles(true) } }
+$('setOnDemand').onchange = () => { const p = curProf(); if (p) { p.useTextureStreaming = $('setOnDemand').checked; saveProfiles(true); syncToggleLabels() } }
+$('setNanite').onchange = () => { const p = curProf(); if (p) { p.loadNaniteData = $('setNanite').checked; saveProfiles(true); syncToggleLabels() } }
+$('setBundles').onchange = () => { const p = curProf(); if (p) { p.loadInstalledBundles = $('setBundles').checked; saveProfiles(true); syncToggleLabels() } }
+$('browseArchive').onclick = async () => {
+  const picked = await window.api.pickFolder()
+  const p = curProf()
+  if (picked && picked[0] && p) { p.archiveDirectory = picked[0]; await saveProfiles(true); paintProfiles() }
+}
+$('browseMap').onclick = async () => {
+  const f = await window.api.pickMappings()
+  const p = curProf()
+  if (f && p) { p.mappingsFile = f; await saveProfiles(true); paintProfiles() }
+}
+$('profFetch').onclick = async () => {
+  const p = curProf()
+  const v = ($('setFetchVer').value || '').trim()
+  if (!p || !v) return
+  $('profFetch').disabled = true
+  setStatus('Fetching data for ' + v + '...')
+  const r = await window.api.profileFetchData(v)
+  const c = curProf()
+  if (!r || !r.ok || !c) {
+    showNotice({ title: 'Fetch Data', body: 'Failed to fetch data for ' + v, noRetry: true })
+    $('profFetch').disabled = false
+    return
+  }
+  c.mainKey = r.mainKey
+  c.extraKeys = r.extraKeys.slice()
+  if (r.mappingsError) {
+    showNotice({ title: 'Fetch Data', body: 'Failed to download mappings for ' + v, noRetry: true })
+  } else if (r.mappingsFile) {
+    c.mappingsFile = r.mappingsFile
+    c.useMappingsFile = true
+  } else {
+    c.mappingsFile = ''
+    c.useMappingsFile = false
+  }
+  await saveProfiles(true)
+  paintProfiles()
+  if (!r.mappingsError) setStatus('Successfully fetched ' + (r.extraKeys.length + 1) + ' keys for ' + r.version + (r.mappingsFound ? ' and downloaded mappings for this version.' : ' but mappings were not available for this version'))
+}
+// Right-click menu on a profile: Duplicate Profile / Delete Profile
+let profMenuEl = null
+function closeProfMenu() { if (profMenuEl) { profMenuEl.remove(); profMenuEl = null } }
+document.addEventListener('mousedown', e => { if (profMenuEl && !profMenuEl.contains(e.target)) closeProfMenu() })
+function profMenu(x, y, it) {
+  closeProfMenu()
+  const m = document.createElement('div')
+  m.className = 'pmenu'
+  const mk = (label, icon, off, fn) => {
+    const d = document.createElement('div')
+    d.className = off ? 'off' : ''
+    d.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="' + icon + '"/></svg>'
+    d.appendChild(document.createTextNode(label))
+    d.onclick = () => { closeProfMenu(); fn() }
+    m.appendChild(d)
+  }
+  mk('Duplicate Profile', 'M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z', false, () => duplicateProfile(it))
+  mk('Delete Profile', 'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z', profList().length < 2, () => deleteProfile(it))
+  document.body.appendChild(m)
+  m.style.left = Math.min(x, window.innerWidth - 200) + 'px'
+  m.style.top = Math.min(y, window.innerHeight - 90) + 'px'
+  profMenuEl = m
+}
+function duplicateProfile(it) {
+  const copy = JSON.parse(JSON.stringify(it))
+  copy.id = newId()
+  copy.profileName = (it.profileName || '') + ' Copy'
+  settings.profiles = profList().concat([copy])
+  profEdit = copy.id
+  saveProfiles(true)
+  paintProfiles()
+}
+async function deleteProfile(it) {
+  if (profList().length < 2) return
+  if (!(await askConfirm('Delete Profile', 'Are you sure you want to delete "' + (it.profileName || '') + '"? This cannot be undone.', 'Delete'))) return
+  const idx = profList().findIndex(x => x.id === it.id)
+  if (idx < 0) return
+  const wasActive = it.id === settings.activeProfile
+  const wasEditing = it.id === profEdit
+  settings.profiles = profList().filter(x => x.id !== it.id)
+  if (wasActive) settings.activeProfile = settings.profiles[0].id
+  if (wasEditing) profEdit = settings.profiles[Math.min(idx, settings.profiles.length - 1)].id
+  await saveProfiles(true)
+  paintProfiles()
+}
+$('profAdd').onclick = async () => {
+  const id = newId()
+  settings.profiles = profList().concat([{ id, profileName: 'Unnamed', fortniteVersion: 'LatestInstalled', archiveDirectory: '', unrealVersion: 'GAME_UE6_0', mainKey: ZERO_KEY, extraKeys: [], useMappingsFile: false, mappingsFile: '', gameLanguage: 'English', useTextureStreaming: true, loadInstalledBundles: true, loadNaniteData: true }])
+  profEdit = id
+  await saveProfiles(true)
+  profEdit = id
+  paintProfiles()
+}
+$('profReload').onclick = async () => {
+  if (profReloading) return
+  if (!(await askConfirm('Reload Installation', 'Would you like to reload the installation session with the current profile settings? Loaded file data will be reset.', 'Reload'))) return
+  profReloading = true
+  paintProfiles()
+  try {
+    clearTimeout(profTimer)
+    await saveSetting({ profiles: settings.profiles, activeProfile: settings.activeProfile })
+    const r = await window.api.gameReload()
+    if (r && r.error === 'busy') {
+      setStatus('Wait for the current file read to finish, then press Reload')
+    } else if (r && r.error === 'ondemand') {
+      showNotice({ title: 'Latest (On-Demand)', body: "Loading Fortnite straight from Epic's servers is not available in this app yet. Use Latest (Installed) or Custom.", noRetry: true })
+    } else {
+      fileKids = new Map()
+      fileDir = ''
+      await rebuildFiles()
+    }
+  } finally {
+    profReloading = false
+    paintProfiles()
+  }
+}
 let textTimer = null
 const saveTexts = () => {
   clearTimeout(textTimer)
@@ -2411,13 +2810,12 @@ const saveTexts = () => {
     await saveSetting({
       bridge: $('setBridge').value.trim() || 'http://localhost:24320',
       unity: $('setUnity').value.trim(),
-      fnpPath: $('setFnp').value.trim(),
-      fortniteArchive: $('setArchive').value.trim()
+      fnpPath: $('setFnp').value.trim()
     })
     pollBridge()
   }, 450)
 }
-;['setBridge', 'setUnity', 'setFnp', 'setArchive'].forEach(id => { $(id).oninput = saveTexts })
+;['setBridge', 'setUnity', 'setFnp'].forEach(id => { $(id).oninput = saveTexts })
 function applyDev() {
   const on = !!$('setDev').checked
   $('navDev').style.display = on ? '' : 'none'
@@ -3301,6 +3699,8 @@ async function openFiles() {
 
 const FILE_ERRORS = {
   'api-unreachable': { title: "Looks like Fortnite's down", body: "The keys for the latest Fortnite version couldn't be downloaded, so the game files can't be read right now. Please try again later." },
+  'no-keys-version': { title: "No keys for that version", body: "No keys were found for the game version set in Installation. Check the version is typed like 38.11 and that you're online, or put keys.manual.<version>.json (same layout as keys.json) in the Cache Folder. Clear the Game Version field to use the newest keys." },
+  'bad-keys': { title: "Couldn't use the keys", body: "The encryption keys in this profile could not be used. Each key is 64 hex characters (optionally starting with 0x). Check them under Settings, Installation, Encryption Keys, then press Reload." },
   'no-keys': { title: "Looks like Fortnite's down", body: "The service that provides Fortnite's keys didn't return any, so the game files can't be read right now. Please try again later." },
   'no-mappings': { title: "Couldn't get the mappings", body: "The mappings file (.usmap) couldn't be downloaded, and the game files can't be read without it. Check your internet connection and try again." },
   'no-files': { title: "Couldn't open the game files", body: "The keys didn't unlock your Fortnite install. Update Fortnite and try again, or try later if the update just came out." },

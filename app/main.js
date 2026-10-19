@@ -92,6 +92,10 @@ function findArchive() {
 
 function findArchiveNow() {
   const chosen = settings.fortniteArchive
+  const prof = activeProfile()
+  // Latest (On-Demand) has no folder, and a Custom profile only ever uses the folder typed into it
+  if (prof && prof.fortniteVersion === 'LatestOnDemand') return ''
+  if (prof && prof.fortniteVersion === 'Custom') return chosen && fs.existsSync(chosen) ? chosen : ''
   if (chosen && fs.existsSync(chosen)) return chosen
   try {
     const dat = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat')
@@ -173,6 +177,8 @@ function autoDetectPaths() {
     if (!settings.fortniteArchive || !fs.existsSync(settings.fortniteArchive)) {
       const a = findArchiveNow()
       if (a && a !== settings.fortniteArchive) { settings.fortniteArchive = a; changed = true }
+      const ap = activeProfile()
+      if (a && ap && ap.fortniteVersion === 'LatestInstalled' && (!ap.archiveDirectory || !fs.existsSync(ap.archiveDirectory))) { ap.archiveDirectory = a; changed = true }
     }
     if (!settings.unity || !fs.existsSync(settings.unity)) {
       const u = findUnityNow()
@@ -273,6 +279,64 @@ function bridgePort() {
   return t && t.port ? t.port : 24320
 }
 
+// The profile chosen in Settings > Installation (same fields as Fortnite Porting's InstallationProfile). Its values are
+// mirrored into the older flat settings (fortniteArchive, ueVersion, localTextures) so the rest of the app keeps working.
+const keysFileName = path.join(gameDir, 'profile-keys.json')
+const zeroKey = store.ZERO_KEY
+
+function activeProfile() {
+  const list = Array.isArray(settings.profiles) ? settings.profiles : []
+  return list.find(p => p && p.id === settings.activeProfile) || list[0] || null
+}
+
+function cleanKey(k) {
+  const hex = String(k || '').trim().replace(/^0x/i, '')
+  return /^[0-9a-fA-F]{64}$/.test(hex) ? '0x' + hex.toUpperCase() : ''
+}
+
+function applyProfile() {
+  const p = activeProfile()
+  if (!p) return
+  settings.activeProfile = p.id
+  const custom = p.fortniteVersion === 'Custom'
+  settings.fortniteArchive = p.archiveDirectory || ''
+  settings.gameVersion = ''
+  settings.ueVersion = custom ? String(p.unrealVersion || '').trim() : ''
+  settings.localTextures = p.fortniteVersion === 'LatestInstalled' && p.useTextureStreaming === false
+  // The profile's own keys: main key (custom only, like Fortnite Porting) and extra keys (every mode)
+  let wrote = false
+  try {
+    const extra = (Array.isArray(p.extraKeys) ? p.extraKeys : []).map(cleanKey).filter(Boolean)
+    const main = custom ? (cleanKey(p.mainKey) || (String(p.mainKey || '').trim() ? 'invalid' : zeroKey)) : ''
+    if (custom || extra.length) {
+      fs.mkdirSync(gameDir, { recursive: true })
+      fs.writeFileSync(keysFileName, JSON.stringify({ mainKey: main, extraKeys: extra }, null, 2), 'utf8')
+      wrote = true
+    }
+    if (!wrote && fs.existsSync(keysFileName)) fs.unlinkSync(keysFileName)
+  } catch (e) {}
+}
+
+// Extra helper options from the selected installation profile
+function versionArgs() {
+  const out = []
+  const p = activeProfile()
+  if (!p) return out
+  if (p.fortniteVersion === 'Custom') {
+    out.push('--custom')
+    const ue = String(p.unrealVersion || '').trim()
+    if (ue) out.push('--ue', ue)
+    if (p.useMappingsFile && p.mappingsFile && fs.existsSync(p.mappingsFile)) out.push('--mappings', p.mappingsFile)
+  } else {
+    if (p.useTextureStreaming === false) out.push('--local-textures')
+    if (p.loadInstalledBundles === false) out.push('--no-bundles')
+  }
+  if (p.loadNaniteData === false) out.push('--no-nanite')
+  if (p.gameLanguage && p.gameLanguage !== 'English') out.push('--language', p.gameLanguage)
+  if (fs.existsSync(keysFileName)) out.push('--keys-file', keysFileName)
+  return out
+}
+
 function startTypeServer() {
   if (typeServerReady) return typeServerReady
   const helper = helperPath()
@@ -290,7 +354,7 @@ function startTypeServer() {
     }
     setApi('starting', 'Starting')
     try {
-      child = spawn(helper, ['--serve', '--archive', archive, '--cache', gameDir, '--port', String(bridgePort())], { windowsHide: true })
+      child = spawn(helper, ['--serve', '--archive', archive, '--cache', gameDir, '--port', String(bridgePort()), ...versionArgs()], { windowsHide: true })
     } catch (e) {
       setApi('off', '')
       finish(false)
@@ -900,6 +964,7 @@ if (!gotLock) {
         try { store.save(settingsFile, settings) } catch (e) {}
       }
     }
+    applyProfile()
     autoDetectPaths()
     // The app never needs camera, microphone, location or similar access, so refuse any request for it
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false))
@@ -963,14 +1028,90 @@ ipcMain.handle('settings:get', () => publicSettings())
 ipcMain.handle('settings:set', (_e, next) => {
   if (!next || typeof next !== 'object' || Array.isArray(next)) return publicSettings()
   next = Object.assign({}, next)
-  const before = (settings.fortniteArchive || '') + '|' + (settings.bridge || '')
+  const before = settings.bridge || ''
   settings = Object.assign({}, settings, next)
-  if (typeServer && before !== (settings.fortniteArchive || '') + '|' + (settings.bridge || '')) {
+  if ('profiles' in next || 'activeProfile' in next) applyProfile()
+  // Changing a profile does not restart the API by itself; the Reload button does that. Only the address restarts it.
+  if (typeServer && before !== (settings.bridge || '')) {
     stopTypeServer()
     setTimeout(() => ensureApi().catch(() => {}), 2000)
   }
   store.save(settingsFile, settings)
   return publicSettings()
+})
+
+// Fetch Data (same as Fortnite Porting): keys and mappings for one Fortnite version from their service
+ipcMain.handle('profile:fetchData', async (_e, version) => {
+  const v = String(version || '').trim()
+  if (!/^[0-9][0-9A-Za-z.\-]{0,24}$/.test(v)) return { ok: false, error: 'fetch' }
+  const pick = (o, ...names) => { for (const n of names) if (o && o[n] !== undefined) return o[n]; return undefined }
+  try {
+    const res = await fetch('https://api.fortniteporting.app/v2/fortnite/versions/' + encodeURIComponent(v), { headers: { 'User-Agent': 'FortniteUnityConverter' }, signal: AbortSignal.timeout(20000) })
+    if (!res.ok) return { ok: false, error: 'fetch' }
+    const j = await res.json()
+    const keys = pick(j, 'keys', 'Keys') || {}
+    const main = pick(keys, 'mainKey', 'MainKey') || {}
+    const mainKey = cleanKey(pick(main, 'key', 'Key'))
+    if (!mainKey) return { ok: false, error: 'fetch' }
+    const extraKeys = (pick(keys, 'extraKeys', 'ExtraKeys') || []).map(k => cleanKey(pick(k, 'key', 'Key'))).filter(Boolean)
+    const out = { ok: true, version: String(pick(j, 'version', 'Version') || v), mainKey, extraKeys, mappingsFile: '', mappingsFound: false, mappingsError: false }
+    const maps = pick(j, 'mappings', 'Mappings')
+    const url = maps && pick(maps, 'url', 'Url')
+    if (url) {
+      out.mappingsFound = true
+      const md5 = String(pick(maps, 'md5Hash', 'Md5Hash') || '').toLowerCase()
+      const target = path.join(gameDir, String(url).split('/').pop().split('?')[0])
+      const same = () => { try { return crypto.createHash('md5').update(fs.readFileSync(target)).digest('hex') === md5 } catch (e) { return false } }
+      if (!(fs.existsSync(target) && md5 && same())) {
+        try {
+          fs.mkdirSync(gameDir, { recursive: true })
+          const r = await fetch(url, { headers: { 'User-Agent': 'FortniteUnityConverter' }, signal: AbortSignal.timeout(120000) })
+          if (!r.ok) throw new Error('http')
+          fs.writeFileSync(target, Buffer.from(await r.arrayBuffer()))
+        } catch (e) {
+          out.mappingsError = true
+          return out
+        }
+      }
+      out.mappingsFile = target
+    }
+    return out
+  } catch (e) {
+    return { ok: false, error: 'fetch' }
+  }
+})
+
+// The same two checks Fortnite Porting's archive directory validator does
+ipcMain.handle('profile:checkArchive', (_e, dir) => {
+  try {
+    if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return 'Archive directory must exist.'
+    const files = fs.readdirSync(dir)
+    if (!files.some(f => /\.pak|\.sig|\.ucas|\.utoc/.test(f))) return 'Archive directory must contain valid game files. (*.pak, *.sig, *.ucas, *.utoc)'
+    return ''
+  } catch (e) { return 'Archive directory must exist.' }
+})
+
+ipcMain.handle('dialog:mappings', async () => {
+  const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Mappings', extensions: ['usmap'] }] })
+  return r.canceled ? '' : r.filePaths[0]
+})
+
+ipcMain.handle('game:reload', async () => {
+  if (buildingFiles) return { ok: false, error: 'busy' }
+  applyProfile()
+  { const p = activeProfile(); if (p && p.fortniteVersion === 'LatestOnDemand') { stopTypeServer(); return { ok: false, error: 'ondemand' } } }
+  try { store.save(settingsFile, settings) } catch (e) {}
+  stopTypeServer()
+  // Forget everything read from the previous game files so nothing from the old build is shown
+  typeCache.clear()
+  typeMiss.clear()
+  typeCacheDirty = false
+  try { fs.rmSync(typesFile, { force: true }) } catch (e) {}
+  try { fs.rmSync(pathsFile, { force: true }) } catch (e) {}
+  archiveMemo = { key: null, at: 0, val: '' }
+  ensureIndex(true).catch(() => {})
+  setTimeout(() => ensureApi().catch(() => {}), 1500)
+  return { ok: true }
 })
 
 ipcMain.handle('files:info', async () => {
@@ -1091,7 +1232,7 @@ ipcMain.handle('files:build', async () => {
   if (!archive) return { ok: false, error: 'no-archive' }
   buildingFiles = true
   fs.mkdirSync(gameDir, { recursive: true })
-  const args = ['--archive', archive, '--out', pathsFile, '--cache', gameDir]
+  const args = ['--archive', archive, '--out', pathsFile, '--cache', gameDir, ...versionArgs()]
   const result = await new Promise(resolve => {
     let error = ''
     let done = 0

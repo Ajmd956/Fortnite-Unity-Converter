@@ -45,3 +45,10 @@ sealed class StreamGuardHandler : DelegatingHandler
         Console.Out.Flush();
     }
 }
+
+// Used when "local textures only" is on: any download attempt fails immediately, so nothing is ever fetched from Epic.
+sealed class OfflineHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        => throw new HttpRequestException("downloads are switched off (local textures only)");
+}
