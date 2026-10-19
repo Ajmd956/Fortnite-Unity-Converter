@@ -2605,6 +2605,26 @@ function askExport(kind, p, out) {
   })
 }
 
+// Files-tab model exports come out of the helper as .glb. Turn them into .fbx (vertex colours and the second
+// UV set are kept). Skeletal meshes (anything with a skin) stay .glb, because the FBX writer has no bones.
+function modelToFbx(r) {
+  try {
+    const glb = r && r.file
+    if (!glb || !/\.glb$/i.test(glb) || !fs.existsSync(glb)) return
+    const buf = fs.readFileSync(glb)
+    const jlen = buf.readUInt32LE(12)
+    const json = JSON.parse(buf.slice(20, 20 + jlen).toString('utf8'))
+    if (json.skins && json.skins.length) return
+    const fbx = glb.replace(/\.glb$/i, '.fbx')
+    glbToFbx(glb, fbx)
+    fs.rmSync(glb, { force: true })
+    r.file = fbx
+    if (r.name) r.name = String(r.name).replace(/\.glb$/i, '.fbx')
+  } catch (e) {
+    // keep the .glb when the conversion fails
+  }
+}
+
 ipcMain.handle('export:run', async (_e, payload) => {
   const kind = payload && payload.kind
   if (!EXPORT_DIRS[kind]) return { ok: false, error: 'kind' }
@@ -2634,6 +2654,7 @@ ipcMain.handle('export:run', async (_e, payload) => {
       fs.mkdirSync(out, { recursive: true })
       send('export:progress', { kind, i: i + 1, n: paths.length, path: paths[i] })
       const r = await askExport(kind === 'model' ? 'modelexport' : kind, paths[i], out)
+      if (r && r.ok && kind === 'model') modelToFbx(r)
       if (r && r.ok) dirs.push(out)
       results.push(Object.assign({ path: paths[i] }, r))
       send('export:item', Object.assign({ kind, path: paths[i] }, r))
