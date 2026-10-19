@@ -94,11 +94,16 @@ function collect(json, bin) {
   const pos = []
   const nor = []
   const uv = []
+  const uv2 = []
+  const col = []
   const idx = []
   const slotOfTri = []
+  const slotNames = []
   let slotCount = 0
   let hasNormals = true
   let hasUv = true
+  let hasUv2 = true
+  let hasCol = true
   const visit = (ni, parent, depth) => {
     if (depth > 64) return
     const node = nodes[ni]
@@ -134,6 +139,20 @@ function collect(json, bin) {
         } else {
           hasUv = false
         }
+        if (prim.attributes.TEXCOORD_1 !== undefined) {
+          const t = readAccessor(json, bin, prim.attributes.TEXCOORD_1)
+          for (let i = 0; i < count; i++) uv2.push(t[i * 2], 1 - t[i * 2 + 1])
+        } else {
+          hasUv2 = false
+        }
+        if (prim.attributes.COLOR_0 !== undefined) {
+          const cacc = json.accessors[prim.attributes.COLOR_0]
+          const cn = COMPONENTS[cacc.type]
+          const c = readAccessor(json, bin, prim.attributes.COLOR_0)
+          for (let i = 0; i < count; i++) col.push(c[i * cn], c[i * cn + 1], c[i * cn + 2], cn > 3 ? c[i * cn + 3] : 1)
+        } else {
+          hasCol = false
+        }
         const before = idx.length
         if (prim.indices !== undefined) {
           const ix = readAccessor(json, bin, prim.indices)
@@ -143,7 +162,11 @@ function collect(json, bin) {
         }
         const added = (idx.length - before) / 3
         for (let i = 0; i < added; i++) slotOfTri.push(slotCount)
-        if (added > 0) slotCount++
+        if (added > 0) {
+          const gm = prim.material !== undefined && json.materials ? json.materials[prim.material] : null
+          slotNames.push(gm && gm.name ? String(gm.name) : '')
+          slotCount++
+        }
       }
     }
     for (const c of node.children || []) visit(c, world, depth + 1)
@@ -151,7 +174,7 @@ function collect(json, bin) {
   const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
   for (const r of roots) visit(r, identity, 0)
   if (!pos.length || !idx.length) throw new Error('the model has no triangle mesh')
-  return { pos, nor: hasNormals ? nor : null, uv: hasUv ? uv : null, idx, slotOfTri, slotCount }
+  return { pos, nor: hasNormals ? nor : null, uv: hasUv ? uv : null, uv2: hasUv && hasUv2 ? uv2 : null, col: hasCol ? col : null, idx, slotOfTri, slotCount, slotNames }
 }
 
 function num(v) {
@@ -165,7 +188,7 @@ function arr(values, fmt) {
 }
 
 function buildFbx(name, mesh) {
-  const { pos, nor, uv, idx, slotOfTri, slotCount } = mesh
+  const { pos, nor, uv, uv2, col, idx, slotOfTri, slotCount } = mesh
   const slots = slotCount > 1 ? slotCount : 0
   const tris = idx.length / 3
   const polyIdx = new Array(idx.length)
@@ -179,6 +202,7 @@ function buildFbx(name, mesh) {
   const uvs = uv ? uv : null
   const uvPerVert = []
   if (uvs) for (let i = 0; i < uvs.length; i += 2) uvPerVert.push(uvs[i], uvs[i + 1])
+  const uv2PerVert = uv2 ? uv2 : null
   const modelId = 1000001
   const geomId = 1000002
   const safe = name.replace(/[^A-Za-z0-9_\-]/g, '_') || 'Mesh'
@@ -258,6 +282,34 @@ function buildFbx(name, mesh) {
     L.push('\t\t\t}')
     L.push('\t\t}')
   }
+  if (uv2PerVert) {
+    L.push('\t\tLayerElementUV: 1 {')
+    L.push('\t\t\tVersion: 101')
+    L.push('\t\t\tName: "UVMap2"')
+    L.push('\t\t\tMappingInformationType: "ByPolygonVertex"')
+    L.push('\t\t\tReferenceInformationType: "IndexToDirect"')
+    L.push('\t\t\tUV: *' + uv2PerVert.length + ' {')
+    L.push('\t\t\t\ta: ' + arr(uv2PerVert, num))
+    L.push('\t\t\t}')
+    L.push('\t\t\tUVIndex: *' + idx.length + ' {')
+    L.push('\t\t\t\ta: ' + idx.join(','))
+    L.push('\t\t\t}')
+    L.push('\t\t}')
+  }
+  if (col) {
+    L.push('\t\tLayerElementColor: 0 {')
+    L.push('\t\t\tVersion: 101')
+    L.push('\t\t\tName: "Col"')
+    L.push('\t\t\tMappingInformationType: "ByPolygonVertex"')
+    L.push('\t\t\tReferenceInformationType: "IndexToDirect"')
+    L.push('\t\t\tColors: *' + col.length + ' {')
+    L.push('\t\t\t\ta: ' + arr(col, num))
+    L.push('\t\t\t}')
+    L.push('\t\t\tColorIndex: *' + idx.length + ' {')
+    L.push('\t\t\t\ta: ' + idx.join(','))
+    L.push('\t\t\t}')
+    L.push('\t\t}')
+  }
   if (slots) {
     L.push('\t\tLayerElementMaterial: 0 {')
     L.push('\t\t\tVersion: 101')
@@ -283,6 +335,12 @@ function buildFbx(name, mesh) {
     L.push('\t\t\t\tTypedIndex: 0')
     L.push('\t\t\t}')
   }
+  if (col) {
+    L.push('\t\t\tLayerElement:  {')
+    L.push('\t\t\t\tType: "LayerElementColor"')
+    L.push('\t\t\t\tTypedIndex: 0')
+    L.push('\t\t\t}')
+  }
   if (slots) {
     L.push('\t\t\tLayerElement:  {')
     L.push('\t\t\t\tType: "LayerElementMaterial"')
@@ -290,6 +348,15 @@ function buildFbx(name, mesh) {
     L.push('\t\t\t}')
   }
   L.push('\t\t}')
+  if (uv2PerVert) {
+    L.push('\t\tLayer: 1 {')
+    L.push('\t\t\tVersion: 100')
+    L.push('\t\t\tLayerElement:  {')
+    L.push('\t\t\t\tType: "LayerElementUV"')
+    L.push('\t\t\t\tTypedIndex: 1')
+    L.push('\t\t\t}')
+    L.push('\t\t}')
+  }
   L.push('\t}')
   L.push('\tModel: ' + modelId + ', "Model::' + safe + '", "Mesh" {')
   L.push('\t\tVersion: 232')
@@ -316,8 +383,11 @@ function buildFbx(name, mesh) {
   L.push('\tC: "OO",' + geomId + ',' + modelId)
   for (let k = 0; k < slots; k++) L.push('\tC: "OO",' + (2000001 + k) + ',' + modelId)
   L.push('}')
-  return { text: L.join('\n') + '\n', tris }
+  return { text: L.join('\n') + '\n', tris, hasColors: !!col, hasUv2: !!uv2PerVert }
 }
+
+let lastSlotNames = []
+let lastInfo = { colors: false, uv2: false }
 
 function glbToFbx(glbFile, fbxFile) {
   const buf = fs.readFileSync(glbFile)
@@ -325,8 +395,103 @@ function glbToFbx(glbFile, fbxFile) {
   const mesh = collect(json, bin || Buffer.alloc(0))
   const name = path.basename(fbxFile, path.extname(fbxFile))
   const out = buildFbx(name, mesh)
+  lastSlotNames = mesh.slotNames.slice()
+  lastInfo = { colors: out.hasColors, uv2: out.hasUv2 }
   fs.writeFileSync(fbxFile, out.text, 'utf8')
   return fbxFile
 }
 
-module.exports = { glbToFbx }
+const norm = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+// The prefab builder gives submesh i the blueprint's material list entry i, but the exported mesh orders its
+// slots by section, not by the blueprint's StaticMaterials. Reorder the spec's slots to the FBX's order by name.
+// Returns a one-line note for the log, or '' when there is nothing to say.
+function reorderSpecSlots(specFile, meshRef, glbNames) {
+  try {
+    if (!glbNames || glbNames.length < 2) return ''
+    const short = String(meshRef).split('/').pop().split('.').pop()
+    const spec = JSON.parse(fs.readFileSync(specFile, 'utf8'))
+    const nodes = (spec.nodes || []).filter((n) => n.kind === 'mesh' && n.mesh === short && Array.isArray(n.slots))
+    const rends = []
+    for (const pn of spec.nodes || []) {
+      if (pn.kind !== 'particles' || !pn.system) continue
+      for (const em of pn.system.emitters || []) {
+        for (const rr of em.renderers || []) {
+          if (rr.type === 'Mesh' && rr.mesh === short && Array.isArray(rr.materials) && Array.isArray(rr.materialSlots) && rr.materials.length === glbNames.length && rr.materialSlots.length === glbNames.length) rends.push({ r: rr, label: pn.name + '/' + em.name })
+        }
+      }
+    }
+    if (!nodes.length && !rends.length) return ''
+    const notes = []
+    let changed = false
+    for (const { r, label } of rends) {
+      const used = new Set()
+      const order = []
+      for (const g of glbNames) {
+        const ng = norm(g)
+        let hit = -1
+        if (ng) {
+          for (let i = 0; i < r.materials.length && hit < 0; i++) {
+            if (used.has(i)) continue
+            if (norm(r.materialSlots[i]) === ng || norm(r.materials[i]) === ng) hit = i
+          }
+        }
+        if (hit < 0) break
+        used.add(hit)
+        order.push(hit)
+      }
+      if (order.length !== r.materials.length) {
+        notes.push('slot order CHECK ' + short + ' (particle ' + label + '): mesh material names [' + glbNames.join(', ') + '] could not be matched to the mesh slots, kept slot order')
+        continue
+      }
+      if (order.some((v, i) => v !== i)) {
+        r.materials = order.map((i) => r.materials[i])
+        r.materialSlots = order.map((i) => r.materialSlots[i])
+        changed = true
+        notes.push('slot order FIXED ' + short + ' (particle ' + label + '): materials reordered to ' + r.materials.join(', '))
+      }
+    }
+    for (const n of nodes) {
+      if (n.slots.length !== glbNames.length) {
+        notes.push('slot order CHECK ' + short + ' (' + n.name + '): ' + glbNames.length + ' mesh slots vs ' + n.slots.length + ' blueprint slots, not reordered')
+        continue
+      }
+      const used = new Set()
+      const order = []
+      for (const g of glbNames) {
+        const ng = norm(g)
+        let hit = -1
+        if (ng) {
+          for (let i = 0; i < n.slots.length && hit < 0; i++) {
+            if (used.has(i)) continue
+            if (norm(n.slots[i].slot) === ng || norm(n.slots[i].material) === ng) hit = i
+          }
+          for (let i = 0; i < n.slots.length && hit < 0; i++) {
+            if (used.has(i)) continue
+            const a = norm(n.slots[i].slot)
+            const b = norm(n.slots[i].material)
+            if ((a.length > 3 && (ng.includes(a) || a.includes(ng))) || (b.length > 3 && (ng.includes(b) || b.includes(ng)))) hit = i
+          }
+        }
+        if (hit < 0) break
+        used.add(hit)
+        order.push(hit)
+      }
+      if (order.length !== n.slots.length) {
+        notes.push('slot order CHECK ' + short + ' (' + n.name + '): mesh material names [' + glbNames.join(', ') + '] could not be matched to the blueprint slots, kept blueprint order')
+        continue
+      }
+      if (order.some((v, i) => v !== i)) {
+        n.slots = order.map((i) => n.slots[i])
+        changed = true
+        notes.push('slot order FIXED ' + short + ' (' + n.name + '): materials reordered to ' + n.slots.map((x) => x.material).join(', '))
+      }
+    }
+    if (changed) fs.writeFileSync(specFile, JSON.stringify(spec, null, 1), 'utf8')
+    return notes.join('\n')
+  } catch (err) {
+    return 'slot order CHECK: ' + (err && err.message ? err.message : err)
+  }
+}
+
+module.exports = { glbToFbx, lastSlots: () => lastSlotNames.slice(), lastInfo: () => Object.assign({}, lastInfo), reorderSpecSlots }

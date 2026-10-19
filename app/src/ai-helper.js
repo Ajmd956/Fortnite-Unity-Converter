@@ -852,6 +852,7 @@
       else if (!wasOn && hasKey) opt.checked = true
     }
     wasOn = on
+    if (window.applyBuildLocks) window.applyBuildLocks()
   }
 
   async function saveCfg(patch) {

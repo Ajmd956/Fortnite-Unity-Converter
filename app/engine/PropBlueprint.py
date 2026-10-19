@@ -302,6 +302,21 @@ def attenuation_asset(folder, name):
     return a
 
 
+HANDLED_MODULES = {"InitializeParticle", "ShapeLocation", "AddVelocity", "Drag", "ScaleColor", "ScaleSpriteSize", "ScaleMeshSize",
+                   "CameraOffset", "DynamicMaterialParameters", "GravityForce", "AccelerationForce", "SpriteRotationRate",
+                   "InitialMeshOrientation", "SubUVAnimation"}
+
+
+def mesh_slots(folder, mesh):
+    out = []
+    md = load(folder, mesh) if mesh else None
+    for o in md or []:
+        if o.get("Type") == "StaticMesh":
+            for sm in o.get("Properties", {}).get("StaticMaterials", []):
+                out.append({"slot": sm.get("MaterialSlotName"), "material": asset_name(sm.get("MaterialInterface"))})
+    return out
+
+
 def emitter_spec(folder, sysdata, handle):
     em_ref = handle.get("StatelessEmitter")
     emname = short(em_ref)
@@ -362,14 +377,47 @@ def emitter_spec(folder, sysdata, handle):
             "cylinderRadius": dist(s.get("CylinderRadius")),
             "cylinderHeight": dist(s.get("CylinderHeight")),
             "ringRadius": dist(s.get("RingRadius")),
+            "heightMidpoint": dist(s.get("CylinderHeightMidpoint")),
+            "boxSize": dist(s.get("BoxSize")),
+            "planeSize": dist(s.get("PlaneSize")),
+            "sphereRadius": dist(s.get("SphereRadius")),
+            "discCoverage": dist(s.get("DiscCoverage")),
+            "scale": dist(s.get("ShapeScale")),
+            "offset": dist(s.get("TransformOffset")),
             "raw": [k for k in s.keys() if not k.endswith("Distribution")],
         }
     if "AddVelocity" in mods:
-        m["velocity"] = dist(mods["AddVelocity"].get("LinearVelocityDistribution"))
+        av = mods["AddVelocity"]
+        m["velocity"] = dist(av.get("LinearVelocityDistribution"))
+        m["velocityType"] = str(av.get("VelocityType", "Linear")).split("::")[-1]
+        m["velocityScale"] = dist(av.get("LinearVelocityScale"))
+        m["cone"] = {
+            "speed": dist(av.get("ConeVelocityDistribution")),
+            "angle": av.get("ConeAngle", 45.0),
+            "rotation": dist(av.get("ConeRotation")),
+            "scale": dist(av.get("ConeVelocityScale")),
+        }
+        m["point"] = {
+            "speed": dist(av.get("PointVelocityDistribution")),
+            "origin": vec(av.get("PointOrigin")) if isinstance(av.get("PointOrigin"), dict) else None,
+            "scale": dist(av.get("PointVelocityScale")),
+        }
     if "Drag" in mods:
         m["drag"] = dist(mods["Drag"].get("DragDistribution"))
         if m["drag"] is None:
             note("DEFAULT", handle["Name"] + ": Drag module present without value, ignored")
+    if "GravityForce" in mods:
+        m["gravity"] = dist(mods["GravityForce"].get("GravityDistribution"),
+                            {"min": {"X": 0.0, "Y": 0.0, "Z": -980.0}, "max": {"X": 0.0, "Y": 0.0, "Z": -980.0}})
+    if "AccelerationForce" in mods:
+        m["acceleration"] = dist(mods["AccelerationForce"].get("AccelerationDistribution"))
+    if "SpriteRotationRate" in mods:
+        m["rotationRate"] = dist(mods["SpriteRotationRate"].get("RotationRateDistribution"))
+    if "InitialMeshOrientation" in mods:
+        m["meshOrientation"] = dist(mods["InitialMeshOrientation"].get("Rotation"))
+    if "SubUVAnimation" in mods:
+        sub = mods["SubUVAnimation"]
+        m["subUV"] = {"frames": sub.get("NumFrames", 16), "mode": str(sub.get("AnimationMode", "")).split("::")[-1]}
     if "ScaleColor" in mods:
         m["scaleColor"] = dist(mods["ScaleColor"].get("ScaleDistribution"))
     if "ScaleSpriteSize" in mods:
@@ -392,9 +440,13 @@ def emitter_spec(folder, sysdata, handle):
         m["dynamicParams"] = dm
         if any(("binding" in c or c.get("mode") in ("UniformCurve", "NonUniformCurve")) for p in dm.values() for c in p.values()):
             note("UNSUPPORTED", handle["Name"] + ": dynamic material parameters with curves/bindings (not applied; shader needs custom vertex streams)")
+    spec["unhandledModules"] = sorted(k for k in mods if k not in HANDLED_MODULES)
+    if spec["unhandledModules"]:
+        note("UNSUPPORTED", handle["Name"] + ": Niagara modules not converted: " + ", ".join(spec["unhandledModules"]))
     for r in rends:
         rp = r.get("Properties", {})
         rs = {"type": r["Type"].replace("Niagara", "").replace("RendererProperties", "")}
+        rs["sortMode"] = str(rp.get("SortMode", "")).split("::")[-1]
         if rs["type"] == "Sprite":
             rs.update({
                 "material": asset_name(rp.get("Material")),
@@ -405,12 +457,28 @@ def emitter_spec(folder, sysdata, handle):
             })
         elif rs["type"] == "Mesh":
             mesh = rp["Meshes"][0]
+            mesh_name = asset_name(mesh.get("Mesh"))
             ov = rp.get("OverrideMaterials", [])
+            mats = [asset_name(x.get("ExplicitMat")) for x in ov if x] if rp.get("bOverrideMaterials") is not False else []
+            slots = []
+            if not any(mats):
+                slots = mesh_slots(folder, mesh_name)
+                mats = [sl.get("material") for sl in slots]
+                if any(mats):
+                    note("DEFAULT", handle["Name"] + ": no override material, using the mesh's own materials (" + ", ".join(str(m) for m in mats) + ")")
+                else:
+                    note("MISSING", handle["Name"] + ": mesh renderer has no override material and the mesh data lists none, the particle will have no material")
             rs.update({
-                "mesh": asset_name(mesh.get("Mesh")),
+                "mesh": mesh_name,
                 "meshRotation": rot(mesh.get("Rotation")),
                 "meshScale": vec(mesh.get("Scale"), (1, 1, 1)),
-                "materials": [asset_name(x.get("ExplicitMat")) for x in ov],
+                "materials": mats,
+                "materialSlots": [sl.get("slot") for sl in slots],
+                "facing": str(rp.get("FacingMode", "ENiagaraMeshFacingMode::Default")).split("::")[-1],
+                "lockedAxis": vec(rp.get("LockedAxis"), (0.0, 0.0, 1.0)) if rp.get("bLockedAxisEnable") else None,
+                "lockedAxisSpace": str(rp.get("LockedAxisSpace", "")).split("::")[-1],
+                "pivotOffset": vec(rp.get("PivotOffset")),
+                "meshPivot": vec(mesh.get("PivotOffset")),
             })
         elif rs["type"] == "Light":
             rs.update({

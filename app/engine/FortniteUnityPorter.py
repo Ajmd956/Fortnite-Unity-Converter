@@ -1513,7 +1513,11 @@ class Translator:
             return self.rgba_out(self.tmp("%s.rgb" % col, 3), self.tmp("%s.a" % col, 1), out)
         if t in ("ParticleColor",):
             self.uses.add("color")
-            col = "IN.color" if self.mode == "ps" else "vcol"
+            self.uses.add("pstreams")
+            if self.mode == "ps":
+                col = self.tmp("lerp(IN.color, IN.pcol, _PorterParticleStreams)", 4).e
+            else:
+                col = self.tmp("lerp(vcol, v.texcoord1, _PorterParticleStreams)", 4).e
             use = self.scalar_prop("Use Vertex Color", 1.0)
             tint = self.vector_prop("Particle Tint", (1.0, 1.0, 1.0, 1.0))
             rgb = self.tmp("lerp(float3(1.0, 1.0, 1.0), %s.rgb, %s) * %s.rgb" % (col, use.e, tint.e), 3)
@@ -2080,6 +2084,7 @@ class Translator:
                     code = re.sub(r"\b%s\.Sample\(\s*%sSampler\s*,\s*" % (re.escape(name), re.escape(name)), "tex2D(%s, " % prop, code)
                     code = re.sub(r"\b%s\.SampleLevel\(\s*%sSampler\s*,\s*([^,]+),\s*([^)]+)\)" % (re.escape(name), re.escape(name)),
                                   r"tex2Dlod(%s, float4(\1, 0.0, \2))" % prop, code)
+                    code = ue_texture_macros(code, name, prop)
                 continue
             if v.at is not None:
                 continue
@@ -2107,7 +2112,8 @@ class Translator:
         code = re.sub(r"\bfloat(\d)\s*\(\s*([^()]*?)\s*\)\s*\.\s*rgb\b", r"float\1(\2).rgb", code)
         decls, code, ok = ue_custom_code(code, ow)
         if not ok:
-            self.warn("NOT CONVERTED: Custom node %s uses Unreal-only code that has no Unity equivalent (%s): replaced by 0" % (x.get("Name"), ", ".join(sorted(set(re.findall(r"\b(?:Parameters|ResolvedView|GetPrimitiveData|GetMaterialParameters|View\.\w+|\w+\.Sample\w*)", str(p.get("Code", ""))))) or ["texture sampling"])))
+            left = sorted(set(m.group(0) for m in re.finditer(r"\b(?:Parameters|ResolvedView|GetPrimitiveData|GetMaterialParameters|View\.\w+|\w+\.Sample\w*|Texture2DSample\w*|TextureCubeSample\w*|GetMaterialSharedSampler|ProcessMaterial\w*|View_\w+)", str(p.get("Code", "")))))
+            self.warn("NOT CONVERTED: Custom node %s uses Unreal-only code that has no Unity equivalent (%s): replaced by 0" % (x.get("Name"), ", ".join(left) or "texture sampling"))
         code = "\n".join(decls + [code])
         self.customs.append("float%s %s(%s)\n{\n%s\n}" % ("" if ow == 1 else ow, fname, ", ".join(params), code))
         return self.tmp("%s(%s)" % (fname, ", ".join(args)), ow)
@@ -2121,7 +2127,64 @@ VIEW_VALUES = {"ViewOrigin": "(_WorldSpaceCameraPos.xzy * 100.0)", "WorldCameraO
                "BufferSizeAndInvSize": "float4(_ScreenParams.xy, 1.0 / _ScreenParams.xy)",
                "GameTime": "_Time.y", "RealTime": "_Time.y"}
 
-CUSTOM_UE_SYMBOLS = re.compile(r"\b(?:ResolvedView|Parameters|GetPrimitiveData|GetMaterialParameters|LWCToFloat|MaterialFloat|Mod)\b|\bView\s*\.|\bMaterialFloat\d")
+CUSTOM_UE_SYMBOLS = re.compile(r"\b(?:ResolvedView|Parameters|GetPrimitiveData|GetMaterialParameters|LWCToFloat|MaterialFloat|Mod|BRANCH|LOOP|UNROLL|FLATTEN|"
+                               r"Texture2DSample\w*|TextureCubeSample\w*|GetMaterialSharedSampler|ProcessMaterial\w*|UnpackNormalMap|View_\w+)\b|\bView\s*\.|\bMaterialFloat\d")
+
+UE_ATTRIBUTE_MACROS = re.compile(r"\b(?:BRANCH|LOOP|UNROLL|FLATTEN|ALLOW_UAV_CONFLICT)\b[ \t]*")
+
+NORMAL_HELPERS = """
+float4 UnpackNormalMapUE(float4 s)
+{
+    float2 xy = s.rg * 2.0 - 1.0;
+    return float4(xy, sqrt(saturate(1.0 - dot(xy, xy))), 0.0);
+}
+"""
+
+
+def ue_split_args(text):
+    args, depth, cur = [], 0, ""
+    for ch in text:
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            args.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    args.append(cur)
+    return args
+
+
+def ue_texture_macros(code, name, prop):
+    """Texture2DSample(Tex, sampler, uv) style calls on the Custom node input `name`, rewritten to sample the texture property `prop`."""
+    forms = {"Texture2DSample": 3, "Texture2DSampleLevel": 4, "Texture2DSampleBias": 4, "Texture2DSampleGrad": 5}
+    out, i = "", 0
+    pat = re.compile(r"\b(Texture2DSampleLevel|Texture2DSampleBias|Texture2DSampleGrad|Texture2DSample)\s*\(")
+    while True:
+        m = pat.search(code, i)
+        if not m:
+            return out + code[i:]
+        depth, j = 1, m.end()
+        while j < len(code) and depth:
+            depth += {"(": 1, ")": -1}.get(code[j], 0)
+            j += 1
+        args = [a.strip() for a in ue_split_args(code[m.end():j - 1])]
+        out += code[i:m.start()]
+        if len(args) == forms[m.group(1)] and args[0] == name:
+            uv = args[2]
+            if m.group(1) == "Texture2DSample":
+                out += "tex2D(%s, %s)" % (prop, uv)
+            elif m.group(1) == "Texture2DSampleLevel":
+                out += "tex2Dlod(%s, float4((%s).xy, 0.0, %s))" % (prop, uv, args[3])
+            elif m.group(1) == "Texture2DSampleBias":
+                out += "tex2Dbias(%s, float4((%s).xy, 0.0, %s))" % (prop, uv, args[3])
+            else:
+                out += "tex2Dgrad(%s, %s, %s, %s)" % (prop, uv, args[3], args[4])
+        else:
+            out += code[m.start():j]
+        i = j
 
 VIEW_HELPERS = """
 float4x4 ViewWorldToClipUE()
@@ -2172,6 +2235,9 @@ def ue_custom_code(code, ow):
             return v
         return VIEW_VALUES.get(n, m.group(0))
 
+    code = UE_ATTRIBUTE_MACROS.sub("", code)
+    code = re.sub(r"\bProcessMaterial(?:Linear)?ColorTextureLookup\s*\(", "(", code)
+    code = re.sub(r"\bUnpackNormalMap\s*\(", "UnpackNormalMapUE(", code)
     code = re.sub(r"\bLWCToFloat\s*\(", "(", code)
     code = re.sub(r"\bGetPrimitiveData\s*\(\s*Parameters\s*\)\s*\.\s*LocalObjectBounds(Min|Max)\b", r"_O_Bounds\1", code)
     code = re.sub(r"\bMod\s*\(", "fmod(", code)
@@ -2623,6 +2689,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
                 else:
                     o.append('        %s ("%s", Vector) = (%s)' % (k, label, ", ".join(pf(c) for c in v["default"])))
         o.append("        [Space(6)]")
+    if "pstreams" in tr.uses:
+        o.append('        [HideInInspector] _PorterParticleStreams ("Particle Streams", Float) = 0')
     cloud_tone = unlit and bm == "BLEND_Translucent" and "bakedclouds" in name.lower()
     if cloud_tone:
         o.append("        [Header(Brightness)]")
@@ -2661,6 +2729,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        [Header(Textures)]")
     for k, v in tr.textures.items():
         o.append('        %s%s ("%s", 2D) = "%s" {}' % ("[Normal] " if v.get("normal") else "", v["prop"], os.path.basename(k).split(".")[0], "bump" if v.get("normal") else "white"))
+    while o and re.fullmatch(r"\s*(?:\[[^\]\n]*\]\s*)+", o[-1]):
+        o.pop()
     o.append("    }")
     o.append("    SubShader")
     o.append("    {")
@@ -2722,6 +2792,9 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     for fn_name, block in chk_function_blocks(VIEW_HELPERS).items():
         if fn_name in custom_text:
             o.extend("        " + l if l else "" for l in block.strip("\n").split("\n"))
+    for fn_name, block in chk_function_blocks(NORMAL_HELPERS).items():
+        if fn_name in custom_text:
+            o.extend("        " + l if l else "" for l in block.strip("\n").split("\n"))
     for k, v in tr.textures.items():
         o.append("        sampler2D %s;" % v["prop"])
     for k, v in tr.props.items():
@@ -2732,6 +2805,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
                 o.append("        static const float4 %s = float4(%s);" % (k, ", ".join(pf(c) for c in v["default"])))
         else:
             o.append("        %s %s;" % ("float" if v["kind"] == "float" else "float4", k))
+    if "pstreams" in tr.uses:
+        o.append("        float _PorterParticleStreams;")
     if not unlit:
         o.append("        float _FlipNormalY;")
     if cloud_tone:
@@ -2749,6 +2824,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     o.append("            float3 worldPos;")
     o.append("            float3 viewDir;")
     o.append("            float4 color : COLOR;")
+    if "pstreams" in tr.uses:
+        o.append("            float4 pcol;")
     o.append("            float3 objPos;")
     o.append("            float4 screenPos;")
     o.append("            float3 worldNormal;")
@@ -2760,7 +2837,11 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     o.append("        void vert(inout appdata_full v, out Input o)")
     o.append("        {")
     o.append("            UNITY_INITIALIZE_OUTPUT(Input, o);")
-    o.append("            o.tc01 = float4(v.texcoord.xy, v.texcoord1.xy);")
+    if "pstreams" in tr.uses:
+        o.append("            o.tc01 = float4(v.texcoord.xy, lerp(v.texcoord1.xy, v.texcoord.zw, _PorterParticleStreams));")
+        o.append("            o.pcol = v.texcoord1;")
+    else:
+        o.append("            o.tc01 = float4(v.texcoord.xy, v.texcoord1.xy);")
     o.append("            o.objPos = v.vertex.xyz;")
     if has_wpo:
         o.append("            float3 vpos = v.vertex.xyz;")
@@ -3521,6 +3602,15 @@ def lint_shader(text):
         if src and 1 < src < int(m.group(1)):
             out.append("lint: %s is float%s but is assigned from float%s %s" % (m.group(2), m.group(1), src, m.group(3)))
     props = t[:t.index("SubShader")] if "SubShader" in t else ""
+    tail = re.search(r"((?:^[ \t]*\[[^\]\n]*\][ \t]*\n)+)[ \t]*\}[ \t]*\n[ \t]*SubShader", t, re.M)
+    if tail:
+        out.append("lint: the Properties block ends with an attribute that has no property after it (%s); Unity fails with \"Parse error: syntax error, unexpected '}'\"" % ", ".join(x.strip() for x in tail.group(1).strip().split("\n")))
+    left = sorted(set(re.findall(r"\b(?:BRANCH|LOOP|UNROLL|FLATTEN|Texture2DSample\w*|GetMaterialSharedSampler|ProcessMaterial\w*|UnpackNormalMap|View_\w+|ResolvedView)\b", code)))
+    if left:
+        out.append("lint: Unreal-only code is still in the shader (%s); Unity cannot compile it" % ", ".join(left))
+    for n in sorted(set(re.findall(r"^\s*(?:sampler2D(?:_float)?|Texture2D)\s+(_T_\w+)\s*;", code, re.M)) | set(re.findall(r"^\s*UNITY_DECLARE_TEX2D(?:_NOSAMPLER)?\(\s*(_T_\w+)\s*\)\s*;", code, re.M))):
+        if len(re.findall(r"\b%s\b" % re.escape(n), code)) <= 1:
+            out.append("lint: texture %s is exported but the shader never samples it" % n)
     declared = set(re.findall(r"^\s*(?:float\d?|sampler2D|Texture2D)\s+(_\w+)\s*;", code, re.M)) | set(re.findall(r"^\s*UNITY_DECLARE_TEX2D(?:_NOSAMPLER)?\(\s*(_\w+)\s*\)\s*;", code, re.M))
     for n in sorted(set(re.findall(r"^\s*(?:\[[^\]]*\]\s*)*(_\w+)\s*\(", props, re.M)) - declared):
         out.append("lint: property %s is not declared in the CG block" % n)
@@ -4046,7 +4136,7 @@ CHK_WIDTH = {"float": 1, "half": 1, "fixed": 1, "int": 1, "bool": 1, "float2": 2
              "float3": 3, "half3": 3, "fixed3": 3, "float4": 4, "half4": 4, "fixed4": 4}
 CHK_INPUT_MEMBERS = {"tc01": "float4 tc01;", "worldPos": "float3 worldPos;", "viewDir": "float3 viewDir;",
                      "color": "float4 color : COLOR;", "objPos": "float3 objPos;", "screenPos": "float4 screenPos;",
-                     "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;"}
+                     "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;", "pcol": "float4 pcol;"}
 CHK_OURS = re.compile(r"\b_(?:[SVCOT])_\w+\b")
 UNITY_EDITOR_PATH = os.environ.get("UNITY_EDITOR", "")
 UNITY_FIX_ROUNDS = 3
@@ -4073,7 +4163,7 @@ def chk_function_blocks(block_text):
 
 def chk_helper_library():
     lib = {}
-    for blk in (HELPERS, NOISE_HELPERS, DEPTH_HELPERS, VIEW_HELPERS):
+    for blk in (HELPERS, NOISE_HELPERS, DEPTH_HELPERS, VIEW_HELPERS, NORMAL_HELPERS):
         lib.update(chk_function_blocks(blk))
     return lib
 
@@ -4126,6 +4216,12 @@ def check_shader_text(text):
             props[mm.group(1)] = mm.group(2)
     pstart = pend[0] if pend else 0
     pstop = pend[1] if pend else 0
+    if pend:
+        body_lines = code[pend[0]:pend[1]].split("\n")
+        while body_lines and not body_lines[-1].strip():
+            body_lines.pop()
+        if body_lines and re.fullmatch(r"\s*(?:\[[^\]\n]*\]\s*)+", body_lines[-1]):
+            issues.append(Issue("error", "the Properties block ends with an attribute that has no property after it (%s). Unity fails with \"Parse error: syntax error, unexpected '}', expecting TVAL_ID or TVAL_VARREF\". The attribute is removed" % body_lines[-1].strip(), chk_line_of(text, pend[0]) + len(body_lines) - 1, ("dangling_attr",)))
     prog = code[:pstart] + " " * (pstop - pstart) + code[pstop:]    # everything except the Properties block
     decls = {}
     dup_decls = []
@@ -4206,7 +4302,7 @@ def check_shader_text(text):
         if span:
             body = code[span[0]:span[1]]
             if not re.search(r"\breturn\b", body) or CUSTOM_UE_SYMBOLS.search(body):
-                issues.append(Issue("error", "%s still has Unreal code (no return, or ResolvedView / View / MaterialFloat); Unity cannot compile it" % mm.group(2), chk_line_of(text, mm.start()), ("fix_custom",)))
+                issues.append(Issue("error", "%s still has Unreal code (no return, or ResolvedView / View / MaterialFloat, or BRANCH / Texture2DSample / ProcessMaterial... / UnpackNormalMap); Unity cannot compile it" % mm.group(2), chk_line_of(text, mm.start()), ("fix_custom",)))
     lib = chk_helper_library()
     for name, ln in called.items():
         if name not in defined:
@@ -4361,7 +4457,8 @@ def fix_custom_functions(text):
     for bn in ("_O_BoundsMin", "_O_BoundsMax"):
         if first and re.search(r"\b%s\b" % bn, chk_strip(text)) and not re.search(r"^[ \t]*(?:static[ \t]+const[ \t]+)?float4[ \t]+%s\b" % bn, text, re.M):
             text = text[:first.start()] + "        float4 %s;\n" % bn + text[first.start():]
-    blocks = chk_function_blocks(VIEW_HELPERS)
+    blocks = dict(chk_function_blocks(VIEW_HELPERS))
+    blocks.update(chk_function_blocks(NORMAL_HELPERS))
     prog = chk_strip(text)
     add = [b for n, b in blocks.items() if re.search(r"\b%s\s*\(" % n, prog) and not re.search(r"^[ \t]*float4x4[ \t]+%s[ \t]*\(" % n, prog, re.M)]
     if add:
@@ -4427,6 +4524,14 @@ def apply_fixes(text, issues):
                     seen = True
             text = "\n".join(l for l in lines if l is not None)
             done.append("removed the duplicate declaration of %s" % f[1])
+    if any(f[0] == "dangling_attr" for f in fixes):
+        span = chk_body(chk_strip(text), "Properties")
+        if span:
+            seg = text[span[0]:span[1]]
+            new = re.sub(r"(?:^[ \t]*\[[^\]\n]*\][ \t]*\n)+(?=[ \t]*\Z)", "", seg, flags=re.M)
+            if new != seg:
+                text = text[:span[0]] + new + text[span[1]:]
+                done.append("removed the attribute at the end of the Properties block that had no property after it")
     if any(f[0] == "auto_cutoff" for f in fixes):
         new_text = re.sub(r"^[ \t]*(?:float|half|fixed)[ \t]+_Cutoff[ \t]*;[ \t]*\n", "", text, flags=re.M)
         if new_text != text:
@@ -4450,7 +4555,7 @@ def apply_fixes(text, issues):
     if any(f[0] == "fix_custom" for f in fixes):
         text, n = fix_custom_functions(text)
         if n:
-            done.append("%d custom function(s) rewritten from Unreal code to Unity code (return added, View matrices mapped)" % n)
+            done.append("%d custom function(s) rewritten from Unreal code to Unity code (return added, View matrices mapped, shader macros removed). Functions that sampled a texture could not be mapped to it from the shader text alone, so they return 0 until the material is converted again" % n)
     if any(f[0] == "host_touch" for f in fixes):
         text, ok = add_host_touch(text)
         if ok:

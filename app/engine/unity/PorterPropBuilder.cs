@@ -18,6 +18,7 @@ public static class PorterPropBuilder
     static List<string> missingNames = new List<string>();
     static string specFolder;
     static List<bool> hasKids;
+    static string currentBlueprint = "";
 
     [MenuItem("Tools/Porter Build Prop Blueprint Prefabs")]
     static void Menu()
@@ -42,6 +43,7 @@ public static class PorterPropBuilder
         if (asset == null) return null;
         var spec = D(PorterMiniJson.Parse(asset.text));
         string bpName = S(spec["blueprint"]);
+        currentBlueprint = bpName;
         specFolder = Path.GetDirectoryName(specPath).Replace('\\', '/');
         string prefabPath = specFolder + "/" + bpName + ".prefab";
         if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) != null)
@@ -142,6 +144,17 @@ public static class PorterPropBuilder
             if (mats[i] == null && !string.IsNullOrEmpty(mn)) Miss("material", mn, "its converted shader");
         }
         mr.sharedMaterials = mats;
+        // The machine's screen is driven by gameplay: _S_Cooldown 1 shows the red battery (off), 0 shows the blue activated logo.
+        // Props start activated, matching the blue hologram particles that are converted.
+        foreach (var m in mats)
+        {
+            if (m != null && m.HasProperty("_S_Cooldown") && m.GetFloat("_S_Cooldown") != 0f)
+            {
+                m.SetFloat("_S_Cooldown", 0f);
+                EditorUtility.SetDirty(m);
+                log.Add("STATE " + m.name + ": _S_Cooldown set to 0 so the machine screen starts in its activated (blue) state; set it to 1 for the off/cooldown (red) state");
+            }
+        }
         if (mesh != null && mesh.subMeshCount != slots.Count)
             log.Add("CHECK mesh '" + meshName + "' has " + mesh.subMeshCount + " submeshes but the blueprint lists " + slots.Count + " material slots");
     }
@@ -306,12 +319,26 @@ public static class PorterPropBuilder
 
         BuildShape(ps, mod, name, hasPos, posMin, posMax);
         BuildVelocity(ps, mod, lmin, lmax, name);
+        BuildForces(ps, mod, name);
 
         bool isMesh = rtype == "Mesh";
         if (isMesh) BuildMeshParticle(ps, pr, mod, D(rends[0]), name);
         else BuildSpriteParticle(ps, pr, mod, rends.Count > 0 ? D(rends[0]) : null, name);
+        BuildRotation(ps, mod, isMesh, name);
+        if (e.ContainsKey("unhandledModules") && L(e["unhandledModules"]).Count > 0)
+        {
+            var names = new List<string>();
+            foreach (var u in L(e["unhandledModules"])) names.Add(S(u));
+            log.Add("NOT APPLIED " + name + ": Niagara modules with no Unity mapping yet: " + string.Join(", ", names.ToArray()));
+        }
+        if (mod.ContainsKey("subUV") && mod["subUV"] != null && rtype != "Sprite")
+        {
+            var su = D(mod["subUV"]);
+            log.Add("NOT APPLIED " + name + ": SubUV animation (" + S(su["frames"]) + " frames, mode " + S(su["mode"]) + "); only sprite emitters get sheet animation");
+        }
 
-        if (mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
+        bool streamed = BuildColorStreams(ps, pr, mod, name);
+        if (!streamed && mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
         {
             var values = L(D(mod["scaleColor"])["values"]);
             float maxScale;
@@ -349,12 +376,26 @@ public static class PorterPropBuilder
     {
         var shape = ps.shape;
         Vector3 mid = (posMin + posMax) * 0.5f;
-        if (mod.ContainsKey("shape") && mod["shape"] != null)
+        bool hasShape = mod.ContainsKey("shape") && mod["shape"] != null;
+        string vtype = mod.ContainsKey("velocityType") ? S(mod["velocityType"]) : "";
+        if (vtype == "InCone" || vtype == "FromPoint")
+        {
+            if (!hasShape && (!hasPos || (posMax - posMin).sqrMagnitude <= 0f))
+            {
+                BuildDirectionalVelocity(ps, mod, name, vtype, mid);
+                return;
+            }
+            log.Add("NOT APPLIED " + name + ": " + vtype + " velocity, because a shape or position range already drives the particle shape in Unity (its shape module sets position and direction together)");
+        }
+        if (hasShape)
         {
             var s = D(mod["shape"]);
             string prim = S(s["primitive"]);
             float a, b;
             shape.enabled = true;
+            Vector3 off = s.ContainsKey("offset") && s["offset"] != null ? P(VecMid(s["offset"], Vector3.zero)) * CmToM : Vector3.zero;
+            if (s.ContainsKey("scale") && s["scale"] != null && (VecMid(s["scale"], Vector3.one) - Vector3.one).sqrMagnitude > 0.0001f)
+                log.Add("NOT APPLIED " + name + ": shape scale " + VecMid(s["scale"], Vector3.one).ToString());
             if (prim == "Cylinder")
             {
                 ScalarRange(s["cylinderRadius"], 100, out a, out b);
@@ -366,8 +407,11 @@ public static class PorterPropBuilder
                 shape.radiusThickness = 1f;
                 shape.length = h1 * CmToM;
                 shape.rotation = new Vector3(-90f, 0f, 0f);
-                shape.position = P(mid) * CmToM + new Vector3(0f, -h1 * 0.5f * CmToM, 0f);
-                log.Add("DEFAULT " + name + ": cylinder height midpoint and surface thickness not exported, centred and volume-filled");
+                float m1, m2;
+                ScalarRange(s.ContainsKey("heightMidpoint") ? s["heightMidpoint"] : null, 0.5, out m1, out m2);
+                float midpoint = (m1 + m2) * 0.5f;
+                shape.position = P(mid) * CmToM + off + new Vector3(0f, -h1 * midpoint * CmToM, 0f);
+                log.Add("DEFAULT " + name + ": cylinder surface thickness not exported, volume-filled");
             }
             else if (prim == "Ring")
             {
@@ -377,7 +421,32 @@ public static class PorterPropBuilder
                 shape.radiusThickness = 0f;
                 shape.arc = 360f;
                 shape.rotation = new Vector3(-90f, 0f, 0f);
-                shape.position = P(mid) * CmToM;
+                shape.position = P(mid) * CmToM + off;
+            }
+            else if (prim == "Box")
+            {
+                Vector3 size = P(VecMid(s.ContainsKey("boxSize") ? s["boxSize"] : null, new Vector3(100f, 100f, 100f)));
+                shape.shapeType = ParticleSystemShapeType.Box;
+                shape.scale = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)) * CmToM;
+                shape.position = P(mid) * CmToM + off;
+            }
+            else if (prim == "Plane")
+            {
+                Vector3 size = VecMid(s.ContainsKey("planeSize") ? s["planeSize"] : null, new Vector3(100f, 100f, 0f));
+                shape.shapeType = ParticleSystemShapeType.Rectangle;
+                shape.scale = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), 1f) * CmToM;
+                shape.rotation = new Vector3(-90f, 0f, 0f);
+                shape.position = P(mid) * CmToM + off;
+            }
+            else if (prim == "Sphere")
+            {
+                ScalarRange(s.ContainsKey("sphereRadius") ? s["sphereRadius"] : null, 100, out a, out b);
+                float rmax = Mathf.Max(a, b), rmin = Mathf.Min(a, b);
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = Mathf.Max(rmax, 0.01f) * CmToM;
+                shape.radiusThickness = rmax > 0f ? Mathf.Clamp01(1f - rmin / rmax) : 1f;
+                shape.position = P(mid) * CmToM + off;
+                log.Add("APPROX " + name + ": sphere radius range mapped to Unity radius thickness");
             }
             else
             {
@@ -398,12 +467,109 @@ public static class PorterPropBuilder
         else shape.enabled = false;
     }
 
+    static Vector3 VecMid(object dist, Vector3 def)
+    {
+        var d = dist as Dictionary<string, object>;
+        if (d == null) return def;
+        Vector3 a, b;
+        VecRange(d, out a, out b);
+        return (a + b) * 0.5f;
+    }
+
+    static void BuildDirectionalVelocity(ParticleSystem ps, Dictionary<string, object> mod, string name, string vtype, Vector3 mid)
+    {
+        string key = vtype == "InCone" ? "cone" : "point";
+        if (!mod.ContainsKey(key) || mod[key] == null) return;
+        var d = D(mod[key]);
+        float s1, s2, k1, k2;
+        ScalarRange(d.ContainsKey("speed") ? d["speed"] : null, vtype == "InCone" ? 500 : 100, out s1, out s2);
+        ScalarRange(d.ContainsKey("scale") ? d["scale"] : null, 1, out k1, out k2);
+        float k = (k1 + k2) * 0.5f;
+        var main = ps.main;
+        main.startSpeed = new ParticleSystem.MinMaxCurve(s1 * k * CmToM, s2 * k * CmToM);
+        var shape = ps.shape;
+        shape.enabled = true;
+        shape.radius = 0.0001f;
+        shape.radiusThickness = 1f;
+        shape.position = P(mid) * CmToM;
+        if (vtype == "InCone")
+        {
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = (float)N(d.ContainsKey("angle") ? d["angle"] : null, 45) * 0.5f;
+            shape.rotation = new Vector3(-90f, 0f, 0f);
+            if (d.ContainsKey("rotation") && d["rotation"] != null && VecMid(d["rotation"], Vector3.zero).sqrMagnitude > 0.0001f)
+                log.Add("NOT APPLIED " + name + ": cone rotation " + VecMid(d["rotation"], Vector3.zero).ToString());
+        }
+        else
+        {
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            if (d.ContainsKey("origin") && d["origin"] != null) shape.position = P(V3(d["origin"])) * CmToM;
+        }
+        log.Add("APPROX " + name + ": " + vtype + " velocity mapped to a Unity " + (vtype == "InCone" ? "cone" : "sphere") + " shape with start speed (drag is not applied to it)");
+    }
+
+    static void BuildForces(ParticleSystem ps, Dictionary<string, object> mod, string name)
+    {
+        Vector3 fmin = Vector3.zero, fmax = Vector3.zero;
+        bool any = false;
+        foreach (string key in new string[] { "gravity", "acceleration" })
+        {
+            if (!mod.ContainsKey(key) || mod[key] == null) continue;
+            Vector3 a, b;
+            VecRange(mod[key], out a, out b);
+            fmin += P(a) * CmToM;
+            fmax += P(b) * CmToM;
+            any = true;
+        }
+        if (!any) return;
+        var f = ps.forceOverLifetime;
+        f.enabled = true;
+        f.space = ParticleSystemSimulationSpace.Local;
+        f.x = new ParticleSystem.MinMaxCurve(Mathf.Min(fmin.x, fmax.x), Mathf.Max(fmin.x, fmax.x));
+        f.y = new ParticleSystem.MinMaxCurve(Mathf.Min(fmin.y, fmax.y), Mathf.Max(fmin.y, fmax.y));
+        f.z = new ParticleSystem.MinMaxCurve(Mathf.Min(fmin.z, fmax.z), Mathf.Max(fmin.z, fmax.z));
+        log.Add("UNVERIFIED " + name + ": gravity/acceleration applied as a Unity force over lifetime in local space (" + fmin.ToString() + " to " + fmax.ToString() + " m/s^2)");
+    }
+
+    static void BuildRotation(ParticleSystem ps, Dictionary<string, object> mod, bool isMesh, string name)
+    {
+        if (isMesh)
+        {
+            if (mod.ContainsKey("meshOrientation") && mod["meshOrientation"] != null)
+                log.Add("NOT APPLIED " + name + ": initial mesh orientation " + VecMid(mod["meshOrientation"], Vector3.zero).ToString());
+            return;
+        }
+        var main = ps.main;
+        float a, b;
+        if (mod.ContainsKey("rotation") && mod["rotation"] != null)
+        {
+            ScalarRange(mod["rotation"], 0, out a, out b);
+            main.startRotation = new ParticleSystem.MinMaxCurve(a * Mathf.Deg2Rad, b * Mathf.Deg2Rad);
+        }
+        if (mod.ContainsKey("rotationRate") && mod["rotationRate"] != null)
+        {
+            ScalarRange(mod["rotationRate"], 0, out a, out b);
+            var rol = ps.rotationOverLifetime;
+            rol.enabled = true;
+            rol.z = new ParticleSystem.MinMaxCurve(a * Mathf.Deg2Rad, b * Mathf.Deg2Rad);
+            log.Add("UNVERIFIED " + name + ": sprite rotation rate " + a.ToString("0.###") + " to " + b.ToString("0.###") + " deg/s; the spin direction against Unreal's is not confirmed");
+        }
+    }
+
     static void BuildVelocity(ParticleSystem ps, Dictionary<string, object> mod, float lmin, float lmax, string name)
     {
         if (!mod.ContainsKey("velocity") || mod["velocity"] == null) return;
         Vector3 vmin, vmax;
         VecRange(mod["velocity"], out vmin, out vmax);
         Vector3 a = P(vmin) * CmToM, b = P(vmax) * CmToM;
+        if (mod.ContainsKey("velocityScale") && mod["velocityScale"] != null)
+        {
+            float k1, k2;
+            ScalarRange(mod["velocityScale"], 1, out k1, out k2);
+            float k = (k1 + k2) * 0.5f;
+            a *= k;
+            b *= k;
+        }
         var vel = ps.velocityOverLifetime;
         vel.enabled = true;
         vel.space = ParticleSystemSimulationSpace.Local;
@@ -469,6 +635,8 @@ public static class PorterPropBuilder
         var mat = FindMaterial(matName);
         if (mat == null && !string.IsNullOrEmpty(matName)) Miss("material", matName, "its converted shader");
         pr.sharedMaterial = mat;
+        string sortMode = r.ContainsKey("sortMode") ? S(r["sortMode"]) : "";
+        if (sortMode == "ViewDepth" || sortMode == "ViewDistance") pr.sortMode = ParticleSystemSortMode.Distance;
         if (S(r["alignment"]) == "VelocityAligned")
         {
             pr.renderMode = ParticleSystemRenderMode.Stretch;
@@ -478,7 +646,23 @@ public static class PorterPropBuilder
         }
         else pr.renderMode = ParticleSystemRenderMode.Billboard;
         var sub = L(r["subImage"]);
-        if (N(sub[0], 1) > 1 || N(sub[1], 1) > 1) log.Add("NOT APPLIED " + name + ": sprite sub-image grid " + N(sub[0], 1) + "x" + N(sub[1], 1) + " (frame selection is driven by the material)");
+        int tilesX = Mathf.Max(1, Mathf.RoundToInt((float)N(sub[0], 1)));
+        int tilesY = Mathf.Max(1, Mathf.RoundToInt((float)N(sub[1], 1)));
+        if (tilesX > 1 || tilesY > 1)
+        {
+            // Without this the whole atlas shows on one quad. Frame 0 unless a SubUV module animates it over the lifetime.
+            var tsa = ps.textureSheetAnimation;
+            tsa.enabled = true;
+            tsa.mode = ParticleSystemAnimationMode.Grid;
+            tsa.numTilesX = tilesX;
+            tsa.numTilesY = tilesY;
+            tsa.animation = ParticleSystemAnimationType.WholeSheet;
+            tsa.cycleCount = 1;
+            bool animated = mod.ContainsKey("subUV") && mod["subUV"] != null;
+            tsa.frameOverTime = animated ? new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0f, 1f, 1f)) : new ParticleSystem.MinMaxCurve(0f);
+            tsa.startFrame = new ParticleSystem.MinMaxCurve(0f);
+            log.Add("UNVERIFIED " + name + ": sub-image grid " + tilesX + "x" + tilesY + " mapped to Texture Sheet Animation, " + (animated ? "frames play once over the lifetime" : "frame 0 only") + "; the converted material must use the particle UVs for this to show");
+        }
         var pv = L(r["pivot"]);
         if (Mathf.Abs((float)N(pv[0], 0.5) - 0.5f) > 0.001f || Mathf.Abs((float)N(pv[1], 0.5) - 0.5f) > 0.001f)
             log.Add("NOT APPLIED " + name + ": sprite pivot (" + N(pv[0], 0.5) + ", " + N(pv[1], 0.5) + ") (Niagara/Unity pivot sign convention not verified)");
@@ -489,19 +673,48 @@ public static class PorterPropBuilder
         string meshName = S(r["mesh"]);
         var mesh = FindAsset<Mesh>(meshName);
         if (mesh == null) Miss("mesh", meshName, "the .fbx in the Meshes folder");
+        string facing = r.ContainsKey("facing") ? S(r["facing"]) : "Default";
+        bool faced = facing == "CameraPosition" || facing == "CameraPlane" || facing == "Velocity";
+        bool negativeX = PorterBlueprintSetup.MeshArrivesMirroredX;
+        if (negativeX && faced)
+        {
+            pr.flip = new Vector3(1f, 0f, 0f);
+            negativeX = false;
+        }
+        if (negativeX && mesh != null)
+        {
+            var mirrored = MirroredMesh(mesh, meshName);
+            if (mirrored != null)
+            {
+                mesh = mirrored;
+                negativeX = false;
+            }
+            else log.Add("CHECK " + name + ": could not build a mirrored copy of mesh '" + meshName + "', using a negative X particle size (the mesh may draw inside out)");
+        }
         pr.renderMode = ParticleSystemRenderMode.Mesh;
         pr.mesh = mesh;
-        pr.alignment = ParticleSystemRenderSpace.Local;
         var mats = L(r["materials"]);
         if (mats.Count > 0)
         {
-            string mn = S(mats[0]);
-            var mat = FindMaterial(mn);
-            if (mat == null && !string.IsNullOrEmpty(mn)) Miss("material", mn, "its converted shader");
-            pr.sharedMaterial = mat;
+            var arr = new Material[mats.Count];
+            for (int i = 0; i < arr.Length; i++)
+            {
+                string mn = S(mats[i]);
+                arr[i] = FindMaterial(mn);
+                if (arr[i] == null && !string.IsNullOrEmpty(mn)) Miss("material", mn, "its converted shader");
+            }
+            pr.sharedMaterials = arr;
         }
         var rot = V3(r["meshRotation"]);
-        Vector3 euler = PorterBlueprintSetup.RotatorToQuaternion(rot.x, rot.y, rot.z).eulerAngles * Mathf.Deg2Rad;
+        Quaternion q = PorterBlueprintSetup.RotatorToQuaternion(rot.x, rot.y, rot.z);
+        if (faced)
+        {
+            pr.alignment = facing == "CameraPosition" ? ParticleSystemRenderSpace.Facing : facing == "CameraPlane" ? ParticleSystemRenderSpace.View : ParticleSystemRenderSpace.Velocity;
+            q = Quaternion.Euler(0f, -90f, 0f) * q;
+            log.Add("UNVERIFIED " + name + ": mesh facing mode " + facing + " mapped to Unity render alignment " + pr.alignment + ", with the mesh turned -90 degrees about Y and Flip X = 1 (matches the setup that worked by hand for the Reboot logo: View, Flip X 1, rotation Y about 100)");
+        }
+        else pr.alignment = ParticleSystemRenderSpace.Local;
+        Vector3 euler = q.eulerAngles * Mathf.Deg2Rad;
         var main = ps.main;
         main.startRotation3D = true;
         main.startRotationX = euler.x;
@@ -509,7 +722,7 @@ public static class PorterPropBuilder
         main.startRotationZ = euler.z;
         Vector3 ms = r.ContainsKey("meshScale") && r["meshScale"] != null ? P(V3(r["meshScale"])) : Vector3.one;
         main.startSize3D = true;
-        main.startSizeX = (PorterBlueprintSetup.MeshArrivesMirroredX ? -1f : 1f) * ms.x;
+        main.startSizeX = (negativeX ? -1f : 1f) * ms.x;
         main.startSizeY = ms.y;
         main.startSizeZ = ms.z;
         if (mod.ContainsKey("scaleMeshSize") && mod["scaleMeshSize"] != null)
@@ -520,8 +733,179 @@ public static class PorterPropBuilder
             sol.separateAxes = false;
             sol.size = new ParticleSystem.MinMaxCurve(1f, CurveFrom(values, "X"));
         }
-        log.Add("NOT APPLIED " + name + ": mesh renderer axis lock and dynamic material parameters");
+        if (r.ContainsKey("lockedAxis") && r["lockedAxis"] != null)
+            log.Add("NOT APPLIED " + name + ": mesh locked axis " + V3(r["lockedAxis"]).ToString() + " (Unity has no locked axis for mesh particles)");
+        if (r.ContainsKey("pivotOffset") && V3(r["pivotOffset"]).sqrMagnitude > 0.0001f)
+            log.Add("NOT APPLIED " + name + ": mesh renderer pivot offset " + V3(r["pivotOffset"]).ToString());
+        if (mod.ContainsKey("dynamicParams") && mod["dynamicParams"] != null)
+            log.Add("NOT APPLIED " + name + ": dynamic material parameters (shader keeps its default values)");
         log.Add("UNVERIFIED " + name + ": mesh particle orientation uses the same axis mapping as the sky dome meshes");
+    }
+
+    static Mesh MirroredMesh(Mesh src, string meshName)
+    {
+        try
+        {
+            string dir = specFolder + "/ParticleMeshes";
+            if (!AssetDatabase.IsValidFolder(dir)) AssetDatabase.CreateFolder(specFolder, "ParticleMeshes");
+            string path = dir + "/" + Safe(meshName) + "_mirrored.asset";
+            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (src.vertexCount == 0 || src.vertices.Length == 0) return null;
+            var m = existing != null ? existing : new Mesh();
+            m.Clear();
+            m.name = Safe(meshName) + "_mirrored";
+            m.indexFormat = src.indexFormat;
+            var v = src.vertices;
+            if (v.Length == 0 || v.Length != src.vertexCount) return null;
+            for (int i = 0; i < v.Length; i++) v[i].x = -v[i].x;
+            m.vertices = v;
+            var n = src.normals;
+            if (n.Length == v.Length)
+            {
+                for (int i = 0; i < n.Length; i++) n[i].x = -n[i].x;
+                m.normals = n;
+            }
+            var t = src.tangents;
+            if (t.Length == v.Length)
+            {
+                for (int i = 0; i < t.Length; i++) t[i] = new Vector4(-t[i].x, t[i].y, t[i].z, -t[i].w);
+                m.tangents = t;
+            }
+            m.uv = src.uv;
+            m.uv2 = src.uv2;
+            var c = src.colors;
+            if (c.Length == v.Length) m.colors = c;
+            m.subMeshCount = src.subMeshCount;
+            for (int s = 0; s < src.subMeshCount; s++)
+            {
+                var tris = src.GetTriangles(s);
+                for (int i = 0; i + 2 < tris.Length; i += 3)
+                {
+                    int tmp = tris[i + 1];
+                    tris[i + 1] = tris[i + 2];
+                    tris[i + 2] = tmp;
+                }
+                m.SetTriangles(tris, s);
+            }
+            m.RecalculateBounds();
+            if (existing == null) AssetDatabase.CreateAsset(m, path);
+            else EditorUtility.SetDirty(m);
+            return m;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    static string Safe(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char ch in s) sb.Append(char.IsLetterOrDigit(ch) || ch == '_' || ch == '-' ? ch : '_');
+        return sb.ToString();
+    }
+
+    static bool BuildColorStreams(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, string name)
+    {
+        var shared = pr.sharedMaterials;
+        if (shared == null || shared.Length == 0) return false;
+        foreach (var m in shared)
+            if (m == null || !m.HasProperty("_PorterParticleStreams")) return false;
+
+        Color cmin = Color.white, cmax = Color.white;
+        if (mod.ContainsKey("color") && mod["color"] != null) ColorRange(mod["color"], out cmin, out cmax);
+        Color start = (cmin + cmax) * 0.5f;
+        if (Mathf.Abs(cmin.r - cmax.r) + Mathf.Abs(cmin.g - cmax.g) + Mathf.Abs(cmin.b - cmax.b) + Mathf.Abs(cmin.a - cmax.a) > 0.002f)
+            log.Add("APPROX " + name + ": random start colour range averaged");
+        List<object> values = mod.ContainsKey("scaleColor") && mod["scaleColor"] != null ? L(D(mod["scaleColor"])["values"]) : null;
+        int n = values == null ? 0 : values.Count;
+        var cr = new AnimationCurve();
+        var cg = new AnimationCurve();
+        var cb = new AnimationCurve();
+        var ca = new AnimationCurve();
+        int steps = n > 1 ? n : 1;
+        float maxV = 0f;
+        for (int i = 0; i < steps; i++)
+        {
+            float t = steps > 1 ? i / (float)(steps - 1) : 0f;
+            Color c = n > 0 ? Col(values[i]) : Color.white;
+            cr.AddKey(new Keyframe(t, start.r * c.r));
+            cg.AddKey(new Keyframe(t, start.g * c.g));
+            cb.AddKey(new Keyframe(t, start.b * c.b));
+            ca.AddKey(new Keyframe(t, start.a * c.a));
+            maxV = Mathf.Max(maxV, start.r * c.r, start.g * c.g, start.b * c.b);
+        }
+        LinearTangents(cr);
+        LinearTangents(cg);
+        LinearTangents(cb);
+        LinearTangents(ca);
+
+        var main = ps.main;
+        main.startColor = new ParticleSystem.MinMaxGradient(Color.white);
+        var col = ps.colorOverLifetime;
+        col.enabled = false;
+        var cd = ps.customData;
+        cd.enabled = true;
+        cd.SetMode(ParticleSystemCustomData.Custom1, ParticleSystemCustomDataMode.Vector);
+        cd.SetVectorComponentCount(ParticleSystemCustomData.Custom1, 4);
+        cd.SetVector(ParticleSystemCustomData.Custom1, 0, new ParticleSystem.MinMaxCurve(1f, cr));
+        cd.SetVector(ParticleSystemCustomData.Custom1, 1, new ParticleSystem.MinMaxCurve(1f, cg));
+        cd.SetVector(ParticleSystemCustomData.Custom1, 2, new ParticleSystem.MinMaxCurve(1f, cb));
+        cd.SetVector(ParticleSystemCustomData.Custom1, 3, new ParticleSystem.MinMaxCurve(1f, ca));
+        var streams = new List<ParticleSystemVertexStream>
+        {
+            ParticleSystemVertexStream.Position,
+            ParticleSystemVertexStream.Normal,
+            ParticleSystemVertexStream.Color,
+            ParticleSystemVertexStream.UV,
+            ParticleSystemVertexStream.UV2,
+            ParticleSystemVertexStream.Custom1XYZW
+        };
+        pr.SetActiveVertexStreams(streams);
+        var copies = new Material[shared.Length];
+        for (int i = 0; i < shared.Length; i++) copies[i] = StreamCopy(shared[i], name);
+        pr.sharedMaterials = copies;
+        log.Add("STREAMS " + name + ": particle colour (start colour x colour scale, up to " + maxV.ToString("0.###") + ", not clamped) is sent to the shader in Custom Data 1, so mesh vertex colours stay separate; materials copied per emitter with _PorterParticleStreams = 1");
+        return true;
+    }
+
+    static void LinearTangents(AnimationCurve c)
+    {
+        int n = c.length;
+        for (int i = 0; i < n; i++)
+        {
+            var k = c[i];
+            float inT = i > 0 ? (k.value - c[i - 1].value) / Mathf.Max(1e-6f, k.time - c[i - 1].time) : 0f;
+            float outT = i < n - 1 ? (c[i + 1].value - k.value) / Mathf.Max(1e-6f, c[i + 1].time - k.time) : 0f;
+            if (i == 0) inT = outT;
+            if (i == n - 1) outT = inT;
+            k.inTangent = inT;
+            k.outTangent = outT;
+            c.MoveKey(i, k);
+        }
+    }
+
+    static Material StreamCopy(Material src, string emitter)
+    {
+        string srcPath = AssetDatabase.GetAssetPath(src);
+        string dir = string.IsNullOrEmpty(srcPath) ? specFolder : Path.GetDirectoryName(srcPath).Replace('\\', '/');
+        string path = dir + "/" + Safe(src.name) + "_" + Safe(currentBlueprint) + "_" + Safe(emitter) + ".mat";
+        var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+        Material inst;
+        if (existing != null)
+        {
+            EditorUtility.CopySerialized(src, existing);
+            existing.name = Path.GetFileNameWithoutExtension(path);
+            inst = existing;
+        }
+        else
+        {
+            inst = new Material(src);
+            AssetDatabase.CreateAsset(inst, path);
+        }
+        inst.SetFloat("_PorterParticleStreams", 1f);
+        EditorUtility.SetDirty(inst);
+        return inst;
     }
 
     static AnimationCurve CurveFrom(List<object> values, string comp)

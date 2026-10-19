@@ -439,6 +439,8 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .wrap[data-tab="converter"] .logbox,.wrap[data-tab="check"] .logbox{display:flex;}
 .cv-tabs{display:flex;gap:4px;padding:0 0 12px;}
 .cv-tab.nav{width:auto;margin-bottom:0;padding:0 14px 0 10px;}
+.cv-tab.locked{opacity:.4;filter:grayscale(1);cursor:not-allowed;}
+.cv-tab.locked:hover{background:transparent;}
 .cv-pane{display:none;}
 .cv-pane.active{display:block;}
 .done-item .path{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -844,6 +846,9 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="row-card" id="rowAiUrl" style="display:none"><div class="rc-text"><div class="rc-title">API Address</div><div class="rc-desc">The chat completions address of any OpenAI-compatible service.</div></div><div class="rc-ctl"><input type="text" id="setAiUrl" spellcheck="false" placeholder="https://.../v1/chat/completions"></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Helper Model</div><div class="rc-desc">The model that answers questions in the helper.</div></div><div class="rc-ctl"><input type="text" id="setAiModel" spellcheck="false" placeholder="gpt-4o-mini"></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Shader Fix Model</div><div class="rc-desc">The model that repairs shader errors in Check Shaders. A stronger model fixes more.</div></div><div class="rc-ctl"><input type="text" id="setAiFixModel" spellcheck="false" placeholder="gpt-4o"></div></div>
+        <div class="sec-head">Converters</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Particle Converter</div><div class="rc-desc">Turns the Particle Converter on. It converts Niagara particle systems to Unity particles.</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpParticle"><span class="trk"></span><span class="lbl" data-for="setExpParticle">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Blueprint Converter</div><div class="rc-desc">Turns the Blueprint Converter on. It converts sky domes and props to Unity prefabs.</div><div class="warn-note" style="padding-left:0">Warning: we can't ensure this will work well. Do not report bugs for it. If you run into an issue, that's on you. We are working to improve it in the future.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExpBlueprint"><span class="trk"></span><span class="lbl" data-for="setExpBlueprint">Off</span></label></div></div>
       </div>
       <div class="subpane" id="sub-console">
         <div class="rc-head"><div class="sec-head" style="padding:0 8px">Console</div><button class="btn sm" id="clearConsole">Clear</button></div>
@@ -1357,6 +1362,40 @@ $('updCheckBtn').onclick = async () => {
   paintVersion(msg[r.status] || '')
 }
 
+const LOCKED_MODES = ['particle', 'blueprint']
+const LOCKED_KINDS = ['niagara', 'blueprint']
+let lockedBlocked = 0
+
+const MODE_SETTING = { particle: 'expParticle', blueprint: 'expBlueprint' }
+
+function isLockedMode(which) {
+  if (!info.publicBuild || !LOCKED_MODES.includes(which)) return false
+  return !(settings && settings.showExperimental && settings[MODE_SETTING[which]])
+}
+function isLockedKind(kind) { return isLockedMode(kind === 'niagara' ? 'particle' : kind) }
+
+function showLocked() {
+  showNotice({
+    title: 'Experimental mode',
+    body: 'These modes are very experimental and have a lot of issues. They are not available on the public release. They will be available in the future.',
+    noRetry: true
+  })
+}
+
+function applyBuildLocks() {
+  document.querySelectorAll('.cv-tab').forEach(t => {
+    const locked = isLockedMode(t.dataset.cv)
+    t.classList.toggle('locked', locked)
+    if (locked) t.setAttribute('aria-disabled', 'true')
+    else t.removeAttribute('aria-disabled')
+  })
+  const act = document.querySelector('.cv-tab.active')
+  if (act && isLockedMode(act.dataset.cv)) {
+    document.querySelectorAll('.cv-tab').forEach(t => t.classList.toggle('active', t.dataset.cv === 'shader'))
+    document.querySelectorAll('.cv-pane').forEach(p => p.classList.toggle('active', p.id === 'cv-shader'))
+  }
+}
+
 let noticeRetry = null
 
 function showNotice(data) {
@@ -1428,6 +1467,10 @@ function swapActive(items, isTarget, immediate) {
 }
 
 function showConverterSub(which) {
+  if (isLockedMode(which)) {
+    showLocked()
+    return
+  }
   showTab('converter')
   document.querySelectorAll('.cv-tab').forEach(t => t.classList.toggle('active', t.dataset.cv === which))
   document.querySelectorAll('.cv-pane').forEach(p => p.classList.toggle('active', p.id === 'cv-' + which))
@@ -1549,6 +1592,9 @@ function fillSettings() {
   $('setPvCache').checked = settings.previewCache !== false
   $('setPvGrid').checked = settings.pvGrid !== false
   $('setDev').checked = !!settings.showDev
+  $('setExpParticle').checked = !!settings.expParticle
+  $('setExpBlueprint').checked = !!settings.expBlueprint
+  applyBuildLocks()
   if (window.aiFillSettings) window.aiFillSettings()
   applyDev()
   $('setVolume').value = settings.volume == null ? 1 : settings.volume
@@ -1569,6 +1615,7 @@ async function saveSetting(patch) {
 async function init() {
   document.body.appendChild($('fileMenu'))
   info = await window.api.info()
+  applyBuildLocks()
   settings = await window.api.getSettings()
   theme = Object.assign({}, settings.theme || {})
   if (!theme.accent && validHex(settings.accent) && settings.accent.toLowerCase() !== DEFAULT_ACCENT) theme.accent = settings.accent
@@ -2095,6 +2142,8 @@ function applyDev() {
   $('navDev').style.display = on ? '' : 'none'
   if (!on && $('sub-developer').classList.contains('active')) showSub('application')
 }
+$('setExpParticle').onchange = () => saveSetting({ expParticle: $('setExpParticle').checked }).then(applyBuildLocks)
+$('setExpBlueprint').onchange = () => saveSetting({ expBlueprint: $('setExpBlueprint').checked }).then(applyBuildLocks)
 $('setDev').onchange = () => { applyDev(); saveSetting({ showDev: $('setDev').checked }); syncToggleLabels() }
 
 function fillExport() {
@@ -2145,6 +2194,7 @@ $('clearNiagara').onclick = () => {
 
 $('niagaraBtn').onclick = async () => {
   if (running) return
+  if (isLockedMode('particle')) { showLocked(); return }
   const materials = $('niagaraPaths').value.split('\n').map(s => s.trim()).filter(Boolean)
   if (!materials.length) {
     addLine('paste at least one Niagara system path first')
@@ -2164,6 +2214,7 @@ $('pasteBlueprint').onclick = async () => {
 $('clearBlueprint').onclick = () => { $('blueprintPaths').value = '' }
 $('blueprintBtn').onclick = async () => {
   if (running) return
+  if (isLockedMode('blueprint')) { showLocked(); return }
   const paths = $('blueprintPaths').value.split('\n').map(s => s.trim()).filter(Boolean)
   if (!paths.length) {
     addLine('paste at least one Blueprint path first')
@@ -2547,7 +2598,7 @@ function bindItem(el, item) {
       if (act === 'preview') openPreview([item.path])
       else if (act === 'convert') {
         const n = addToConvert([item.path])
-        setStatus(n ? 'Added 1 to Convert' : 'Already in Convert')
+        setStatus(n ? 'Added 1 to Convert' : lockedBlocked ? 'Not available in the public release' : 'Already in Convert')
       }
     }
   }
@@ -3026,7 +3077,10 @@ function addLabelFor(paths) {
 
 // Shader paths go to the Shader Converter box, Niagara systems to the Niagara Converter box, Blueprints to the Blueprint Converter box. They never mix.
 function addToConvert(paths) {
-  const objects = paths.map(p => ({ obj: toObjectPath(p), kind: convertKindOf(p) })).filter(x => x.obj)
+  let objects = paths.map(p => ({ obj: toObjectPath(p), kind: convertKindOf(p) })).filter(x => x.obj)
+  lockedBlocked = objects.filter(x => isLockedKind(x.kind)).length
+  objects = objects.filter(x => !isLockedKind(x.kind))
+  if (lockedBlocked) showLocked()
   let added = 0
   ;[['materials', 'shader'], ['niagaraPaths', 'niagara'], ['blueprintPaths', 'blueprint']].forEach(([id, kind]) => {
     const box = $(id)
@@ -3126,7 +3180,7 @@ $('fileMenuAdd').onclick = () => {
   if (!item || item.kind !== 'file') return
   const label = CONVERT_LABEL[convertKindOf(item.path)].replace('Add to ', '')
   const n = addToConvert([item.path])
-  setStatus(n ? 'Added 1 to ' + label : 'Already in ' + label)
+  setStatus(n ? 'Added 1 to ' + label : lockedBlocked ? 'Not available in the public release' : 'Already in ' + label)
 }
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#fileMenu')) hideFileMenu()
@@ -3272,7 +3326,7 @@ function renderExportBar() {
     add.onclick = () => {
       $('fileUnityMenu').classList.remove('open')
       const n = addToConvert(selectedFilePaths())
-      setStatus(n ? 'Added ' + n + ' to Convert' : 'Already in Convert')
+      setStatus(n ? 'Added ' + n + ' to Convert' : lockedBlocked ? 'Not available in the public release' : 'Already in Convert')
     }
     um.appendChild(add)
   }
@@ -3536,7 +3590,8 @@ function convertSelected(paths) {
   addToConvert(paths)
   fileSel.clear()
   renderFileSelection()
-  const kinds = paths.filter(toObjectPath).map(convertKindOf)
+  const kinds = paths.filter(toObjectPath).map(convertKindOf).filter(k => !isLockedKind(k))
+  if (!kinds.length) return
   const hasShader = kinds.includes('shader')
   const hasNiagara = kinds.includes('niagara')
   const hasBlueprint = kinds.includes('blueprint')

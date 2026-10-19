@@ -21,6 +21,8 @@ const defaults = {
   checkUpdates: true,
   updateToken: '',
   showExperimental: false,
+  expParticle: false,
+  expBlueprint: false,
   aiHelperOn: false,
   aiKeyStored: '',
   aiProvider: 'openai',

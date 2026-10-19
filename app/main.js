@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage, session, safeStorage } = require('electron')
 const meshThumb = require('./meshthumb')
-const { glbToFbx } = require('./glb2fbx')
+const { glbToFbx, lastSlots, lastInfo, reorderSpecSlots } = require('./glb2fbx')
 const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
@@ -9,6 +9,11 @@ const { spawn, spawnSync } = require('child_process')
 const store = require('./store')
 const { createUpdater, wasUpdated } = require('./updater')
 const { createAi } = require('./ai')
+
+let publicBuild = true
+try { publicBuild = JSON.parse(fs.readFileSync(path.join(__dirname, 'build-flavor.json'), 'utf8')).public !== false } catch (e) { publicBuild = true }
+const lockedReply = { ok: false, error: 'This mode is not available in the public release' }
+const modeLocked = key => publicBuild && !(settings && settings.showExperimental && settings[key])
 
 const appDir = app.isPackaged ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath)) : __dirname
 const root = path.join(app.getPath('documents'), 'Fortnite Unity Converter')
@@ -890,7 +895,8 @@ ipcMain.handle('app:info', () => ({
   blueprints: blueprintsDir,
   cache: cacheDir,
   exports: exportDirNow(),
-  packaged: app.isPackaged
+  packaged: app.isPackaged,
+  publicBuild
 }))
 
 ipcMain.handle('startup:check', () => {
@@ -1276,6 +1282,7 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
 
 
 ipcMain.handle('niagara:convert', async (_e, payload) => {
+  if (modeLocked('expParticle')) return lockedReply
   if (busy) return { ok: false, error: 'busy' }
   const materials = (payload.materials || []).map(m => m.trim()).filter(Boolean)
   if (!materials.length) return { ok: false, error: 'no systems' }
@@ -1356,6 +1363,8 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
                 glbToFbx(made, fbx)
                 fs.rmSync(made, { force: true })
                 made = fbx
+                const mi = lastInfo()
+                send('engine:log', 'mesh data: vertex colours ' + (mi.colors ? 'kept' : 'not present in the export') + ', second UV set ' + (mi.uv2 ? 'kept' : 'not present in the export') + '\n')
               } catch (err) {
                 send('engine:log', 'fbx conversion failed, keeping the glb: ' + (err && err.message ? err.message : err) + '\n')
               }
@@ -1385,6 +1394,7 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
 
 
 ipcMain.handle('blueprint:convert', async (_e, payload) => {
+  if (modeLocked('expBlueprint')) return lockedReply
   if (busy) return { ok: false, error: 'busy' }
   const paths = (payload.paths || []).map(m => m.trim()).filter(Boolean)
   if (!paths.length) return { ok: false, error: 'no blueprints' }
@@ -1485,6 +1495,12 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
                 glbToFbx(file, fbx)
                 fs.rmSync(file, { force: true })
                 file = fbx
+                const mi = lastInfo()
+                send('engine:log', 'mesh data: vertex colours ' + (mi.colors ? 'kept' : 'not present in the export') + ', second UV set ' + (mi.uv2 ? 'kept' : 'not present in the export') + '\n')
+                if (isProp) {
+                  const note = reorderSpecSlots(specFile, ref, lastSlots())
+                  if (note) send('engine:log', note + '\n')
+                }
               } catch (err) {
                 send('engine:log', 'fbx conversion failed, keeping the glb: ' + (err && err.message ? err.message : err) + '\n')
               }

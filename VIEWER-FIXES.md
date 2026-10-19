@@ -18,3 +18,7 @@ Model viewer: card title uses #E2DFF0, cards spaced 12px.
 Preview-type dialog (index.html): subtitle #A8A4C0, buttons 12px padding and weight 400.
 
 Checked and left alone: Properties colours (identical to Json.xshd), Texture controls, Sound viewer, 3D camera framing.
+
+Public build: the Particle Converter and Blueprint Converter buttons are grayed out and open a popup instead of switching, and the Files tab no longer sends Blueprints or Niagara systems to them. The two convert actions in main.js refuse to run as well. The switch is app/build-flavor.json: {"public": true} locks them, {"public": false} turns both converters back on for a private build. If the file is missing the app stays locked.
+
+Experimental switches: with Enable Experimental Settings on, App Settings > Experimental has a Particle Converter and a Blueprint Converter toggle (settings expParticle and expBlueprint, both off by default), each with a warning under it. A converter is unlocked in the public build only while the master switch and its own toggle are both on, in the interface and in main.js. Turning the master switch off locks both again.
