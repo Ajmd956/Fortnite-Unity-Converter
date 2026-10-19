@@ -4,6 +4,7 @@ const { glbToFbx, lastSlots, lastInfo, reorderSpecSlots } = require('./glb2fbx')
 const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const net = require('net')
 const { spawn, spawnSync } = require('child_process')
 const store = require('./store')
@@ -21,6 +22,7 @@ const conversionsDir = path.join(root, 'Shader Conversions')
 const oldConversionsDir = path.join(root, 'Fortnite Conversions')
 const particlesDir = path.join(root, 'Particle Conversions')
 const blueprintsDir = path.join(root, 'Blueprint Conversions')
+const fixedDir = path.join(root, 'Fixed Conversions')
 const cacheDir = path.join(root, 'Cache')
 const exportDefault = path.join(root, 'Exports')
 const settingsFile = path.join(root, 'settings.json')
@@ -64,6 +66,7 @@ function ensureFolders() {
   fs.mkdirSync(conversionsDir, { recursive: true })
   fs.mkdirSync(particlesDir, { recursive: true })
   fs.mkdirSync(blueprintsDir, { recursive: true })
+  fs.mkdirSync(fixedDir, { recursive: true })
   fs.mkdirSync(cacheDir, { recursive: true })
 }
 
@@ -893,6 +896,7 @@ ipcMain.handle('app:info', () => ({
   conversions: conversionsDir,
   particles: particlesDir,
   blueprints: blueprintsDir,
+  fixed: fixedDir,
   cache: cacheDir,
   exports: exportDirNow(),
   packaged: app.isPackaged,
@@ -1393,6 +1397,136 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
 })
 
 
+function unityScriptsDir() {
+  return app.isPackaged ? path.join(process.resourcesPath, 'engine', 'unity') : path.join(__dirname, 'engine', 'unity')
+}
+
+function copyIfChanged(from, to) {
+  try {
+    const a = fs.statSync(from)
+    if (fs.existsSync(to)) {
+      const b = fs.statSync(to)
+      if (a.size === b.size && Math.floor(a.mtimeMs / 1000) <= Math.floor(b.mtimeMs / 1000)) return
+    }
+    fs.mkdirSync(path.dirname(to), { recursive: true })
+    fs.copyFileSync(from, to)
+    fs.utimesSync(to, a.atime, a.mtime)
+  } catch (e) {}
+}
+
+function syncTree(from, to, accept) {
+  let list = []
+  try { list = fs.readdirSync(from, { withFileTypes: true }) } catch (e) { return }
+  for (const d of list) {
+    const a = path.join(from, d.name)
+    const b = path.join(to, d.name)
+    if (d.isDirectory()) syncTree(a, b, accept)
+    else if (!accept || accept(d.name)) copyIfChanged(a, b)
+  }
+}
+
+function runUnity(exe, args) {
+  return new Promise(resolve => {
+    let child
+    try {
+      child = spawn(exe, args, { windowsHide: true })
+    } catch (e) {
+      resolve({ code: -1, error: e.message })
+      return
+    }
+    current = child
+    const timer = setTimeout(() => { try { child.kill() } catch (e) {} }, 30 * 60 * 1000)
+    child.on('error', e => {
+      clearTimeout(timer)
+      current = null
+      resolve({ code: -1, error: e.message })
+    })
+    child.on('close', code => {
+      clearTimeout(timer)
+      current = null
+      resolve({ code })
+    })
+  })
+}
+
+async function buildBlueprintPrefabs(made) {
+  const built = new Set()
+  const exe = findUnityNow()
+  if (!exe) {
+    send('engine:log', '\nNo Unity editor was found, so the prefab was not built here. Copy the Blueprint Conversions folder into your Unity project and it builds there. To build it here, set the Unity Editor in App Settings, Installation.\n')
+    return built
+  }
+  send('engine:state', { running: true, label: 'Building prefab in Unity' })
+  const proj = path.join(os.tmpdir(), 'porter_blueprint_build_project')
+  const log = path.join(proj, 'blueprint_build.log')
+  const projRoot = path.join(proj, 'Assets', 'Blueprint Conversions')
+  const verdictFile = path.join(proj, 'PorterBlueprintBuild.txt')
+  const unity = args => runUnity(exe, ['-batchmode', '-quit', '-logFile', log].concat(args))
+  const tail = () => {
+    let text = ''
+    try { text = fs.readFileSync(log, 'utf8') } catch (e) {}
+    return text
+  }
+  try {
+    fs.mkdirSync(proj, { recursive: true })
+    if (!fs.existsSync(path.join(proj, 'ProjectSettings', 'ProjectVersion.txt'))) {
+      send('engine:log', '\nUnity: creating the build project (first run only, this can take a minute)...\n')
+      await unity(['-createProject', proj])
+      if (stopped) return built
+      if (!fs.existsSync(path.join(proj, 'ProjectSettings', 'ProjectVersion.txt'))) {
+        send('engine:log', 'Unity could not create the build project, so the prefab was not built here. Copy the Blueprint Conversions folder into your Unity project instead. Unity log: ' + log + '\n')
+        return built
+      }
+    }
+    const scripts = unityScriptsDir()
+    fs.mkdirSync(path.join(proj, 'Assets', 'Editor'), { recursive: true })
+    fs.copyFileSync(path.join(scripts, 'PorterHeadlessBuild.cs'), path.join(proj, 'Assets', 'Editor', 'PorterHeadlessBuild.cs'))
+    const keep = new Set(['Editor', 'Scripts'])
+    for (const row of made) keep.add(path.basename(row.dir))
+    let present = []
+    try { present = fs.readdirSync(projRoot) } catch (e) {}
+    for (const n of present) {
+      if (!keep.has(n.replace(/\.meta$/i, ''))) fs.rmSync(path.join(projRoot, n), { recursive: true, force: true })
+    }
+    for (const n of keep) {
+      syncTree(path.join(blueprintsDir, n), path.join(projRoot, n))
+      copyIfChanged(path.join(blueprintsDir, n + '.meta'), path.join(projRoot, n + '.meta'))
+    }
+    fs.rmSync(verdictFile, { force: true })
+    send('engine:log', '\nUnity: building the prefab in a hidden project, no window opens. This takes a minute or two...\n')
+    const res = await unity(['-projectPath', proj, '-executeMethod', 'PorterHeadlessBuild.Run'])
+    if (stopped) return built
+    const lines = tail().split(/\r?\n/)
+    for (const line of lines) {
+      if (/^Porter:|^\[extractor\]/.test(line)) send('engine:log', line + '\n')
+    }
+    if (!fs.existsSync(verdictFile)) {
+      const errors = lines.filter(l => /error CS\d+/.test(l)).slice(0, 8)
+      send('engine:log', 'Unity did not finish building the prefab' + (res.error ? ' (' + res.error + ')' : '') + '. Copy the Blueprint Conversions folder into your Unity project instead and it builds there. Unity log: ' + log + '\n' + errors.map(l => l + '\n').join(''))
+      return built
+    }
+    for (const line of fs.readFileSync(verdictFile, 'utf8').split(/\r?\n/)) {
+      const bm = line.match(/^BUILT (.+)\.prefab$/)
+      if (bm) built.add(bm[1].slice(bm[1].lastIndexOf('/') + 1))
+      else if (line.trim()) send('engine:log', 'Unity: ' + line.trim() + '\n')
+    }
+    const prefabOnly = n => /\.(prefab|mat|meta)$/i.test(n)
+    for (const row of made) {
+      if (built.has(row.name)) syncTree(path.join(projRoot, path.basename(row.dir)), row.dir, prefabOnly)
+    }
+    for (const n of keep) {
+      copyIfChanged(path.join(projRoot, n + '.meta'), path.join(blueprintsDir, n + '.meta'))
+    }
+    for (const n of ['Editor', 'Scripts']) {
+      syncTree(path.join(projRoot, n), path.join(blueprintsDir, n), x => /\.meta$/i.test(x))
+    }
+    send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The prefab, its materials and their .meta files are saved in the Blueprint Conversions folder.\n')
+  } catch (e) {
+    send('engine:log', 'The Unity build stopped: ' + (e && e.message ? e.message : e) + '\n')
+  }
+  return built
+}
+
 ipcMain.handle('blueprint:convert', async (_e, payload) => {
   if (modeLocked('expBlueprint')) return lockedReply
   if (busy) return { ok: false, error: 'busy' }
@@ -1400,7 +1534,7 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
   if (!paths.length) return { ok: false, error: 'no blueprints' }
   const fail = await beginRun('Converting Blueprint')
   if (fail) return fail
-  const scripts = app.isPackaged ? path.join(process.resourcesPath, 'engine', 'unity') : path.join(__dirname, 'engine', 'unity')
+  const scripts = unityScriptsDir()
   let converted = 0
   const made = []
   const kinds = []
@@ -1515,10 +1649,20 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
       }
     }
   }
+  let builtAll = false
+  if (made.length && !stopped) {
+    const built = await buildBlueprintPrefabs(made)
+    for (const row of made) {
+      row.built = built.has(row.name)
+      const prefab = path.join(row.dir, row.name + '.prefab')
+      if (row.built && fs.existsSync(prefab)) row.shader = prefab
+    }
+    builtAll = made.every(row => row.built)
+  }
   busy = false
   send('engine:state', { running: false, label: '' })
-  if (made.length) send('convert:done', { shaders: made, total: queue.length })
-  send('engine:log', '\nfinished: ' + converted + ' of ' + queue.length + ' converted\n' + (converted ? 'Copy the Blueprint Conversions folder into your Unity project\'s Assets. Unity builds the prefab by itself.\n' : ''))
+  if (made.length) send('convert:done', { shaders: made, total: queue.length, built: builtAll })
+  send('engine:log', '\nfinished: ' + converted + ' of ' + queue.length + ' converted\n' + (converted ? (builtAll ? 'The prefab is already built. Copy the Blueprint Conversions folder into your Unity project\'s Assets.\n' : 'Copy the Blueprint Conversions folder into your Unity project\'s Assets. Unity builds the prefab by itself.\n') : ''))
   if (!converted && !stopped) {
     const notice = noticeFor(kinds)
     if (notice) send('app:notice', notice)
@@ -1535,19 +1679,31 @@ ipcMain.handle('engine:check', async (_e, payload) => {
   send('engine:state', { running: true, label: 'Checking' })
   const args = ['--check-shader'].concat(paths)
   if (!payload.fix) args.push('--no-fix')
+  else args.push('--fixed-out', fixedDir)
   if (!payload.useUnity) args.push('--no-unity')
   const checked = await runEngine(args)
+  const fixedPaths = []
+  for (const mm of checked.output.matchAll(/^fixed: (.+)$/gm)) {
+    const f = mm[1].trim()
+    if (f && fs.existsSync(f) && !fixedPaths.includes(f)) fixedPaths.push(f)
+  }
   if (payload.ai && !stopped) {
     send('engine:state', { running: true, label: 'AI fixing' })
     try {
-      await ai.fixShaders({ paths, output: checked.output, useUnity: !!payload.useUnity })
+      await ai.fixShaders({ paths: fixedPaths.length ? fixedPaths : paths, output: checked.output, useUnity: !!payload.useUnity })
     } catch (e) {
       send('engine:log', 'AI fix failed: ' + e.message + '\n')
     }
   }
   busy = false
   send('engine:state', { running: false, label: '' })
-  send('engine:log', '\ncheck finished\n')
+  send('engine:log', '\ncheck finished\n' + (fixedPaths.length ? 'Fixed copies are in ' + fixedDir + '. Your originals were not changed.\n' : ''))
+  if (fixedPaths.length && !stopped) {
+    send('convert:done', {
+      shaders: fixedPaths.map(f => ({ name: path.basename(f, '.shader'), shader: f, dir: path.dirname(f), kind: 'fixed' })),
+      total: fixedPaths.length
+    })
+  }
   return { ok: true }
 })
 

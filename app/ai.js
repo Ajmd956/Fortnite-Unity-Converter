@@ -24,9 +24,9 @@ const APP_GUIDE = [
   '- Files: browse Fortnite game files, preview textures, meshes, materials and sounds, and export them. Needs the API to be running (bottom-left status).',
   '- Convert: paste one or more material paths (one per line, copied from the Files tab) and press Convert to make Unity shaders. A shader name can be set when converting one material.',
   '- My Shaders: lists everything already converted, with Check, Folder and Cache buttons per shader.',
-  '- Check Shaders: add .shader files or folders, press Check. "Fix problems" applies safe automatic fixes, "Compile in Unity" compiles each shader in the Unity Editor to find real errors, and "AI fix remaining errors" asks the AI to repair what is left. Originals are kept as .bak files.',
+  '- Check Shaders: add .shader files or folders, press Check. "Fix problems" applies safe automatic fixes, "Compile in Unity" compiles each shader in the Unity Editor to find real errors, and "AI fix remaining errors" asks the AI to repair what is left. Fixes are made on copies saved in Documents\\Fortnite Unity Converter\\Fixed Conversions, and the original shaders are never changed.',
   '- Export Options: whether converted shaders get fixed and compiled automatically.',
-  '- App Settings: API address, game archive folder, Unity Editor path, volume, previews, updates, and the AI helper key and models.',
+  '- App Settings: API address, game archive folder, Unity Editor path, volume, previews, updates, and the AI helper key and models. The Customizability tab holds the theme, every color, corner roundness, UI scale, text size, spacing and the font, with a Reset button.',
   'Converted shaders and settings live in Documents\\Fortnite Unity Converter. Not everything converts exactly; some Unreal features have no Unity equivalent and get a stand-in.',
   'When the user needs to find a button, tab or option, you can point at it on screen by writing [[point:ID]] using an ID from the list of pointable items you are given. Use at most two pointers, and only IDs from that list. Also say in words where it is.',
   'If the user selected text or an area, or shared log output, use it to answer. If you do not know something about the app, say so instead of guessing.'
@@ -400,7 +400,6 @@ function createAi(deps) {
 
   async function fixOne(key, model, file, entry, useUnity) {
     const name = path.basename(file)
-    const backup = file + '.ai.bak'
     let current = entry
     let round = 0
     while (round < FIX_ROUNDS && !isStopped()) {
@@ -427,16 +426,15 @@ function createAi(deps) {
         log('AI: its edits did not match the file, nothing changed for ' + name)
         return
       }
-      if (!fs.existsSync(backup)) fs.writeFileSync(backup, raw, 'utf8')
       fs.writeFileSync(file, crlf ? applied.text.replace(/\n/g, '\r\n') : applied.text, 'utf8')
       log('AI: applied ' + applied.applied + ' edit(s) to ' + name + (applied.skipped ? ', skipped ' + applied.skipped : '') + (result.explanation ? ': ' + result.explanation : ''))
       const after = await recheck(file, useUnity)
       if (errorTotal(after) >= before) {
         fs.writeFileSync(file, raw, 'utf8')
-        log('AI: ' + name + ' did not get better (' + (after ? errorTotal(after) : 'unknown') + ' vs ' + before + ' errors), put the previous version back. The original is also in ' + path.basename(backup))
+        log('AI: ' + name + ' did not get better (' + (after ? errorTotal(after) : 'unknown') + ' vs ' + before + ' errors), put the previous version back.')
         return
       }
-      log('AI: ' + name + ' went from ' + before + ' to ' + errorTotal(after) + ' error(s). The original is kept as ' + path.basename(backup))
+      log('AI: ' + name + ' went from ' + before + ' to ' + errorTotal(after) + ' error(s).')
       current = after
     }
   }

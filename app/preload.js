@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webFrame } = require('electron')
 
 let pathOf = f => f.path
 try {
@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld('api', {
   pickFnp: () => ipcRenderer.invoke('dialog:fnp'),
   startup: () => ipcRenderer.invoke('startup:check'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  setZoom: factor => {
+    try { webFrame.setZoomFactor(Math.min(1.3, Math.max(0.8, Number(factor) || 1))) } catch (e) {}
+  },
   setSettings: s => ipcRenderer.invoke('settings:set', s),
   convert: payload => ipcRenderer.invoke('engine:convert', payload),
   convertNiagara: payload => ipcRenderer.invoke('niagara:convert', payload),

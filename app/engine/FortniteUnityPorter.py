@@ -4139,7 +4139,7 @@ CHK_INPUT_MEMBERS = {"tc01": "float4 tc01;", "worldPos": "float3 worldPos;", "vi
                      "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;", "pcol": "float4 pcol;"}
 CHK_OURS = re.compile(r"\b_(?:[SVCOT])_\w+\b")
 UNITY_EDITOR_PATH = os.environ.get("UNITY_EDITOR", "")
-UNITY_FIX_ROUNDS = 3
+UNITY_FIX_ROUNDS = 10
 VERT_LOCALS = {"uv0": "float2 uv0 = v.texcoord.xy;", "uv1": "float2 uv1 = v.texcoord1.xy;",
                "vpos": "float3 vpos = v.vertex.xyz;", "vnrm": "float3 vnrm = v.normal;",
                "vtan": "float4 vtan = v.tangent;", "vcol": "float4 vcol = v.color;"}
@@ -4813,7 +4813,10 @@ UNITY_BUILTIN_NEEDS = {"_CameraDepthTexture": "decl:sampler2D_float _CameraDepth
                        "_ProjectionParams": "inc:UnityCG.cginc", "_ZBufferParams": "inc:UnityCG.cginc",
                        "unity_ObjectToWorld": "inc:UnityCG.cginc", "unity_WorldToObject": "inc:UnityCG.cginc",
                        "_WorldSpaceLightPos0": "inc:UnityCG.cginc", "unity_OrthoParams": "inc:UnityCG.cginc",
-                       "unity_CameraProjection": "inc:UnityCG.cginc", "unity_SpecCube0": "inc:UnityCG.cginc"}
+                       "unity_CameraProjection": "inc:UnityCG.cginc", "unity_SpecCube0": "inc:UnityCG.cginc",
+                       "UNITY_MATRIX_VP": "inc:UnityCG.cginc", "UNITY_MATRIX_V": "inc:UnityCG.cginc", "UNITY_MATRIX_P": "inc:UnityCG.cginc",
+                       "UNITY_MATRIX_I_V": "inc:UnityCG.cginc", "unity_MatrixVP": "inc:UnityCG.cginc", "unity_FogColor": "inc:UnityCG.cginc",
+                       "unity_AmbientSky": "inc:UnityCG.cginc"}
 UNITY_HINTS = [
     (r"Unrecognized sampler .*does not match any texture", "a shared-sampler shader samples through the sampler of a host texture, but that host texture is not used in the same compiled program (typically the vertex stage). Using the host texture in vert() and surf() fixes it"),
     (r"division by zero", "the compiler sees a divisor that is exactly 0 (a constant folded through the graph); UE would give a huge number, Unity gives Inf/NaN. FPU_NZ() nudges the divisor off 0"),
@@ -4821,7 +4824,8 @@ UNITY_HINTS = [
     (r"'tex2D(?:lod)?': no matching \d parameter intrinsic function",
      "the shader samples a Texture2D (shared sampler) with tex2D / tex2Dlod / tex2Dgrad; in Unity's surface-shader analysis pass tex2Dgrad is defined as tex2D, so LOD and gradient samples have to use .SampleLevel / .SampleGrad whenever UNITY_SEPARATE_TEXTURE_SAMPLER is defined"),
     (r"Unexpected identifier .?(?:Texture2D|SamplerState)", "Unity's surface-shader analysis pass does not know Texture2D / SamplerState; shared samplers have to be declared with UNITY_DECLARE_TEX2D / UNITY_DECLARE_TEX2D_NOSAMPLER"),
-    (r"too many (?:texture )?interpolators", "the surface shader passes more data between stages than the compile target allows (#pragma target 3.0 = 10 interpolators, 4.0 = 32); raising the target fixes it"),
+    (r"too many (?:texture )?interpolators", "the surface shader passes more data between stages than the compile target allows (#pragma target 3.0 = 10 interpolators, 4.0 = 32); an unlit shader first drops the lightmap, ambient and vertex-light data it never uses, and raising the target fixes the rest"),
+    (r"unable to unroll loop", "Unity could not unroll a loop at compile time; marking it [loop] keeps it as a real loop"),
     (r"needs INTERNAL_DATA", "struct Input needs INTERNAL_DATA when world normal/reflection is read while o.Normal is written"),
     (r"cannot map expression to vs_", "a pixel-stage-only instruction (usually tex2D or a derivative) is used in vert(); the vertex stage needs tex2Dlod"),
     (r"gradient instruction used in a loop|can't use gradient instructions", "tex2D / derivatives inside a loop or branch with varying flow are undefined; use tex2Dlod or move the sample out of the loop"),
@@ -4832,6 +4836,68 @@ UNITY_HINTS = [
     (r"no matching \d+ parameter (?:intrinsic )?function", "a function was called with the wrong number or type of arguments"),
     (r"maximum temp(?:orary)? registers? exceeded|too many instructions|instruction slot count exceeded", "the shader is too long for the compile target; raise #pragma target to 4.0 or simplify the graph"),
 ]
+
+
+UNLIT_KEYWORDS = ("noforwardadd", "nolightmap", "nodynlightmap", "nodirlightmap", "novertexlights", "noambient")
+PROP_DECL_TYPES = {"float": "float", "range": "float", "int": "float", "vector": "float4", "color": "float4"}
+
+
+def trim_unlit_lighting(text):
+    m = re.search(r"#pragma[ \t]+surface[ \t]+surf[ \t]+Unlit[^\n]*", text)
+    if not m:
+        return text, False
+    have = set(m.group(0).split())
+    missing = [k for k in UNLIT_KEYWORDS if k not in have]
+    if not missing:
+        return text, False
+    return text[:m.end()].rstrip() + " " + " ".join(missing) + text[m.end():], True
+
+
+def declare_missing_property(text, ident):
+    code = chk_strip(text)
+    span = chk_body(code, "Properties")
+    if not span:
+        return text, False
+    m = re.search(r"^[ \t]*(?:\[[^\]\n]*\][ \t]*)*" + re.escape(ident) + r"[ \t]*\(\"[^\"\n]*\"[ \t]*,[ \t]*(\w+)", code[span[0]:span[1]], re.M)
+    if not m:
+        return text, False
+    kind = PROP_DECL_TYPES.get(m.group(1).lower())
+    if not kind:
+        return text, False
+    anchor = re.search(r"CGPROGRAM[^\n]*\n(?:[ \t]*#[^\n]*\n)*", text)
+    if not anchor:
+        return text, False
+    return text[:anchor.end()] + "        %s %s;\n" % (kind, ident) + text[anchor.end():], True
+
+
+def remove_duplicate_declaration(text, ident, line_no):
+    span = chk_body(chk_strip(text), "Properties")
+    pat = re.compile(r"^([ \t]*)(?:static[ \t]+const[ \t]+)?(?:float[234]?|half[234]?|fixed[234]?|int|sampler2D|sampler3D|samplerCUBE)[ \t]+" + re.escape(ident) + r"[ \t]*(?:;|=)[^\n]*\n", re.M)
+    hits = [m for m in pat.finditer(text) if not (span and span[0] <= m.start() < span[1])]
+    if len(hits) < 2:
+        return text, False
+    pick = None
+    for m in hits[1:]:
+        if chk_line_of(text, m.start()) == line_no:
+            pick = m
+    if pick is None:
+        top = [m for m in hits if m.group(1) == hits[0].group(1)]
+        if len(top) != 2:
+            return text, False
+        pick = top[1]
+    return text[:pick.start()] + text[pick.end():], True
+
+
+def mark_loop(text, line_no):
+    lines = text.split("\n")
+    if not 0 < line_no <= len(lines):
+        return text, False
+    line = lines[line_no - 1]
+    m = re.match(r"^(\s*)((?:for|while)\s*\()", line)
+    if not m or re.search(r"\[\s*(?:loop|unroll|fastopt)", lines[line_no - 2] if line_no > 1 else ""):
+        return text, False
+    lines[line_no - 1] = m.group(1) + "[loop] " + line[len(m.group(1)):]
+    return "\n".join(lines), True
 
 
 def unity_hint(msg):
@@ -4864,6 +4930,11 @@ def apply_unity_fixes(text, msgs):
         if lv != "error":
             continue
         if re.search(r"too many (?:texture )?interpolators|maximum temp|too many instructions|instruction slot count", msg, re.I):
+            if re.search(r"interpolators", msg, re.I):
+                text, trimmed = trim_unlit_lighting(text)
+                if trimmed:
+                    done.append("unlit shader: lightmap, ambient and vertex-light data switched off so it fits the interpolator limit (Unity said: %s)" % msg[:80])
+                    continue
             m = re.search(r"#pragma\s+target\s+([\d.]+)", text)
             if m and float(m.group(1)) < 4.0:
                 text = text[:m.start(1)] + "4.0" + text[m.end(1):]
@@ -4900,6 +4971,18 @@ def apply_unity_fixes(text, msgs):
                         text = text[:span[0]] + new_seg + text[span[1]:]
                         vert_done = True
                         done.append("vertex stage: %d tex2D call(s) changed to tex2Dlod (Unity rejected tex2D there)" % n)
+        elif re.search(r"unable to unroll loop", msg, re.I) and 0 < ln <= len(orig_lines):
+            now = text.split("\n")
+            ok = False
+            if ln <= len(now) and now[ln - 1] == orig_lines[ln - 1]:
+                text, ok = mark_loop(text, ln)
+            if ok:
+                done.append("line %d: loop marked [loop] so Unity keeps it as a real loop (Unity said: %s)" % (ln, msg[:60]))
+        elif re.search(r"redefinition of '(\w+)'", msg, re.I):
+            ident = re.search(r"redefinition of '(\w+)'", msg, re.I).group(1)
+            text, ok = remove_duplicate_declaration(text, ident, ln)
+            if ok:
+                done.append("duplicate declaration of %s removed (Unity said: %s)" % (ident, msg[:60]))
         elif re.search(r"invalid subscript", msg, re.I) and 0 < ln <= len(orig_lines):
             sub = (re.search(r"invalid subscript '(\w+)'", msg) or [None, None])[1]
             line = orig_lines[ln - 1]
@@ -4950,6 +5033,10 @@ def apply_unity_fixes(text, msgs):
                 elif kind == "decl" and ident not in re.sub(r"//[^\n]*", "", text.split("CGPROGRAM", 1)[-1].split("void surf", 1)[0].replace("_CameraDepthTexture)", "")).replace("(", " "):
                     text = re.sub(r"(CGPROGRAM[^\n]*\n(?:[ \t]*#[^\n]*\n)*)", lambda mm: mm.group(1) + "        " + val + "\n", text, count=1)
                     done.append("declared %s (Unity did not know it)" % ident)
+            else:
+                text, ok = declare_missing_property(text, ident)
+                if ok:
+                    done.append("declared property %s in the shader code (Unity did not know it)" % ident)
     if wanted_locals:
         text, moved = hoist_vert_locals(text, wanted_locals)
         if moved:
@@ -4983,11 +5070,54 @@ def read_shader(path):
     return raw, "\r\n" in raw, raw.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def write_shader(path, text, crlf, raw_original):
-    bak = path + ".bak"
-    if not os.path.exists(bak):
-        open(bak, "w", encoding="utf-8", newline="").write(raw_original)
+def write_shader(path, text, crlf):
     open(path, "w", encoding="utf-8", newline="").write(text.replace("\n", "\r\n") if crlf else text)
+
+
+def default_fixed_dir():
+    return os.path.join(os.path.expanduser("~"), "Documents", "Fortnite Unity Converter", "Fixed Conversions")
+
+
+def sync_folder(src, dst):
+    for root, _, files in os.walk(src):
+        rel = os.path.relpath(root, src)
+        target = dst if rel == "." else os.path.join(dst, rel)
+        os.makedirs(target, exist_ok=True)
+        for f in files:
+            a, b = os.path.join(root, f), os.path.join(target, f)
+            if os.path.exists(b) and os.path.getsize(a) == os.path.getsize(b) and int(os.path.getmtime(a)) <= int(os.path.getmtime(b)):
+                continue
+            shutil.copy2(a, b)
+
+
+def make_fixed_copies(paths, fixed_out):
+    fixed_root = os.path.abspath(fixed_out)
+    os.makedirs(fixed_root, exist_ok=True)
+    copies, taken = {}, {}
+    for p in paths:
+        ap = os.path.abspath(p)
+        try:
+            already = os.path.commonpath([ap, fixed_root]) == fixed_root
+        except ValueError:
+            already = False
+        if already:
+            copies[p] = p
+            continue
+        stem = os.path.splitext(os.path.basename(p))[0]
+        n = taken.get(stem, 0)
+        taken[stem] = n + 1
+        folder = os.path.join(fixed_root, stem if n == 0 else "%s_%d" % (stem, n + 1))
+        os.makedirs(folder, exist_ok=True)
+        dst = os.path.join(folder, os.path.basename(p))
+        shutil.copyfile(p, dst)
+        side = find_sidecar(p)
+        if side:
+            shutil.copyfile(side, os.path.join(folder, os.path.basename(side)))
+        tex = os.path.join(os.path.dirname(ap), "Textures")
+        if os.path.isdir(tex):
+            sync_folder(tex, os.path.join(folder, "Textures"))
+        copies[p] = dst
+    return copies
 
 
 def print_issue(i):
@@ -5038,10 +5168,10 @@ def check_one_shader(path, fix=True):
         again = check_shader_text(fixed_text)
         left = [i for i in again if i.level in ("error", "warn")]
         if done and fixed_text != text:
-            write_shader(path, fixed_text, crlf, raw)
+            write_shader(path, fixed_text, crlf)
             fixes_done = done
             remaining = len([i for i in left if i.level == "error"])
-            print("FIXED %d thing(s) (original kept as %s.bak):" % (len(done), os.path.basename(path)))
+            print("FIXED %d thing(s) in the copy:" % len(done))
             for d in done:
                 print("   -", d)
             print("   still open: %d" % len(left))
@@ -5074,7 +5204,7 @@ def print_unity_verdict(path, msgs, applied):
     raw, crlf, text = read_shader(path)
     lines = text.split("\n")
     print("")
-    print("%s: %s" % (os.path.basename(path), "Unity compiles it with no errors" if not errs else "Unity still reports %d error(s)" % len(errs)))
+    print("%s: %s" % (os.path.basename(path), "Unity compiles it with no errors" if not errs else "Unity still reports %d error(s) that could not be fixed automatically" % len(errs)))
     for d in applied:
         print("   fixed: " + d)
     shown = [m for m in msgs if m[0] == "error"] + [m for m in msgs if m[0] != "error"]
@@ -5088,7 +5218,16 @@ def print_unity_verdict(path, msgs, applied):
         print("   ... and %d more" % (len(shown) - 25))
 
 
-def run_shader_check(paths, fix=True, unity=None):
+def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
+    if fix and paths:
+        target = fixed_out or default_fixed_dir()
+        try:
+            copies = make_fixed_copies(paths, target)
+        except Exception as e:
+            print("could not make the fixed copies (%s: %s), nothing was changed" % (type(e).__name__, e))
+            return
+        paths = [copies[p] for p in paths]
+        print("Fixing copies in: %s (your originals are not touched)" % os.path.abspath(target))
     summary = {}
     for p in paths:
         summary[p] = check_one_shader(p, fix=fix)
@@ -5096,7 +5235,7 @@ def run_shader_check(paths, fix=True, unity=None):
     ran_unity = False
     if unity is not False:
         pending = list(paths)
-        for rnd in range(1, UNITY_FIX_ROUNDS + 1):
+        for rnd in range(1, UNITY_FIX_ROUNDS + 2):
             print("")
             print("Unity compile%s..." % ("" if rnd == 1 else " (round %d, after the fixes above)" % rnd))
             res = unity_compile(pending, unity if isinstance(unity, str) else None)
@@ -5107,7 +5246,7 @@ def run_shader_check(paths, fix=True, unity=None):
             ran_unity = True
             for p in pending:
                 last[p] = res.get(p, [])
-            if not fix:
+            if not fix or rnd > UNITY_FIX_ROUNDS:
                 break
             changed = []
             for p in pending:
@@ -5117,7 +5256,7 @@ def run_shader_check(paths, fix=True, unity=None):
                 raw, crlf, text = read_shader(p)
                 new_text, done = apply_unity_fixes(text, msgs)
                 if done and new_text != text:
-                    write_shader(p, new_text, crlf, raw)
+                    write_shader(p, new_text, crlf)
                     applied[p] += done
                     changed.append(p)
             if not changed:
@@ -5141,6 +5280,11 @@ def run_shader_check(paths, fix=True, unity=None):
         if r["gaps"] is not None:
             bits.append("%d not converted" % r["gaps"])
         print("   %s: %s" % (os.path.basename(p), ", ".join(bits)))
+    if fix:
+        print("")
+        for p in paths:
+            print("fixed: %s" % os.path.abspath(p))
+        print("fixed-folder: %s" % os.path.abspath(fixed_out or default_fixed_dir()))
 
 
 def interactive():
@@ -5320,6 +5464,7 @@ def main():
     ap.add_argument("--check-shader", nargs="+", metavar="PATH", help="check .shader files or folders for problems (and fix the safe ones unless --no-fix)")
     ap.add_argument("--no-fix", action="store_true", help="with --check-shader: only report, change nothing")
     ap.add_argument("--no-unity", action="store_true", help="with --check-shader: do not compile in the Unity editor")
+    ap.add_argument("--fixed-out", metavar="FOLDER", help="with --check-shader: folder the fixed copies are written to (default: Documents\\Fortnite Unity Converter\\Fixed Conversions)")
     ap.add_argument("--unity", metavar="UNITY_EXE", help="with --check-shader: path to Unity.exe for the compile check")
     ap.add_argument("--curves", default=None, help="folder holding curve JSON exports (CQ_Something.json); also looks in Curves next to the cache")
     ap.add_argument("--keep-local-x", action="store_true", help="do not mirror object-space X for LocalPosition in the pixel stage (the exported Unity mesh has X mirrored relative to Unreal, so mirroring is the default)")
@@ -5338,7 +5483,7 @@ def main():
         paths = gather_shader_paths(" ".join('"%s"' % p for p in a.check_shader))
         if not paths:
             sys.exit("no .shader files found")
-        run_shader_check(paths, fix=not a.no_fix, unity=False if a.no_unity else (a.unity or None))
+        run_shader_check(paths, fix=not a.no_fix, unity=False if a.no_unity else (a.unity or None), fixed_out=a.fixed_out)
         return
     if a.blueprint:
         run_blueprint_export(a.bridge, a.blueprint, a.out, a.name, a.scripts)
