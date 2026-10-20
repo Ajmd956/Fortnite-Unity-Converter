@@ -5163,6 +5163,10 @@ def check_one_shader(path, fix=True):
                 print_issue(i)
     remaining = len(errs)
     fixes_done = []
+    src_lines = text.split("\n")
+    detail = {"conversion": rep, "issues": [{"level": i.level, "line": i.line, "msg": i.msg, "fixable": bool(i.fix),
+              "src": src_lines[i.line - 1].strip()[:200] if i.line and 0 < i.line <= len(src_lines) else ""} for i in issues if i.level != "info"],
+              "fixes": [], "left": []}
     if fix and any(i.fix for i in issues):
         fixed_text, done = apply_fixes(text, issues)
         again = check_shader_text(fixed_text)
@@ -5170,6 +5174,8 @@ def check_one_shader(path, fix=True):
         if done and fixed_text != text:
             write_shader(path, fixed_text, crlf)
             fixes_done = done
+            detail["fixes"] = list(done)
+            detail["left"] = [{"level": i.level, "line": i.line, "msg": i.msg} for i in left]
             remaining = len([i for i in left if i.level == "error"])
             print("FIXED %d thing(s) in the copy:" % len(done))
             for d in done:
@@ -5177,7 +5183,7 @@ def check_one_shader(path, fix=True):
             print("   still open: %d" % len(left))
             for i in left:
                 print_issue(i)
-    return {"errors": remaining, "gaps": len(rep["gaps"]) if rep else None, "fixed": len(fixes_done), "unity_errors": None, "unity_fixed": 0}
+    return {"errors": remaining, "gaps": len(rep["gaps"]) if rep else None, "fixed": len(fixes_done), "unity_errors": None, "unity_fixed": 0, "detail": detail}
 
 
 def shader_check_mode(fix=True, unity=None):
@@ -5218,6 +5224,83 @@ def print_unity_verdict(path, msgs, applied):
         print("   ... and %d more" % (len(shown) - 25))
 
 
+def write_fix_log(paths, originals, summary, unity_msgs, unity_applied, fixed_dir):
+    """Writes one text file describing everything the check found and fixed, with a before/after diff per shader,
+    meant to be sent back so the converter itself can be fixed."""
+    import difflib, datetime
+    now = datetime.datetime.now()
+    out = ["FORTNITE UNITY CONVERTER - SHADER FIX LOG",
+           "Made: " + now.strftime("%Y-%m-%d %H:%M:%S"),
+           "Shaders checked: %d" % len(paths),
+           "Send this file so the converter can be fixed to stop producing these problems.", ""]
+    total_fixed = 0
+    for p in paths:
+        r = summary.get(p) or {}
+        d = r.get("detail") or {}
+        orig = originals.get(p)
+        try:
+            cur = read_shader(p)[2]
+        except Exception:
+            cur = None
+        out += ["=" * 70, "SHADER: " + os.path.basename(p), "=" * 70]
+        try:
+            m = re.search(r'^\s*Shader\s+"([^"]+)"', orig or "", re.M)
+            if m:
+                out.append("Unity shader name: " + m.group(1))
+        except Exception:
+            pass
+        rep = d.get("conversion")
+        if rep:
+            out.append("Converter report: %d not converted, %d approximated" % (len(rep["gaps"]), len(rep["approx"])))
+            for w in rep["gaps"]:
+                out.append("   NOT CONVERTED: " + w)
+            for w in rep["approx"]:
+                out.append("   approximated: " + w)
+            if rep["missing_tex"]:
+                out.append("   missing textures: " + ", ".join(rep["missing_tex"]))
+        else:
+            out.append("Converter report: none found next to the shader")
+        out += ["", "PROBLEMS FOUND IN THE CODE (%d):" % len(d.get("issues") or [])]
+        for i in d.get("issues") or []:
+            out.append("   [%s]%s %s%s" % (i["level"].upper(), (" line %d:" % i["line"]) if i["line"] else "", i["msg"], "  (auto-fixable)" if i["fixable"] else ""))
+            if i["src"]:
+                out.append("        > " + i["src"])
+        out += ["", "CODE FIXES APPLIED (%d):" % len(d.get("fixes") or [])]
+        for f in d.get("fixes") or []:
+            out.append("   - " + f)
+        if d.get("left"):
+            out.append("STILL OPEN AFTER THOSE FIXES:")
+            for i in d["left"]:
+                out.append("   [%s]%s %s" % (i["level"].upper(), (" line %d:" % i["line"]) if i["line"] else "", i["msg"]))
+        if p in unity_msgs:
+            msgs = unity_msgs[p]
+            errs = [m for m in msgs if m[0] == "error"]
+            out += ["", "UNITY COMPILE: %s" % ("no errors" if not errs else "%d error(s) left" % len(errs))]
+            for lv, msg, ln in msgs[:40]:
+                out.append("   %s line %d: %s" % (lv.upper(), ln, msg))
+            ap = unity_applied.get(p) or []
+            out.append("UNITY FIXES APPLIED (%d):" % len(ap))
+            for f in ap:
+                out.append("   - " + f)
+            total_fixed += len(ap)
+        total_fixed += len(d.get("fixes") or [])
+        if orig is not None and cur is not None and orig != cur:
+            diff = list(difflib.unified_diff(orig.split("\n"), cur.split("\n"), "as converted", "after fixes", lineterm="", n=2))
+            out += ["", "CHANGES (as converted -> after fixes), %d diff lines:" % len(diff)]
+            out += diff[:600]
+            if len(diff) > 600:
+                out.append("... %d more diff lines cut" % (len(diff) - 600))
+        else:
+            out += ["", "No text changes were made to this shader."]
+        out.append("")
+    out.insert(4, "Total fixes applied: %d" % total_fixed)
+    os.makedirs(fixed_dir, exist_ok=True)
+    path = os.path.join(fixed_dir, "FixLog_%s.txt" % now.strftime("%Y%m%d_%H%M%S"))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out))
+    return path
+
+
 def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
     if fix and paths:
         target = fixed_out or default_fixed_dir()
@@ -5229,7 +5312,12 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
         paths = [copies[p] for p in paths]
         print("Fixing copies in: %s (your originals are not touched)" % os.path.abspath(target))
     summary = {}
+    originals = {}
     for p in paths:
+        try:
+            originals[p] = read_shader(p)[2]
+        except Exception:
+            pass
         summary[p] = check_one_shader(p, fix=fix)
     last, applied = {}, {p: [] for p in paths}
     ran_unity = False
@@ -5285,6 +5373,11 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
         for p in paths:
             print("fixed: %s" % os.path.abspath(p))
         print("fixed-folder: %s" % os.path.abspath(fixed_out or default_fixed_dir()))
+        try:
+            lp = write_fix_log(paths, originals, summary, {p: last[p] for p in paths if p in last}, applied, os.path.abspath(fixed_out or default_fixed_dir()))
+            print("fixlog: %s" % lp)
+        except Exception as e:
+            print("could not write the fix log (%s: %s)" % (type(e).__name__, e))
 
 
 def interactive():

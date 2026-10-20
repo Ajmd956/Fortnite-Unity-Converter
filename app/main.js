@@ -1830,16 +1830,20 @@ ipcMain.handle('engine:check', async (_e, payload) => {
     const f = mm[1].trim()
     if (f && fs.existsSync(f) && !fixedPaths.includes(f)) fixedPaths.push(f)
   }
+  let fixLog = ''
+  const flm = checked.output.match(/^fixlog: (.+)$/m)
+  if (flm && fs.existsSync(flm[1].trim())) fixLog = flm[1].trim()
   busy = false
   send('engine:state', { running: false, label: '' })
-  send('engine:log', '\ncheck finished\n' + (fixedPaths.length ? 'Fixed copies are in ' + fixedDir + '. Your originals were not changed.\n' : ''))
+  send('engine:log', '\ncheck finished\n' + (fixedPaths.length ? 'Fixed copies are in ' + fixedDir + '. Your originals were not changed.\n' : '') + (fixLog ? 'Fix log (send this file to get the converter fixed): ' + fixLog + '\n' : ''))
   if (fixedPaths.length && !stopped) {
     send('convert:done', {
       shaders: fixedPaths.map(f => ({ name: path.basename(f, '.shader'), shader: f, dir: path.dirname(f), kind: 'fixed' })),
-      total: fixedPaths.length
+      total: fixedPaths.length,
+      fixLog
     })
   }
-  return { ok: true }
+  return { ok: true, fixLog }
 })
 
 ipcMain.handle('engine:stop', () => {
