@@ -533,12 +533,7 @@ public static class PorterPropBuilder
 
     static void BuildRotation(ParticleSystem ps, Dictionary<string, object> mod, bool isMesh, string name)
     {
-        if (isMesh)
-        {
-            if (mod.ContainsKey("meshOrientation") && mod["meshOrientation"] != null)
-                log.Add("NOT APPLIED " + name + ": initial mesh orientation " + VecMid(mod["meshOrientation"], Vector3.zero).ToString());
-            return;
-        }
+        if (isMesh) return;
         var main = ps.main;
         float a, b;
         if (mod.ContainsKey("rotation") && mod["rotation"] != null)
@@ -707,13 +702,28 @@ public static class PorterPropBuilder
         }
         var rot = V3(r["meshRotation"]);
         Quaternion q = PorterBlueprintSetup.RotatorToQuaternion(rot.x, rot.y, rot.z);
+        Vector3 orient = Vector3.zero;
+        bool orientRange = false;
+        bool hasOrient = false;
+        if (mod.ContainsKey("meshOrientation"))
+            hasOrient = SafeVecMid(mod["meshOrientation"], out orient, out orientRange) && orient.sqrMagnitude > 1e-6f;
         if (faced)
         {
             pr.alignment = facing == "CameraPosition" ? ParticleSystemRenderSpace.Facing : facing == "CameraPlane" ? ParticleSystemRenderSpace.View : ParticleSystemRenderSpace.Velocity;
             q = Quaternion.Euler(0f, -90f, 0f) * q;
             log.Add("UNVERIFIED " + name + ": mesh facing mode " + facing + " mapped to Unity render alignment " + pr.alignment + ", with the mesh turned -90 degrees about Y and Flip X = 1 (matches the setup that worked by hand for the Reboot logo: View, Flip X 1, rotation Y about 100)");
+            if (hasOrient)
+                log.Add("NOT APPLIED " + name + ": initial mesh orientation (roll, pitch, yaw) " + orient.ToString() + ", because the facing mode " + facing + " sets the orientation");
         }
-        else pr.alignment = ParticleSystemRenderSpace.Local;
+        else
+        {
+            pr.alignment = ParticleSystemRenderSpace.Local;
+            if (hasOrient)
+            {
+                q = PorterBlueprintSetup.RotatorToQuaternion(orient.y, orient.z, orient.x) * q;
+                log.Add("UNVERIFIED " + name + ": initial mesh orientation (roll, pitch, yaw) " + orient.ToString() + " applied before the renderer mesh rotation" + (orientRange ? "; it is a random range in Unreal, the middle of the range is used" : ""));
+            }
+        }
         Vector3 euler = q.eulerAngles * Mathf.Deg2Rad;
         var main = ps.main;
         main.startRotation3D = true;
@@ -721,6 +731,14 @@ public static class PorterPropBuilder
         main.startRotationY = euler.y;
         main.startRotationZ = euler.z;
         Vector3 ms = r.ContainsKey("meshScale") && r["meshScale"] != null ? P(V3(r["meshScale"])) : Vector3.one;
+        Vector3 modScale = Vector3.one;
+        bool scaleRange = false;
+        if (mod.ContainsKey("meshScale") && SafeVecMid(mod["meshScale"], out modScale, out scaleRange)
+            && Mathf.Abs(modScale.x) > 1e-4f && Mathf.Abs(modScale.y) > 1e-4f && Mathf.Abs(modScale.z) > 1e-4f)
+        {
+            ms = Vector3.Scale(ms, P(modScale));
+            if (scaleRange) log.Add("APPROX " + name + ": initial mesh scale is a random range in Unreal, the middle " + modScale.ToString() + " is used");
+        }
         main.startSize3D = true;
         main.startSizeX = (negativeX ? -1f : 1f) * ms.x;
         main.startSizeY = ms.y;
@@ -958,6 +976,25 @@ public static class PorterPropBuilder
         {
             var v = L(d["values"]);
             if (v.Count > 0) { mn = (float)N(v[0], def); mx = (float)N(v[v.Count - 1], def); }
+        }
+    }
+
+    static bool SafeVecMid(object dist, out Vector3 mid, out bool ranged)
+    {
+        mid = Vector3.zero;
+        ranged = false;
+        if (!(dist is Dictionary<string, object>)) return false;
+        try
+        {
+            Vector3 a, b;
+            VecRange(dist, out a, out b);
+            mid = (a + b) * 0.5f;
+            ranged = (a - b).sqrMagnitude > 1e-6f;
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 

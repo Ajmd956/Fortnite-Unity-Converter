@@ -121,6 +121,25 @@ def rot(v):
     return [v.get("Pitch", 0.0), v.get("Yaw", 0.0), v.get("Roll", 0.0)]
 
 
+def rpy(v):
+    if isinstance(v, dict) and "X" not in v and ("Roll" in v or "Pitch" in v or "Yaw" in v):
+        return {"X": v.get("Roll", 0.0), "Y": v.get("Pitch", 0.0), "Z": v.get("Yaw", 0.0)}
+    return v
+
+
+def rpy_dist(d):
+    """A rotation setting with its roll, pitch and yaw as X, Y and Z, the order the Unity builder reads."""
+    if not d:
+        return d
+    out = dict(d)
+    for k in ("min", "max"):
+        if k in out:
+            out[k] = rpy(out[k])
+    if "values" in out:
+        out["values"] = [rpy(x) for x in out["values"]]
+    return out
+
+
 def dist(d, default=None):
     if not d:
         return default
@@ -317,6 +336,53 @@ def mesh_slots(folder, mesh):
     return out
 
 
+def renderer_spec(folder, emname, rtype_name, rp):
+    rs = {"type": rtype_name.replace("Niagara", "").replace("RendererProperties", "")}
+    rs["sortMode"] = str(rp.get("SortMode", "")).split("::")[-1]
+    if rs["type"] == "Sprite":
+        rs.update({
+            "material": asset_name(rp.get("Material")),
+            "alignment": rp.get("Alignment", "ENiagaraSpriteAlignment::Unaligned").split("::")[-1],
+            "facing": rp.get("FacingMode", "ENiagaraSpriteFacingMode::FaceCamera").split("::")[-1],
+            "pivot": [rp.get("PivotInUVSpace", {}).get("X", 0.5), rp.get("PivotInUVSpace", {}).get("Y", 0.5)],
+            "subImage": [rp.get("SubImageSize", {}).get("X", 1.0), rp.get("SubImageSize", {}).get("Y", 1.0)],
+        })
+    elif rs["type"] == "Mesh":
+        mesh = rp["Meshes"][0]
+        mesh_name = asset_name(mesh.get("Mesh"))
+        ov = rp.get("OverrideMaterials", [])
+        mats = [asset_name(x.get("ExplicitMat")) for x in ov if x] if rp.get("bOverrideMaterials") is not False else []
+        slots = []
+        if not any(mats):
+            slots = mesh_slots(folder, mesh_name)
+            mats = [sl.get("material") for sl in slots]
+            if any(mats):
+                note("DEFAULT", emname + ": no override material, using the mesh's own materials (" + ", ".join(str(m) for m in mats) + ")")
+            else:
+                note("MISSING", emname + ": mesh renderer has no override material and the mesh data lists none, the particle will have no material")
+        rs.update({
+            "mesh": mesh_name,
+            "meshRotation": rot(mesh.get("Rotation")),
+            "meshScale": vec(mesh.get("Scale"), (1, 1, 1)),
+            "materials": mats,
+            "materialSlots": [sl.get("slot") for sl in slots],
+            "facing": str(rp.get("FacingMode", "ENiagaraMeshFacingMode::Default")).split("::")[-1],
+            "lockedAxis": vec(rp.get("LockedAxis"), (0.0, 0.0, 1.0)) if rp.get("bLockedAxisEnable") else None,
+            "lockedAxisSpace": str(rp.get("LockedAxisSpace", "")).split("::")[-1],
+            "pivotOffset": vec(rp.get("PivotOffset")),
+            "meshPivot": vec(mesh.get("PivotOffset")),
+        })
+    elif rs["type"] == "Light":
+        rs.update({
+            "radiusScale": rp.get("RadiusScale", 1.0),
+            "inverseSquared": rp.get("bUseInverseSquaredFalloff", False),
+        })
+        note("DEFAULT", emname + ": light renderer radius not exported (per-particle LightRadius), Unity range uses 100 cm x RadiusScale")
+    else:
+        note("UNSUPPORTED", emname + ": renderer " + rs["type"])
+    return rs
+
+
 def emitter_spec(folder, sysdata, handle):
     em_ref = handle.get("StatelessEmitter")
     emname = short(em_ref)
@@ -414,7 +480,7 @@ def emitter_spec(folder, sysdata, handle):
     if "SpriteRotationRate" in mods:
         m["rotationRate"] = dist(mods["SpriteRotationRate"].get("RotationRateDistribution"))
     if "InitialMeshOrientation" in mods:
-        m["meshOrientation"] = dist(mods["InitialMeshOrientation"].get("Rotation"))
+        m["meshOrientation"] = rpy_dist(dist(mods["InitialMeshOrientation"].get("Rotation")))
     if "SubUVAnimation" in mods:
         sub = mods["SubUVAnimation"]
         m["subUV"] = {"frames": sub.get("NumFrames", 16), "mode": str(sub.get("AnimationMode", "")).split("::")[-1]}
@@ -444,51 +510,7 @@ def emitter_spec(folder, sysdata, handle):
     if spec["unhandledModules"]:
         note("UNSUPPORTED", handle["Name"] + ": Niagara modules not converted: " + ", ".join(spec["unhandledModules"]))
     for r in rends:
-        rp = r.get("Properties", {})
-        rs = {"type": r["Type"].replace("Niagara", "").replace("RendererProperties", "")}
-        rs["sortMode"] = str(rp.get("SortMode", "")).split("::")[-1]
-        if rs["type"] == "Sprite":
-            rs.update({
-                "material": asset_name(rp.get("Material")),
-                "alignment": rp.get("Alignment", "ENiagaraSpriteAlignment::Unaligned").split("::")[-1],
-                "facing": rp.get("FacingMode", "ENiagaraSpriteFacingMode::FaceCamera").split("::")[-1],
-                "pivot": [rp.get("PivotInUVSpace", {}).get("X", 0.5), rp.get("PivotInUVSpace", {}).get("Y", 0.5)],
-                "subImage": [rp.get("SubImageSize", {}).get("X", 1.0), rp.get("SubImageSize", {}).get("Y", 1.0)],
-            })
-        elif rs["type"] == "Mesh":
-            mesh = rp["Meshes"][0]
-            mesh_name = asset_name(mesh.get("Mesh"))
-            ov = rp.get("OverrideMaterials", [])
-            mats = [asset_name(x.get("ExplicitMat")) for x in ov if x] if rp.get("bOverrideMaterials") is not False else []
-            slots = []
-            if not any(mats):
-                slots = mesh_slots(folder, mesh_name)
-                mats = [sl.get("material") for sl in slots]
-                if any(mats):
-                    note("DEFAULT", handle["Name"] + ": no override material, using the mesh's own materials (" + ", ".join(str(m) for m in mats) + ")")
-                else:
-                    note("MISSING", handle["Name"] + ": mesh renderer has no override material and the mesh data lists none, the particle will have no material")
-            rs.update({
-                "mesh": mesh_name,
-                "meshRotation": rot(mesh.get("Rotation")),
-                "meshScale": vec(mesh.get("Scale"), (1, 1, 1)),
-                "materials": mats,
-                "materialSlots": [sl.get("slot") for sl in slots],
-                "facing": str(rp.get("FacingMode", "ENiagaraMeshFacingMode::Default")).split("::")[-1],
-                "lockedAxis": vec(rp.get("LockedAxis"), (0.0, 0.0, 1.0)) if rp.get("bLockedAxisEnable") else None,
-                "lockedAxisSpace": str(rp.get("LockedAxisSpace", "")).split("::")[-1],
-                "pivotOffset": vec(rp.get("PivotOffset")),
-                "meshPivot": vec(mesh.get("PivotOffset")),
-            })
-        elif rs["type"] == "Light":
-            rs.update({
-                "radiusScale": rp.get("RadiusScale", 1.0),
-                "inverseSquared": rp.get("bUseInverseSquaredFalloff", False),
-            })
-            note("DEFAULT", handle["Name"] + ": light renderer radius not exported (per-particle LightRadius), Unity range uses 100 cm x RadiusScale")
-        else:
-            note("UNSUPPORTED", handle["Name"] + ": renderer " + rs["type"])
-        spec["renderers"].append(rs)
+        spec["renderers"].append(renderer_spec(folder, handle["Name"], r["Type"], r.get("Properties", {})))
     return spec
 
 
@@ -687,13 +709,17 @@ def collect_assets(spec):
 
 
 def run(source, path, out, name, scripts=None):
-    import shutil
     loader = Loader(source=source, home=package_of(path).rpartition("/")[0])
     chain = walk_chain(loader, path)
     if not chain:
         sys.exit("the app did not give the Blueprint (%s)" % (source.why("asset", path) or "not found in the game files"))
     bp_name = name or re.sub(r"_C$", "", chain[0][0])
     spec = build(loader, bp_name, [c[0] for c in chain])
+    finish(spec, out, bp_name, scripts)
+
+
+def finish(spec, out, bp_name, scripts=None):
+    import shutil
     folder = os.path.join(out, bp_name)
     os.makedirs(folder, exist_ok=True)
     os.makedirs(os.path.join(out, "Editor"), exist_ok=True)
@@ -727,3 +753,138 @@ def run(source, path, out, name, scripts=None):
             print("note: " + r)
     print("wrote %s.propspec.json" % bp_name)
     print("folder: %s" % os.path.abspath(folder))
+
+
+def xyz(v):
+    return {"X": v[0], "Y": v[1], "Z": v[2]}
+
+
+def span3(rng):
+    return {"min": xyz(rng["min"]), "max": xyz(rng["max"])}
+
+
+def span1(rng, index=0):
+    return {"min": rng["min"][index], "max": rng["max"][index]}
+
+
+def resample(points, keys, count):
+    pts = sorted(points, key=lambda p: p["t"])
+    out = []
+    for i in range(count):
+        t = i / (count - 1) if count > 1 else 0.0
+        if t <= pts[0]["t"]:
+            out.append({k: pts[0][k] for k in keys})
+            continue
+        if t >= pts[-1]["t"]:
+            out.append({k: pts[-1][k] for k in keys})
+            continue
+        for a, b in zip(pts, pts[1:]):
+            if a["t"] <= t <= b["t"]:
+                f = (t - a["t"]) / (b["t"] - a["t"]) if b["t"] > a["t"] else 0.0
+                out.append({k: a[k] + (b[k] - a[k]) * f for k in keys})
+                break
+    return out
+
+
+def scripted_emitter_spec(loader, system, em, seconds):
+    """An emitter the replay played (one that is not stateless) as the same emitter spec the Unity builder reads."""
+    import NiagaraPorter
+    name = em["name"]
+    if em["totalBorn"] == 0:
+        note("UNSUPPORTED", name + ": spawned nothing in the " + str(seconds) + " seconds played, left out")
+        return None
+    bursts, rate, period = em["bursts"], em["rate"], em["loopPeriod"]
+    one_shot = bool(bursts) and not rate and not period
+    last = max([b["time"] for b in bursts] or [0.0])
+    duration = period if period else max(float(seconds), last + 0.1)
+    spawn = [{"type": "Burst", "time": b["time"], "amount": {"min": b["count"], "max": b["count"]}} for b in bursts]
+    if rate:
+        spawn.append({"type": "Rate", "rate": {"min": rate, "max": rate}})
+    life_min, life_max = em["lifetimeMin"], em["lifetimeMax"]
+    if em["persistent"] or life_max <= 0:
+        life_min = life_max = float(seconds)
+        note("APPROX", name + ": particles stay alive in the replay, lifetime set to the " + str(seconds) + " seconds played")
+    init = em.get("initial") or {}
+    mods = {"lifetime": {"min": life_min, "max": life_max}}
+    sprite = em["sizeUnit"] == "cm"
+    start = em["startSize"]
+    if sprite:
+        mods["spriteSize"] = {"min": xyz([start["x"], start["y"], 0.0]), "max": xyz([start["x"], start["y"], 0.0])}
+    else:
+        mods["meshScale"] = {"min": xyz([start["x"], start["y"], start["z"]]), "max": xyz([start["x"], start["y"], start["z"]])}
+    curve = em["sizeCurve"]
+    if curve and max(abs(p["s"] - 1.0) for p in curve) > 1e-3:
+        values = [{"X": v["s"], "Y": v["s"]} for v in resample(curve, ("s",), len(curve))]
+        mods["scaleSpriteSize" if sprite else "scaleMeshSize"] = {"values": values}
+    if em["colorCurve"]:
+        mods["scaleColor"] = {"values": [{"R": v["r"], "G": v["g"], "B": v["b"], "A": v["a"]} for v in resample(em["colorCurve"], ("r", "g", "b", "a"), len(em["colorCurve"]))]}
+    if "Velocity" in init:
+        mods["velocity"] = span3(init["Velocity"])
+        mods["velocityType"] = "Linear"
+    if "Position" in init:
+        mods["position"] = span3(init["Position"])
+        if em["local"] is False:
+            note("APPROX", name + ": world-space emitter, positions treated as local to the object")
+    if "SpriteRotation" in init and sprite:
+        mods["rotation"] = span1(init["SpriteRotation"])
+    if "MeshOrientation" in init and not sprite:
+        mods["meshOrientation"] = span3(init["MeshOrientation"])
+    emitter = next((e for e in system.emitters if e.name == name), None)
+    renderers = []
+    for rtype, props in (NiagaraPorter.renderer_exports(system, emitter) if emitter is not None else []):
+        if props.get("bIsEnabled", True):
+            renderers.append(renderer_spec(loader, name, rtype, props))
+    if not renderers:
+        note("UNSUPPORTED", name + ": no enabled renderer")
+        return None
+    note("APPROX", name + ": scripted emitter, built from a replay of its scripts (spawn counts, lifetime, colour and size curves, and starting position, velocity and rotation as ranges)")
+    if em["requires"]:
+        note("INFERRED", name + ": only emits when the game sets " + ", ".join(em["requires"]) + " to 1, the replay set it")
+    return {
+        "name": name,
+        "loop": {"duration": {"min": duration, "max": duration}, "delay": None, "delayEnabled": False, "delayFirstOnly": False,
+                 "behavior": "Once" if one_shot else "Infinite"},
+        "spawn": spawn,
+        "modules": mods,
+        "renderers": renderers,
+        "unhandledModules": [],
+    }
+
+
+def run_system(source, path, out, name, scripts=None, seconds=6.0):
+    """A Niagara system as a prefab spec: stateless emitters from their module settings, the rest from a replay."""
+    import NiagaraPorter
+    pkg = package_of(path)
+    sysname = pkg.rpartition("/")[2]
+    PATHS.setdefault(sysname, path if "." in path.rpartition("/")[2] else path + "." + sysname)
+    loader = Loader(source=source, home=pkg.rpartition("/")[0])
+    stateless = {}
+    try:
+        sysspec = system_spec(loader, sysname)
+        for e in (sysspec or {}).get("emitters", []):
+            stateless[e["name"]] = e
+    except Exception as ex:
+        note("MISSING", "stateless emitter settings could not be read (" + type(ex).__name__ + ": " + str(ex) + "), every emitter is built from the replay")
+    try:
+        dump = NiagaraPorter.fetch_dump(source.bridge, path)
+    except RuntimeError as ex:
+        sys.exit(str(ex))
+    system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
+    emitters = []
+    for em in summaries:
+        if em["name"] in stateless:
+            emitters.append(stateless.pop(em["name"]))
+            continue
+        spec = scripted_emitter_spec(loader, system, em, seconds)
+        if spec is not None:
+            emitters.append(spec)
+    emitters += list(stateless.values())
+    for s in skipped:
+        note("UNSUPPORTED", s["emitter"] + ": not converted (" + str(s["why"]) + ")")
+    report[:] = [r for r in report if "enabled non-stateless emitter" not in r]
+    bp_name = name or sysname
+    node = {"name": "Particles", "parent": 0, "kind": "particles", "loc": [0, 0, 0], "rot": [0, 0, 0], "scale": [1, 1, 1],
+            "system": {"name": sysname, "emitters": emitters}, "inferred": False, "playOnAwake": True}
+    root = {"name": bp_name, "parent": -1, "kind": "empty", "loc": [0, 0, 0], "rot": [0, 0, 0], "scale": [1, 1, 1]}
+    spec = {"blueprint": bp_name, "nodes": [root, node], "report": sorted(set(report))}
+    finish(spec, out, bp_name, scripts)

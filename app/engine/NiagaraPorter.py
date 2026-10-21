@@ -273,6 +273,52 @@ def renderers(system, emitter):
     return found
 
 
+def renderer_exports(system, emitter):
+    """The properties of each renderer an emitter draws with: [(type name, properties)]."""
+    version = getattr(emitter, "version", None)
+    if version is None:
+        version = (getattr(emitter, "export", None) or {}).get("props") or {}
+    found = []
+    for ref in version.get("RendererProperties") or []:
+        export = system.export(ref)
+        if export is not None:
+            found.append((export["type"], export["props"]))
+    return found
+
+
+def euler_from_quaternion(q):
+    """Quaternions (x, y, z, w; shape (4, n)) as Unreal rotators: (roll, pitch, yaw) in degrees, shape (3, n)."""
+    x, y, z, w = (np.asarray(q[i], np.float64) for i in range(4))
+    norm = np.sqrt(x * x + y * y + z * z + w * w)
+    norm = np.where(norm > 0, norm, 1.0)
+    x, y, z, w = x / norm, y / norm, z / norm, w / norm
+    m20 = 2 * (x * z - w * y)
+    m10 = 2 * (x * y + w * z)
+    m00 = 1 - 2 * (y * y + z * z)
+    m21 = 2 * (y * z + w * x)
+    m22 = 1 - 2 * (x * x + y * y)
+    pitch = np.arcsin(np.clip(m20, -1.0, 1.0))
+    yaw = np.arctan2(m10, m00)
+    roll = np.arctan2(-m21, m22)
+    return np.degrees(np.stack([roll, pitch, yaw]))
+
+
+def initial_ranges(r):
+    """What each particle was born with, as the smallest and largest value of every component: position and
+    velocity in cm and cm/s, sprite rotation in degrees, mesh orientation as roll, pitch and yaw in degrees."""
+    out = {}
+    for name, parts in r.initial.items():
+        rows = np.hstack(parts)
+        if not rows.shape[1]:
+            continue
+        if name == "MeshOrientation":
+            if rows.shape[0] < 4:
+                continue
+            rows = euler_from_quaternion(rows)
+        out[name] = {"min": [r4(v) for v in rows.min(axis=1)], "max": [r4(v) for v in rows.max(axis=1)]}
+    return out
+
+
 def short(path):
     return (path or "").rsplit("/", 1)[-1]
 
@@ -298,6 +344,7 @@ def summarize(system, e, r, required, approximate):
         "sizeCurve": size,
         "startSize": start or {"x": 1.0, "y": 1.0, "z": 1.0},
         "sizeUnit": "cm" if r.sprite else "scale",
+        "initial": initial_ranges(r),
         "renderers": renderers(system, e),
     }
     return out
@@ -645,7 +692,7 @@ public class PorterParticleAuto : AssetPostprocessor
 
 # ---------------------------------------------------------------- the run
 
-def convert(exports, name, source, out, seconds):
+def replay(exports, name, source, seconds):
     asset = next((e for e in exports if e["type"] == "NiagaraSystem"), None)
     if asset is None:
         kinds = sorted({e["type"] for e in exports})
@@ -667,6 +714,11 @@ def convert(exports, name, source, out, seconds):
     for e in system.emitters:
         source_emitter = next((x for x in gsys.emitters if x.name == e.name), e) if e.name in gated else e
         emitters.append(summarize(system, source_emitter, recorders[e.name], gated.get(e.name, []), approximate))
+    return system, emitters, skipped
+
+
+def convert(exports, name, source, out, seconds):
+    system, emitters, skipped = replay(exports, name, source, seconds)
     warnings = []
     for em in emitters:
         warnings += warnings_for(em)

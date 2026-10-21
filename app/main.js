@@ -1460,110 +1460,18 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
   if (!materials.length) return { ok: false, error: 'no systems' }
   const fail = await beginRun('Converting Niagara')
   if (fail) return fail
-  let converted = 0
-  let attempted = materials.length
-  const made = []
-  const kinds = []
-  const convertMaterial = async (p, name, outDir) => {
-    const args = ['--bridge', settings.bridge, '--material', p, '--out', outDir, '--cache', cacheDir]
-    if (name) args.push('--name', name)
-    const res = await runEngine(args)
-    const m = res.output.match(/wrote (.+?)\.shader/)
-    if (!m) {
-      const kind = classifyFailure(res.output)
-      if (kind) kinds.push(kind)
-      return null
-    }
-    const shader = path.join(outDir, m[1], m[1] + '.shader')
-    if (!fs.existsSync(shader)) return null
-    converted++
-    const row = { name: m[1], shader, dir: path.dirname(shader) }
-    made.push(row)
-    return row
+  const systems = []
+  for (const m of materials) {
+    if (isNiagara(m)) systems.push(m)
+    else send('engine:log', '\nskipped: ' + m + ' is not a Niagara system (NS_...). Use the Shader Converter button in the Converter tab for materials.\n')
   }
-  for (let i = 0; i < materials.length; i++) {
-    if (stopped) break
-    send('engine:log', '\n[' + (i + 1) + '/' + materials.length + '] ' + materials[i] + '\n')
-    if (!isNiagara(materials[i])) {
-      attempted--
-      send('engine:log', 'skipped: this is not a Niagara system (NS_...). Use the Shader Converter button in the Converter tab for materials.\n')
-      continue
-    }
-    const nargs = ['--bridge', settings.bridge, '--niagara', materials[i], '--out', particlesDir]
-    if (payload.name && materials.length === 1) nargs.push('--name', payload.name)
-    const nres = await runEngine(nargs)
-    const nm = nres.output.match(/wrote (.+?)\.particles\.json/)
-    if (!nm) {
-      const kind = classifyFailure(nres.output)
-      if (kind) kinds.push(kind)
-      continue
-    }
-    const pdir = path.join(particlesDir, nm[1])
-    const manifest = path.join(pdir, nm[1] + '.particles.json')
-    if (!fs.existsSync(manifest)) continue
-    converted++
-    made.push({ name: nm[1], shader: manifest, dir: pdir, kind: 'particles' })
-    const refs = []
-    for (const mm of nres.output.matchAll(/^material: (.+)$/gm)) {
-      const ref = mm[1].trim()
-      if (ref && !refs.includes(ref) && !materials.includes(ref)) refs.push(ref)
-    }
-    for (const ref of refs) {
-      if (stopped) break
-      const short = ref.slice(ref.lastIndexOf('/') + 1).split('.')[0]
-      if (fs.existsSync(path.join(pdir, short, short + '.shader'))) continue
-      attempted++
-      send('engine:log', '\nmaterial used by ' + nm[1] + ': ' + ref + '\n')
-      await convertMaterial(ref, '', pdir)
-    }
-    const meshes = []
-    for (const mm of nres.output.matchAll(/^mesh: (.+)$/gm)) {
-      const ref = mm[1].trim()
-      if (ref && !meshes.includes(ref)) meshes.push(ref)
-    }
-    const spanLocked = new Set()
-    if (meshes.length && !stopped) {
-      if (await startTypeServer()) {
-        for (const ref of meshes) {
-          if (stopped) break
-          send('engine:log', '\nexporting mesh used by ' + nm[1] + ': ' + ref + '\n')
-          const r = await askExport('modelexport', packagePath(ref), path.join(pdir, 'Meshes'))
-          if (r && r.ok) {
-            let made = r.file
-            if (/\.glb$/i.test(made)) {
-              applyMeshSpan(made, pdir, meshes.length, spanLocked, (s) => send('engine:log', s))
-              try {
-                const fbx = made.replace(/\.glb$/i, '.fbx')
-                glbToFbx(made, fbx)
-                fs.rmSync(made, { force: true })
-                made = fbx
-                const mi = lastInfo()
-                send('engine:log', 'mesh data: vertex colours ' + (mi.colors ? 'kept' : 'not present in the export') + ', second UV set ' + (mi.uv2 ? 'kept' : 'not present in the export') + '\n')
-              } catch (err) {
-                send('engine:log', 'fbx conversion failed, keeping the glb: ' + (err && err.message ? err.message : err) + '\n')
-              }
-            }
-            send('engine:log', 'mesh exported: ' + made + '\n')
-          } else {
-            send('engine:log', 'mesh not exported: ' + ((r && r.error) || 'unknown error') + '\n')
-          }
-        }
-      } else {
-        send('engine:log', '\nmeshes were not exported because the file helper is not running\n')
-      }
-    }
-    fs.rmSync(path.join(pdir, 'Editor'), { recursive: true, force: true })
-    fs.rmSync(path.join(pdir, 'PorterObjectBounds.cs'), { force: true })
+  if (!systems.length) {
+    busy = false
+    send('engine:state', { running: false, label: '' })
+    send('engine:log', '\nfinished: 0 of ' + materials.length + ' converted\n')
+    return { ok: true, converted: 0, total: materials.length }
   }
-  busy = false
-  send('engine:state', { running: false, label: '' })
-  send('engine:log', '\nfinished: ' + converted + ' of ' + attempted + ' converted\n')
-  if (made.length) send('convert:done', { shaders: made, total: attempted })
-  if (!made.length && !stopped) {
-    const notice = noticeFor(kinds)
-    if (notice) send('app:notice', notice)
-  }
-  return { ok: true, converted, total: attempted }
+  return runPropQueue(systems, payload, '--particle-system')
 })
 
 
@@ -1698,13 +1606,7 @@ async function buildBlueprintPrefabs(made) {
   return built
 }
 
-ipcMain.handle('blueprint:convert', async (_e, payload) => {
-  if (modeLocked('expBlueprint')) return lockedReply
-  if (busy) return { ok: false, error: 'busy' }
-  const paths = (payload.paths || []).map(m => m.trim()).filter(Boolean)
-  if (!paths.length) return { ok: false, error: 'no blueprints' }
-  const fail = await beginRun('Converting Blueprint')
-  if (fail) return fail
+async function runPropQueue(paths, payload, flag) {
   const scripts = unityScriptsDir()
   let converted = 0
   const made = []
@@ -1714,7 +1616,7 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
   for (let i = 0; i < queue.length; i++) {
     if (stopped) break
     send('engine:log', '\n[' + (i + 1) + '/' + queue.length + '] ' + queue[i] + (i >= paths.length ? ' (linked from another Blueprint)' : '') + '\n')
-    const args = ['--bridge', settings.bridge, '--blueprint', queue[i], '--out', blueprintsDir, '--scripts', scripts]
+    const args = ['--bridge', settings.bridge, flag, queue[i], '--out', blueprintsDir, '--scripts', scripts]
     if (payload.name && i === 0 && paths.length === 1) args.push('--name', payload.name)
     const res = await runEngine(args)
     if (i < paths.length && /^note: .* holds no meshes or materials/m.test(res.output)) {
@@ -1841,6 +1743,16 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
     if (notice) send('app:notice', notice)
   }
   return { ok: true, converted, total: paths.length }
+}
+
+ipcMain.handle('blueprint:convert', async (_e, payload) => {
+  if (modeLocked('expBlueprint')) return lockedReply
+  if (busy) return { ok: false, error: 'busy' }
+  const paths = (payload.paths || []).map(m => m.trim()).filter(Boolean)
+  if (!paths.length) return { ok: false, error: 'no blueprints' }
+  const fail = await beginRun('Converting Blueprint')
+  if (fail) return fail
+  return runPropQueue(paths, payload, '--blueprint')
 })
 
 ipcMain.handle('engine:check', async (_e, payload) => {

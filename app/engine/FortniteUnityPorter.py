@@ -5631,6 +5631,7 @@ def main():
     ap.add_argument("--sky", action="store_true", help="the material is on a sky dome: draw it first, behind everything, without writing depth")
     ap.add_argument("--expose-globals", action="store_true", help="show the parameter-collection values (the _C_ ones) as material properties instead of fixing them in the shader, so a script can animate them")
     ap.add_argument("--blueprint", metavar="PATH", help="convert a Blueprint (object path) to a Unity prefab: a sky dome, or a prop with lights, sounds and particle systems")
+    ap.add_argument("--particle-system", metavar="PATH", help="convert a Niagara system (object path) to a Unity prefab spec, built the way a prop Blueprint is")
     ap.add_argument("--annotate", action="store_true", help="add UE node names as comments in the shader (off by default)")
     ap.add_argument("--no-annotate", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
@@ -5646,6 +5647,10 @@ def main():
         return
     if a.blueprint:
         run_blueprint_export(a.bridge, a.blueprint, a.out, a.name, a.scripts)
+        return
+    if a.particle_system:
+        import PropBlueprint
+        PropBlueprint.run_system(Source(bridge=a.bridge, folder=None, cache=None), a.particle_system, a.out, a.name, a.scripts, a.seconds)
         return
     if a.niagara:
         import NiagaraPorter
