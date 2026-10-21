@@ -77,6 +77,10 @@ def inner(s):
 
 
 LOCAL_X_FLIP = True
+UV_FOR_LOCAL_PANNING = True
+LOCAL_UV_SPAN = 1600.0
+LOCAL_TYPES = ("LocalPosition", "PreSkinnedPosition")
+TEXTURE_TYPES = ("TextureSample", "TextureSampleParameter2D", "TextureSampleParameterSubUV", "TextureSampleParameterCube", "TextureSampleParameter2DArray", "TextureSampleParameterVolume", "AntialiasedTextureMask")
 
 
 def linked(ref):
@@ -589,6 +593,7 @@ class Translator:
         self.override_hits = 0
         self.fn_over = {}
         self.notes = []
+        self.lp_uv = None
 
     @property
     def body(self):
@@ -719,7 +724,58 @@ class Translator:
     def lout(self, v):
         return self.lin(v)
 
+    def local_uv_pair(self, g, ref):
+        if not UV_FOR_LOCAL_PANNING or self.mode != "ps" or not linked(ref):
+            return None
+        seen, found = set(), {"local": False, "time": False}
+
+        def walk(r):
+            n = g.key(r)
+            if n in seen or n not in g.by:
+                return
+            seen.add(n)
+            x = g.by[n]
+            t = T(x)
+            if t in TEXTURE_TYPES:
+                return
+            if t in LOCAL_TYPES:
+                found["local"] = True
+            elif t == "Time":
+                found["time"] = True
+            for v in (x.get("Properties") or {}).values():
+                if linked(v):
+                    walk(v)
+
+        walk(ref)
+        if not (found["local"] and found["time"]):
+            return None
+        n = g.key(ref)
+        for _ in range(8):
+            x = g.by.get(n)
+            if x is None:
+                break
+            t = T(x)
+            if t == "Reroute" and linked((x.get("Properties") or {}).get("Input")):
+                n = g.key(x["Properties"]["Input"])
+                continue
+            if t == "ComponentMask":
+                idx = [i for i, k in enumerate("RGB") if (x.get("Properties") or {}).get(k)]
+                if len(idx) == 2:
+                    return tuple(idx)
+            break
+        return (0, 1)
+
+    def local_uv_surrogate(self):
+        uv = self.uvs(0)
+        c = ["0.0", "0.0", "0.0"]
+        c[self.lp_uv[0]] = "%s.x * %s" % (par(uv.e), fl(LOCAL_UV_SPAN))
+        c[self.lp_uv[1]] = "%s.y * %s" % (par(uv.e), fl(LOCAL_UV_SPAN))
+        self.note("LocalPosition driving a time-animated texture lookup is replaced by the mesh UV (spanning %g cm), so the pattern keeps its size when the model is scaled in Unity" % LOCAL_UV_SPAN)
+        return self.tmp("float3(%s)" % ", ".join(c), 3)
+
     def local_pos(self):
+        if self.lp_uv is not None and self.mode == "ps":
+            return self.local_uv_surrogate()
         if self.mode == "ps":
             if LOCAL_X_FLIP:
                 return self.tmp("float3(-IN.objPos.x, IN.objPos.z, IN.objPos.y) * 100.0", 3)
@@ -744,7 +800,7 @@ class Translator:
         return v
 
     def expr(self, g, name, out, scope):
-        key = (self.mode, g.path, name, out, scope.get("_id", 0))
+        key = (self.mode, g.path, name, out, scope.get("_id", 0), self.lp_uv)
         if key in self.cache:
             return self.cache[key]
         if key in self.stack:
@@ -1305,7 +1361,11 @@ class Translator:
                 key, pn = ref.tex
             else:
                 key, pn = self.tex_ref(p, x.get("Name"), g.name)
-            coords = self.input(g, p.get("Coordinates"), scope, None)
+            _prev_lp, self.lp_uv = self.lp_uv, self.local_uv_pair(g, p.get("Coordinates"))
+            try:
+                coords = self.input(g, p.get("Coordinates"), scope, None)
+            finally:
+                self.lp_uv = _prev_lp
             kind = self.texture_kind(t, p, key)
             if kind != "2d" and key:
                 return self.sample_sheet(kind, key, pn, coords, out, p.get("SamplerType", ""), x.get("Name"))
@@ -5561,6 +5621,7 @@ def main():
     ap.add_argument("--fixed-out", metavar="FOLDER", help="with --check-shader: folder the fixed copies are written to (default: Documents\\Fortnite Unity Converter\\Fixed Conversions)")
     ap.add_argument("--unity", metavar="UNITY_EXE", help="with --check-shader: path to Unity.exe for the compile check")
     ap.add_argument("--curves", default=None, help="folder holding curve JSON exports (CQ_Something.json); also looks in Curves next to the cache")
+    ap.add_argument("--keep-local-position-panning", action="store_true", help="keep object-space position for time-animated texture lookups instead of using the mesh UV (object-space position changes with scale on skinned meshes in Unity)")
     ap.add_argument("--keep-local-x", action="store_true", help="do not mirror object-space X for LocalPosition in the pixel stage (the exported Unity mesh has X mirrored relative to Unreal, so mirroring is the default)")
     ap.add_argument("--niagara", metavar="PATH", help="convert a Niagara particle system (object path) to a Unity particle manifest and setup script")
     ap.add_argument("--seconds", type=float, default=6.0, help="with --niagara: how many seconds of the system to play")
@@ -5573,6 +5634,8 @@ def main():
     a = ap.parse_args()
     global LOCAL_X_FLIP
     LOCAL_X_FLIP = not a.keep_local_x
+    global UV_FOR_LOCAL_PANNING
+    UV_FOR_LOCAL_PANNING = not a.keep_local_position_panning
     if a.check_shader:
         paths = gather_shader_paths(" ".join('"%s"' % p for p in a.check_shader))
         if not paths:
