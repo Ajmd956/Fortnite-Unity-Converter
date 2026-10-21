@@ -1455,7 +1455,10 @@ class Translator:
             if self.mode != "ps":
                 self.warn("BumpOffset %s is in the vertex stage, where Unity has no view direction; coordinates left unshifted" % x.get("Name"))
                 return uv
-            view = self.tmp("normalize(IN.viewDir)", 3)
+            self.uses.add("wpos")
+            # Unity's IN.viewDir needs mesh tangents, which Billboard particles don't send (UE builds the frame from the camera-facing sprite),
+            # so the tangent-space view is rebuilt from screen derivatives of position and UV. Same frame, any mesh, any size.
+            view = self.tmp("PorterTangentViewUE(IN.worldPos, IN.tc01.xy, WorldNormalVector(IN, float3(0.0, 0.0, 1.0)))", 3)
             off = self.tmp("%s * %s - %s * %s" % (par(ratio.e), par(h.e), par(ratio.e), fl(ref)), 1)
             return self.tmp("%s + float2(%s.x, -%s.y) * %s" % (par(uv.e), view.e, view.e, off.e), 2)
         if t == "DeriveNormalZ":
@@ -2349,6 +2352,23 @@ float3 BlackBodyUE(float temp)
     float3 rgb = float3(dot(float3(3.2404542, -1.5371385, -0.4985314), xyz), dot(float3(-0.9692660, 1.8760108, 0.0415560), xyz), dot(float3(0.0556434, -0.2040259, 1.0572252), xyz));
     return rgb * pow(0.0004 * temp, 4.0);
 }
+
+float3 PorterTangentViewUE(float3 wpos, float2 uv, float3 wn)
+{
+    float3 v = normalize(_WorldSpaceCameraPos - wpos);
+    float3 n = normalize(wn);
+    float3 dpx = ddx(wpos);
+    float3 dpy = ddy(wpos);
+    float2 dux = ddx(uv);
+    float2 duy = ddy(uv);
+    float3 pyn = cross(dpy, n);
+    float3 pxn = cross(n, dpx);
+    float3 t = pyn * dux.x + pxn * duy.x;
+    float3 b = pyn * dux.y + pxn * duy.y;
+    t *= rsqrt(max(dot(t, t), 1e-12));
+    b *= rsqrt(max(dot(b, b), 1e-12));
+    return normalize(float3(dot(t, v), dot(b, v), max(abs(dot(n, v)), 1e-4)));
+}
 """
 
 TONE_HELPERS = r"""
@@ -2847,7 +2867,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        #define FPU_NZ(b) ((b) + ((b) == 0.0) * 0.00001)")
     if "FPU_UV_SPAN" in used:
         o.append("        #define FPU_UV_SPAN %s" % fl(LOCAL_UV_SPAN))
-    for fn_name in ("RgbToHsvUE", "HsvToRgbUE", "RotateAboutAxisUE", "BlackBodyUE"):
+    for fn_name in ("RgbToHsvUE", "HsvToRgbUE", "RotateAboutAxisUE", "BlackBodyUE", "PorterTangentViewUE"):
         if fn_name in used:
             block = re.search(r"float3 %s\(.*?\n\}\n" % fn_name, HELPERS, re.S).group(0)
             o.extend("        " + l if l else "" for l in block.strip("\n").split("\n"))
