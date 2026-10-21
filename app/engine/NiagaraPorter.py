@@ -17,6 +17,7 @@ DEFAULT_BRIDGE = "http://localhost:24320"
 DT = 1.0 / 60.0
 CURVE_POINTS = 8            # a Unity gradient holds at most 8 colour keys
 BURST_WINDOW = 0.1          # births in the first 0.1 s count as a burst at time 0
+INITIAL_ATTRIBUTES = ("Position", "Velocity", "SpriteRotation", "MeshOrientation")
 
 
 # ---------------------------------------------------------------- getting the asset
@@ -78,18 +79,22 @@ class Recorder:
         self.colors = []        # and its colour (4, n)
         self.sizes = []         # and its size (3, n): sprite size (x, y, 1) or mesh scale
         self.sprite = False
+        self.initial = {}       # per attribute: what each particle was born with, (components, born) per birth tick
 
     def tick(self, e, t0):
         count = int(e.data.count)
         self.max_alive = max(self.max_alive, count)
         born = int(getattr(e, "born", 0))
         rows = {}
-        for name in ("Age", "Lifetime", "Color", "SpriteSize", "Scale"):
+        for name in ("Age", "Lifetime", "Color", "SpriteSize", "Scale") + INITIAL_ATTRIBUTES:
             a = e.attribute(name)
             rows[name] = None if a is None else np.array(a[:, :count], np.float64)
         if born > 0:
             self.births.append((t0, born))
             self.total += born
+            for name in INITIAL_ATTRIBUTES:
+                if rows[name] is not None and count >= born:
+                    self.initial.setdefault(name, []).append(rows[name][:, count - born:count])
             if rows["Lifetime"] is not None:
                 self.lifetimes.extend(rows["Lifetime"][0, count - born:count].tolist())
         age, life = rows["Age"], rows["Lifetime"]
