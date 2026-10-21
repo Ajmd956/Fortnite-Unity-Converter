@@ -494,4 +494,61 @@ function reorderSpecSlots(specFile, meshRef, glbNames) {
   }
 }
 
-module.exports = { glbToFbx, lastSlots: () => lastSlotNames.slice(), lastInfo: () => Object.assign({}, lastInfo), reorderSpecSlots }
+function measureUvSpan(mesh) {
+  const { pos, uv, idx, slotOfTri, slotCount } = mesh
+  if (!uv) return null
+  const area3 = new Array(slotCount).fill(0)
+  const areaUv = new Array(slotCount).fill(0)
+  for (let t = 0; t * 3 + 2 < idx.length; t++) {
+    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2]
+    const ux = pos[b * 3] - pos[a * 3], uy = pos[b * 3 + 1] - pos[a * 3 + 1], uz = pos[b * 3 + 2] - pos[a * 3 + 2]
+    const vx = pos[c * 3] - pos[a * 3], vy = pos[c * 3 + 1] - pos[a * 3 + 1], vz = pos[c * 3 + 2] - pos[a * 3 + 2]
+    const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx
+    const a3 = 0.5 * Math.hypot(cx, cy, cz) * 10000
+    const du1 = uv[b * 2] - uv[a * 2], dv1 = uv[b * 2 + 1] - uv[a * 2 + 1]
+    const du2 = uv[c * 2] - uv[a * 2], dv2 = uv[c * 2 + 1] - uv[a * 2 + 1]
+    const aUv = 0.5 * Math.abs(du1 * dv2 - du2 * dv1)
+    const s = slotOfTri[t]
+    area3[s] += a3
+    areaUv[s] += aUv
+  }
+  const span = (a3, aUv) => (aUv > 1e-9 && a3 > 1e-9 ? Math.sqrt(a3 / aUv) : null)
+  const slots = area3.map((a, i) => span(a, areaUv[i]))
+  const all = span(area3.reduce((x, y) => x + y, 0), areaUv.reduce((x, y) => x + y, 0))
+  return { all, slots }
+}
+
+function glbUvSpan(glbFile) {
+  const buf = fs.readFileSync(glbFile)
+  const { json, bin } = parseGlb(buf)
+  const mesh = collect(json, bin || Buffer.alloc(0))
+  const m = measureUvSpan(mesh)
+  if (!m) return null
+  return { all: m.all, slots: m.slots, names: mesh.slotNames.slice() }
+}
+
+function applyUvSpan(shaderFile, span) {
+  if (!(span > 0)) return false
+  const text = fs.readFileSync(shaderFile, 'utf8')
+  const re = /(#define FPU_UV_SPAN )[0-9.eE+\-]+/
+  if (!re.test(text)) return false
+  const v = String(+span.toPrecision(5))
+  const out = text.replace(re, '$1' + (v.includes('.') || v.includes('e') ? v : v + '.0'))
+  if (out === text) return false
+  fs.writeFileSync(shaderFile, out, 'utf8')
+  return true
+}
+
+function spanForShader(measure, shaderName) {
+  if (!measure) return null
+  const n = norm(shaderName)
+  if (n) {
+    for (let i = 0; i < measure.names.length; i++) {
+      const g = norm(measure.names[i])
+      if (g && g === n && measure.slots[i]) return { span: measure.slots[i], slot: measure.names[i] }
+    }
+  }
+  return measure.all ? { span: measure.all, slot: '' } : null
+}
+
+module.exports = { glbToFbx, lastSlots: () => lastSlotNames.slice(), lastInfo: () => Object.assign({}, lastInfo), reorderSpecSlots, glbUvSpan, applyUvSpan, spanForShader }

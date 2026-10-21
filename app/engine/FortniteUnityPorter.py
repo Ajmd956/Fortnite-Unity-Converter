@@ -768,8 +768,8 @@ class Translator:
     def local_uv_surrogate(self):
         uv = self.uvs(0)
         c = ["0.0", "0.0", "0.0"]
-        c[self.lp_uv[0]] = "%s.x * %s" % (par(uv.e), fl(LOCAL_UV_SPAN))
-        c[self.lp_uv[1]] = "%s.y * %s" % (par(uv.e), fl(LOCAL_UV_SPAN))
+        c[self.lp_uv[0]] = "%s.x * FPU_UV_SPAN" % par(uv.e)
+        c[self.lp_uv[1]] = "%s.y * FPU_UV_SPAN" % par(uv.e)
         self.note("LocalPosition driving a time-animated texture lookup is replaced by the mesh UV (spanning %g cm), so the pattern keeps its size when the model is scaled in Unity" % LOCAL_UV_SPAN)
         return self.tmp("float3(%s)" % ", ".join(c), 3)
 
@@ -2845,6 +2845,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     used = "".join(tr.bodies["ps"] + vs_body)
     if "FPU_NZ(" in used:
         o.append("        #define FPU_NZ(b) ((b) + ((b) == 0.0) * 0.00001)")
+    if "FPU_UV_SPAN" in used:
+        o.append("        #define FPU_UV_SPAN %s" % fl(LOCAL_UV_SPAN))
     for fn_name in ("RgbToHsvUE", "HsvToRgbUE", "RotateAboutAxisUE", "BlackBodyUE"):
         if fn_name in used:
             block = re.search(r"float3 %s\(.*?\n\}\n" % fn_name, HELPERS, re.S).group(0)

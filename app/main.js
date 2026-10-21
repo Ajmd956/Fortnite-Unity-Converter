@@ -1,6 +1,32 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeTheme, screen, nativeImage, session, safeStorage } = require('electron')
 const meshThumb = require('./meshthumb')
-const { glbToFbx, lastSlots, lastInfo, reorderSpecSlots } = require('./glb2fbx')
+const { glbToFbx, lastSlots, lastInfo, reorderSpecSlots, glbUvSpan, applyUvSpan, spanForShader } = require('./glb2fbx')
+
+function applyMeshSpan(glbFile, shaderRoot, meshCount, locked, log) {
+  try {
+    if (!fs.existsSync(shaderRoot)) return
+    const m = glbUvSpan(glbFile)
+    if (!m) {
+      log('uv span: the mesh has no UV set, shaders keep the default span\n')
+      return
+    }
+    for (const d of fs.readdirSync(shaderRoot, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue
+      const file = path.join(shaderRoot, d.name, d.name + '.shader')
+      if (!fs.existsSync(file) || locked.has(file)) continue
+      const r = spanForShader(m, d.name)
+      if (!r) continue
+      const byName = !!r.slot
+      if (!byName && meshCount !== 1) continue
+      if (applyUvSpan(file, r.span)) {
+        if (byName) locked.add(file)
+        log('uv span: ' + d.name + ' set to ' + (+r.span.toPrecision(4)) + ' cm per UV' + (byName ? '' : ' (whole mesh)') + '\n')
+      }
+    }
+  } catch (err) {
+    log('uv span measurement failed, shaders keep the default span: ' + (err && err.message ? err.message : err) + '\n')
+  }
+}
 const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
@@ -1495,6 +1521,7 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
       const ref = mm[1].trim()
       if (ref && !meshes.includes(ref)) meshes.push(ref)
     }
+    const spanLocked = new Set()
     if (meshes.length && !stopped) {
       if (await startTypeServer()) {
         for (const ref of meshes) {
@@ -1504,6 +1531,7 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
           if (r && r.ok) {
             let made = r.file
             if (/\.glb$/i.test(made)) {
+              applyMeshSpan(made, pdir, meshes.length, spanLocked, (s) => send('engine:log', s))
               try {
                 const fbx = made.replace(/\.glb$/i, '.fbx')
                 glbToFbx(made, fbx)
@@ -1758,6 +1786,7 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
       const ref = mm[1].trim()
       if (ref && !meshes.includes(ref)) meshes.push(ref)
     }
+    const spanLocked = new Set()
     if (meshes.length && !stopped) {
       if (await startTypeServer()) {
         for (const ref of meshes) {
@@ -1767,6 +1796,7 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
           if (r && r.ok) {
             let file = r.file
             if (/\.glb$/i.test(file)) {
+              applyMeshSpan(file, shadersDir, meshes.length, spanLocked, (s) => send('engine:log', s))
               try {
                 const fbx = file.replace(/\.glb$/i, '.fbx')
                 glbToFbx(file, fbx)
