@@ -115,6 +115,7 @@ def linear_to_gamma(x):
 
 
 COLOR_WORDS = re.compile(r"colou?r|tint|emissive|emission|glow|albedo|diffuse", re.I)
+MOTION_WORDS = re.compile(r"speed|pann|scroll|velocity|rotat|spin|drift|flow", re.I)
 
 
 def ident(s):
@@ -617,7 +618,7 @@ class Translator:
     def vector_prop(self, name, rgba, tag="_V_"):
         rgba = [float(c) for c in list(rgba)[:4]] + [1.0] * (4 - len(list(rgba)[:4]))
         pname = re.sub(r"_+", "_", tag + ident(name))
-        color = tag == "_V_" and bool(COLOR_WORDS.search(str(name)))
+        color = tag == "_V_" and bool(COLOR_WORDS.search(str(name))) and not MOTION_WORDS.search(str(name))
         self.props.setdefault(pname, {"kind": "vector", "default": rgba, "label": str(name), "color": color})
         return V(pname, 4)
 
