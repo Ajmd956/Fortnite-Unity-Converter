@@ -639,7 +639,16 @@ public static class PorterPropBuilder
             pr.lengthScale = 1f;
             log.Add("APPROX " + name + ": velocity-aligned sprite mapped to Stretched Billboard (check width/length visually)");
         }
-        else pr.renderMode = ParticleSystemRenderMode.Billboard;
+        else
+        {
+            pr.renderMode = ParticleSystemRenderMode.Billboard;
+            // UE sprites keep their own facing: a fixed plane stays a fixed plane, so parallax shaders (BumpOffset portals) show real depth.
+            string sprFacing = r.ContainsKey("facing") ? S(r["facing"]) : "FaceCamera";
+            if (sprFacing == "CustomFacingVector") pr.alignment = ParticleSystemRenderSpace.Local;
+            else if (sprFacing == "FaceCameraPosition") pr.alignment = ParticleSystemRenderSpace.Facing;
+            else pr.alignment = ParticleSystemRenderSpace.View;
+            log.Add("FACING " + name + ": sprite facing " + sprFacing + " -> Unity render alignment " + pr.alignment);
+        }
         var sub = L(r["subImage"]);
         int tilesX = Mathf.Max(1, Mathf.RoundToInt((float)N(sub[0], 1)));
         int tilesY = Mathf.Max(1, Mathf.RoundToInt((float)N(sub[1], 1)));
