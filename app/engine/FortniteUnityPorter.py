@@ -583,7 +583,6 @@ class Translator:
         self.textures = {}
         self.customs = []
         self.cache = {}
-        self.bump_base = {}
         self.stack = []
         self.n = 0
         self.mode = "ps"
@@ -1065,12 +1064,6 @@ class Translator:
                 gx = self.tmp("(dot(%s, %s) > 0.04) ? float2(0.0, 0.0) : %s" % (gx.e, gx.e, gx.e), 2)
                 gy = self.tmp("(dot(%s, %s) > 0.04) ? float2(0.0, 0.0) : %s" % (gy.e, gy.e, gy.e), 2)
                 raw = self.tmp("tex2Dgrad(%s, %s, %s, %s)" % (prop, flip.e, gx.e, gy.e), 4)
-            elif uv.e in self.bump_base:
-                base = self.bump_base[uv.e]
-                bflip = self.tmp("float2(%s.x, 1.0 - %s.y)" % (par(base.e), par(base.e)), 2)
-                gx = self.tmp("ddx(%s)" % bflip.e, 2)
-                gy = self.tmp("ddy(%s)" % bflip.e, 2)
-                raw = self.tmp("tex2Dgrad(%s, %s, %s, %s)" % (prop, flip.e, gx.e, gy.e), 4)
             else:
                 raw = self.tmp("tex2D(%s, %s)" % (prop, flip.e), 4)
             self.cache[ck] = raw
@@ -1462,16 +1455,11 @@ class Translator:
             if self.mode != "ps":
                 self.warn("BumpOffset %s is in the vertex stage, where Unity has no view direction; coordinates left unshifted" % x.get("Name"))
                 return uv
-            self.uses.add("wpos")
-            # Unity's IN.viewDir needs mesh tangents, which Billboard particles don't send (UE builds the frame from the sprite),
-            # so the tangent-space view is rebuilt from the UV/position derivatives. Same frame, any mesh, any size.
-            view = self.tmp("PorterTangentViewUE(IN.worldPos, IN.tc01.xy)", 3)
+            # IN.viewDir is the interpolated mesh tangent frame, same as UE. Particle systems only send tangents when the
+            # Tangent vertex stream is on, so the particle converter adds that stream.
+            view = self.tmp("normalize(IN.viewDir)", 3)
             off = self.tmp("%s * %s - %s * %s" % (par(ratio.e), par(h.e), par(ratio.e), fl(ref)), 1)
-            res = self.tmp("%s + float2(%s.x, -%s.y) * %s" % (par(uv.e), view.e, view.e, off.e), 2)
-            # Textures read through this shifted UV take their mip level from the unshifted UV, like parallax mapping normally does.
-            # The shift changes fast from pixel to pixel up close, and mips chosen from it turn the stars into speckles.
-            self.bump_base[res.e] = uv
-            return res
+            return self.tmp("%s + float2(%s.x, -%s.y) * %s" % (par(uv.e), view.e, view.e, off.e), 2)
         if t == "DeriveNormalZ":
             xy = self.fit(P("InXY"), 2)
             return self.tmp("float3(%s, sqrt(saturate(1.0 - dot(%s, %s))))" % (xy.e, xy.e, xy.e), 3)
@@ -2363,27 +2351,6 @@ float3 BlackBodyUE(float temp)
     float3 rgb = float3(dot(float3(3.2404542, -1.5371385, -0.4985314), xyz), dot(float3(-0.9692660, 1.8760108, 0.0415560), xyz), dot(float3(0.0556434, -0.2040259, 1.0572252), xyz));
     return rgb * pow(0.0004 * temp, 4.0);
 }
-
-float3 PorterTangentViewUE(float3 wpos, float2 uv)
-{
-    // Tangent frame from the exact 2x2 UV->position solve, done in view space so it stays precise right up against the surface.
-    // Needs no mesh tangents or normals, and the platform's ddy flip cancels out of it.
-    float3 vp = mul(UNITY_MATRIX_V, float4(wpos, 1.0)).xyz;
-    float3 dpx = ddx(vp);
-    float3 dpy = ddy(vp);
-    float2 dux = ddx(uv);
-    float2 duy = ddy(uv);
-    float det = dux.x * duy.y - dux.y * duy.x;
-    if (abs(det) < 1e-20)
-        return float3(0.0, 0.0, 1.0);
-    float3 t = (dpx * duy.y - dpy * dux.y) / det;
-    float3 b = (dpy * dux.x - dpx * duy.x) / det;
-    t *= rsqrt(max(dot(t, t), 1e-20));
-    b *= rsqrt(max(dot(b, b), 1e-20));
-    float3 n = normalize(cross(t, b) + 1e-20);
-    float3 v = normalize(-vp);
-    return normalize(float3(dot(t, v), dot(b, v), max(abs(dot(n, v)), 1e-4)));
-}
 """
 
 TONE_HELPERS = r"""
@@ -2882,7 +2849,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        #define FPU_NZ(b) ((b) + ((b) == 0.0) * 0.00001)")
     if "FPU_UV_SPAN" in used:
         o.append("        #define FPU_UV_SPAN %s" % fl(LOCAL_UV_SPAN))
-    for fn_name in ("RgbToHsvUE", "HsvToRgbUE", "RotateAboutAxisUE", "BlackBodyUE", "PorterTangentViewUE"):
+    for fn_name in ("RgbToHsvUE", "HsvToRgbUE", "RotateAboutAxisUE", "BlackBodyUE"):
         if fn_name in used:
             block = re.search(r"float3 %s\(.*?\n\}\n" % fn_name, HELPERS, re.S).group(0)
             o.extend("        " + l if l else "" for l in block.strip("\n").split("\n"))

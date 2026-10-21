@@ -886,7 +886,8 @@ public static class PorterPropBuilder
             ParticleSystemVertexStream.Color,
             ParticleSystemVertexStream.UV,
             ParticleSystemVertexStream.UV2,
-            ParticleSystemVertexStream.Custom1XYZW
+            ParticleSystemVertexStream.Custom1XYZW,
+            ParticleSystemVertexStream.Tangent
         };
         pr.SetActiveVertexStreams(streams);
         var copies = new Material[shared.Length];
