@@ -749,21 +749,31 @@ class Translator:
         walk(ref)
         if not (found["local"] and found["time"]):
             return None
-        n = g.key(ref)
-        for _ in range(8):
-            x = g.by.get(n)
-            if x is None:
-                break
+        # The two channels the coordinate really uses sit on a ComponentMask that can be several math nodes down
+        # (Reroute, Add of a constant, Multiply by a scale ...). Only looking at the top node used to miss an .xz mask
+        # and gave the pattern X and Y instead of X and Z, which left it constant in one direction.
+        pass_through = ("Reroute", "Add", "Subtract", "Multiply", "Divide", "OneMinus", "Frac")
+
+        def find_mask(r, depth):
+            x = g.by.get(g.key(r)) if linked(r) else None
+            if x is None or depth > 12:
+                return None
             t = T(x)
-            if t == "Reroute" and linked((x.get("Properties") or {}).get("Input")):
-                n = g.key(x["Properties"]["Input"])
-                continue
+            props = x.get("Properties") or {}
             if t == "ComponentMask":
-                idx = [i for i, k in enumerate("RGB") if (x.get("Properties") or {}).get(k)]
+                idx = [i for i, k in enumerate("RGB") if props.get(k)]
                 if len(idx) == 2:
                     return tuple(idx)
-            break
-        return (0, 1)
+                return None
+            if t in pass_through:
+                for v in props.values():
+                    if linked(v):
+                        m = find_mask(v, depth + 1)
+                        if m is not None:
+                            return m
+            return None
+
+        return find_mask(ref, 0) or (0, 1)
 
     def local_uv_surrogate(self):
         uv = self.uvs(0)
