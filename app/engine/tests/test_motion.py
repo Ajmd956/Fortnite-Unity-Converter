@@ -88,7 +88,21 @@ def check_dump(path):
     return {em["name"]: em["motion"] for em in emitters}
 
 
+def check_missing_vector_field():
+    from niagara_core import niagara
+    class Sys:
+        fields = {}
+        field_gaps = {}
+    sysm = Sys()
+    vf = niagara.VectorField(sysm, "NiagaraDataInterfaceVectorField", {"Field": {"ObjectPath": "/Niagara/VectorFields/Assets/TilingCurl32.0"}})
+    vf.caller = "NE_Sprites"
+    out = vf.function("SampleField", [], 3, 3)(4, [np.zeros(4)] * 3)
+    assert len(out) == 3 and all(float(np.abs(o).sum()) == 0.0 for o in out)
+    assert sysm.field_gaps == {"NE_Sprites": {"TilingCurl32"}}, sysm.field_gaps
+
+
 if __name__ == "__main__":
+    check_missing_vector_field()
     check_still_particles()
     check_moving_and_spinning()
     check_sprite_rotation_and_missing_ids()

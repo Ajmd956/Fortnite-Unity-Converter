@@ -522,8 +522,14 @@ class VectorField:
     def __init__(self, system, kind, props):
         path = str((props.get("Field") or {}).get("ObjectPath") or "").rpartition(".")[0]
         field = system.fields.get(path)
+        self.caller = None
+        self.system = system
+        self.field_name = path.rsplit("/", 1)[-1] or "its field"
         if field is None:
-            raise Unsupported("VectorField.SampleField (%s isn't with the export)" % (path.rsplit("/", 1)[-1] or "its field"))
+            # The field's grid is not in the export. The emitter is still played, with the field answering zero
+            # (no motion from it) and the gap recorded, instead of dropping the whole emitter.
+            self.cells = None
+            return
         self.size = np.array(field["Size"], np.int64)
         cells = np.frombuffer(base64.b64decode(field["Data"]), np.float16)
         self.cells = cells.reshape(self.size[2], self.size[1], self.size[0], 4)[..., :3].astype(F)
@@ -534,6 +540,10 @@ class VectorField:
     def function(self, name, specifiers, inputs, outputs):
         if name != "SampleField":
             raise Unsupported("VectorField.%s" % name)
+        if self.cells is None:
+            who = self.caller if isinstance(self.caller, str) else (getattr(self.caller, "name", None) or "system")
+            self.system.field_gaps.setdefault(who, set()).add(self.field_name)
+            return lambda count, args: [np.zeros(count, F) for _ in range(outputs)]
         size = self.size
 
         def sample(count, args):
@@ -950,6 +960,7 @@ class System:
         struct.pack_into("<4f", self.owner, 384, 0, 0, 0, 1)                         # rotation
         struct.pack_into("<4f4f4f4f", self.owner, 432, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0)    # axes, scale
         self.previous = None
+        self.field_gaps = {}        # emitter name -> vector fields it samples that are not in the export (they answer zero)
         self.unanswered = set()     # what its own scripts ask that answers zeros here ("Grid2DCollection.SetNumCells")
         self.meshless = False       # whether a script samples a static mesh (none here: NoMesh)
         self.spawn = self.script(props["SystemSpawnScript"], None)

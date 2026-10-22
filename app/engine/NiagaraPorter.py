@@ -864,6 +864,8 @@ def convert(exports, name, source, out, seconds):
         warnings += warnings_for(em)
     for s in skipped:
         warnings.append("%s: not converted (%s)" % (s["emitter"], s["why"]))
+    for who, names in sorted(system.field_gaps.items()):
+        warnings.append("%s: samples the vector field %s, which is not in the export, so the field gives no motion here (the emitter is still converted; spawn, colour and size are unaffected, but movement that came from the field is missing)" % (who, ", ".join(sorted(names))))
     bones = sorted(system.reads)
     users = []
     for n, t, v in system.users():

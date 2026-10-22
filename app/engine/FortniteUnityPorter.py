@@ -1658,6 +1658,10 @@ class Translator:
             d = p.get("DefaultValue") or {}
             idx = int(p.get("ParameterIndex", 0) or 0)
             dflt = [float(d.get(k, 0.0)) for k in ("R", "G", "B", "A")]
+            seen = self.__dict__.setdefault("dp_defaults", {})
+            if idx in seen and seen[idx] != dflt:
+                self.warn("Dynamic Parameter %d is declared by several nodes with different defaults (%s and %s): the first one, %s, is used for any component the Niagara system does not set" % (idx, seen[idx], dflt, seen[idx]))
+            seen.setdefault(idx, dflt)
             v = self.vector_prop("Dynamic Parameter %d" % idx, dflt, tag="_DP_")
             msg = "DynamicParameter %d is set per particle by the game's Niagara system; exposed as %s (default %s)" % (idx, v.e, dflt)
             if msg not in self.notes:

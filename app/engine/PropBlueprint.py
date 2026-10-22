@@ -948,6 +948,8 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
     emitters += list(stateless.values())
     for s in skipped:
         note("UNSUPPORTED", s["emitter"] + ": not converted (" + str(s["why"]) + ")")
+    for who, names in sorted(system.field_gaps.items()):
+        note("APPROX", who + ": samples the vector field " + ", ".join(sorted(names)) + ", which is not in the export, so the field gives no motion (the emitter is converted; movement that came from the field is missing)")
     report[:] = [r for r in report if "enabled non-stateless emitter" not in r]
     bp_name = name or sysname
     node = {"name": "Particles", "parent": 0, "kind": "particles", "loc": [0, 0, 0], "rot": [0, 0, 0], "scale": [1, 1, 1],
