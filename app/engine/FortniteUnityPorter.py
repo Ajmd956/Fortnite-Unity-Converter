@@ -1056,6 +1056,9 @@ class Translator:
             raw = self.cache[ck]
         else:
             flip = self.tmp("float2(%s.x, 1.0 - %s.y)" % (par(uv.e), par(uv.e)), 2)
+            # Unity's own Tiling / Offset fields on the texture slot: scale and offset of the coordinate this texture is read with.
+            # Identity (1, 1, 0, 0) by default, so nothing changes until the slot's Tiling is edited.
+            flip = self.tmp("%s * %s_ST.xy + %s_ST.zw" % (par(flip.e), prop, prop), 2)
             if self.mode == "vs":
                 raw = self.tmp("tex2Dlod(%s, float4(%s, 0.0, 0.0))" % (prop, flip.e), 4)
             elif seam_safe:
@@ -2862,6 +2865,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             o.extend("        " + l if l else "" for l in block.strip("\n").split("\n"))
     for k, v in tr.textures.items():
         o.append("        sampler2D %s;" % v["prop"])
+        o.append("        float4 %s_ST;" % v["prop"])
     for k, v in tr.props.items():
         if k in hard:
             if v["kind"] == "float":
@@ -4352,6 +4356,8 @@ def check_shader_text(text):
     if n_sep > SAMPLER_BUDGET:
         issues.append(Issue("error", "%d textures each use their own sampler2D. Unity on DX11 allows only 16 sampler registers per shader and its lighting needs several, so this fails with \"maximum ps_4_0 sampler register index (16) exceeded\" (the textures can share one host texture's sampler instead)" % n_sep, None, ("share_samplers",)))
     for name, typ in decls.items():
+        if name.endswith("_ST") and props.get(name[:-3]) == "2D":
+            continue    # Unity fills the Tiling / Offset of a texture slot in by itself
         if CHK_OURS.fullmatch(name) and name not in props and not re.search(r"static[ \t]+const[ \t]+\w+[ \t]+%s\b" % name, prog):
             if name.startswith("_O_"):
                 issues.append(Issue("info", "%s is not a property: it is filled in per object by the bounds script" % name))
