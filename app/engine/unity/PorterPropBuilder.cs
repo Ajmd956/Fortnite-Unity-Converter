@@ -911,6 +911,20 @@ public static class PorterPropBuilder
         bool hasOrient = false;
         if (mod.ContainsKey("meshOrientation"))
             hasOrient = SafeVecMid(mod["meshOrientation"], out orient, out orientRange) && orient.sqrMagnitude > 1e-6f;
+        bool fullRandom = false;
+        if (!faced && mod.ContainsKey("meshOrientation") && mod["meshOrientation"] != null)
+        {
+            try
+            {
+                Vector3 oLo, oHi;
+                VecRange(mod["meshOrientation"], out oLo, out oHi);
+                fullRandom = Mathf.Abs(oHi.x - oLo.x) >= 270f && Mathf.Abs(oHi.y - oLo.y) >= 120f && Mathf.Abs(oHi.z - oLo.z) >= 270f;
+            }
+            catch (Exception)
+            {
+                fullRandom = false;
+            }
+        }
         if (faced)
         {
             pr.alignment = facing == "CameraPosition" ? ParticleSystemRenderSpace.Facing : facing == "CameraPlane" ? ParticleSystemRenderSpace.View : ParticleSystemRenderSpace.Velocity;
@@ -934,6 +948,13 @@ public static class PorterPropBuilder
         main.startRotationX = euler.x;
         main.startRotationY = euler.y;
         main.startRotationZ = euler.z;
+        if (fullRandom)
+        {
+            main.startRotationX = new ParticleSystem.MinMaxCurve(0f, 2f * Mathf.PI);
+            main.startRotationY = new ParticleSystem.MinMaxCurve(0f, 2f * Mathf.PI);
+            main.startRotationZ = new ParticleSystem.MinMaxCurve(0f, 2f * Mathf.PI);
+            log.Add("ORIENT " + name + ": Unreal gives every particle a random 3D rotation (recorded range roll/pitch/yaw covers all directions), so each Unity particle now starts with a random rotation on all three axes instead of one fixed rotation. APPROX: the three angles are drawn independently, so the spread of directions is random but not exactly as even as Unreal's");
+        }
         Vector3 ms = r.ContainsKey("meshScale") && r["meshScale"] != null ? P(V3(r["meshScale"])) : Vector3.one;
         Vector3 modScale = Vector3.one;
         bool scaleRange = false;
