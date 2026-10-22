@@ -337,7 +337,9 @@ def mesh_slots(folder, mesh):
 
 
 def renderer_spec(folder, emname, rtype_name, rp):
+    import NiagaraPorter
     rs = {"type": rtype_name.replace("Niagara", "").replace("RendererProperties", "")}
+    rs["colorAttr"], rs["dpAttrs"] = NiagaraPorter.renderer_bindings(rp)
     rs["sortMode"] = str(rp.get("SortMode", "")).split("::")[-1]
     if rs["type"] == "Sprite":
         rs.update({
@@ -451,6 +453,7 @@ def emitter_spec(folder, sysdata, handle):
             "scale": dist(s.get("ShapeScale")),
             "offset": dist(s.get("TransformOffset")),
             "raw": [k for k in s.keys() if not k.endswith("Distribution")],
+            "rawValues": {k: v for k, v in s.items() if isinstance(v, (str, int, float, bool)) or (isinstance(v, dict) and "Mode" in v)},
         }
     if "AddVelocity" in mods:
         av = mods["AddVelocity"]
@@ -786,6 +789,50 @@ def resample(points, keys, count):
     return out
 
 
+def stream_spec(emname, em, rs):
+    st = em.get("streams") or {}
+    out = {"color": None, "dp": []}
+    c = st.get(rs.get("colorAttr"))
+    if c and c["width"] == 4:
+        n = len(c["mean"])
+        out["color"] = [{"t": i / float(n - 1), "r": m[0], "g": m[1], "b": m[2], "a": m[3]} for i, m in enumerate(c["mean"])]
+        spread = max(max(abs(hi[k] - lo[k]) for k in range(3)) for lo, hi in zip(c["min"], c["max"]))
+        if spread > 0.02 * max(max(m[:3]) for m in c["mean"]):
+            note("APPROX", emname + ": colour attribute " + rs["colorAttr"] + " differs between particles (up to " + str(round(spread, 3)) + " apart), the average over all particles is used")
+    for i, attr in enumerate(rs.get("dpAttrs") or []):
+        s = st.get(attr)
+        if not s or s["width"] != 4:
+            continue
+        comps = []
+        for k in range(4):
+            lo = [p[k] for p in s["min"]]
+            hi = [p[k] for p in s["max"]]
+            mid = [p[k] for p in s["mean"]]
+            spread = max(b - a for a, b in zip(lo, hi))
+            drift = max(mid) - min(mid)
+            if spread < 1e-3 and drift < 1e-3:
+                comps.append({"mode": "const", "value": sum(mid) / len(mid)})
+            elif spread <= 0.1 * drift or spread < 1e-3:
+                comps.append({"mode": "curve", "values": mid})
+                if spread > 0.02 * drift:
+                    note("APPROX", emname + ": " + attr + " component " + "xyzw"[k] + " varies slightly between particles (up to " + str(round(spread, 4)) + "), the average curve is used")
+            elif drift <= 0.1 * spread:
+                comps.append({"mode": "range", "min": min(lo), "max": max(hi)})
+            else:
+                comps.append({"mode": "curves", "min": lo, "max": hi})
+                note("APPROX", emname + ": " + attr + " component " + "xyzw"[k] + " is a random range that also changes with age, Unity picks between the lowest and highest curve")
+        out["dp"].append({"index": i, "attr": attr, "comps": comps})
+    return out
+
+
+def replay_position(em):
+    """Where the replay's particles were born, as the smallest and largest value of each axis in cm (None if nothing spawned)."""
+    pos = (em.get("initial") or {}).get("Position")
+    if not pos or not em.get("totalBorn"):
+        return None
+    return {"min": [float(v) for v in pos["min"]], "max": [float(v) for v in pos["max"]], "births": int(em["totalBorn"])}
+
+
 def scripted_emitter_spec(loader, system, em, seconds):
     """An emitter the replay played (one that is not stateless) as the same emitter spec the Unity builder reads."""
     import NiagaraPorter
@@ -833,7 +880,10 @@ def scripted_emitter_spec(loader, system, em, seconds):
     renderers = []
     for rtype, props in (NiagaraPorter.renderer_exports(system, emitter) if emitter is not None else []):
         if props.get("bIsEnabled", True):
-            renderers.append(renderer_spec(loader, name, rtype, props))
+            rs = renderer_spec(loader, name, rtype, props)
+            if rs["type"] in ("Mesh", "Sprite"):
+                rs["streams"] = stream_spec(name, em, rs)
+            renderers.append(rs)
     if not renderers:
         note("UNSUPPORTED", name + ": no enabled renderer")
         return None
@@ -873,7 +923,11 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
     emitters = []
     for em in summaries:
         if em["name"] in stateless:
-            emitters.append(stateless.pop(em["name"]))
+            spec = stateless.pop(em["name"])
+            replayed = replay_position(em)
+            if replayed is not None:
+                spec["replayPosition"] = replayed
+            emitters.append(spec)
             continue
         spec = scripted_emitter_spec(loader, system, em, seconds)
         if spec is not None:

@@ -68,6 +68,13 @@ or Unity. Fortnite is a trademark of Epic Games.
 
 ## What's new in this update
 
+- Particle converter: a Niagara system with more than one renderer (for example a bolt and its glow) now becomes one Unity
+  Particle System per renderer, with the same settings and random seed.
+- Dynamic material parameters set by Niagara follow the particle over its life, using the exact values the Niagara
+  scripts produce. Values that never change are set on the material copy. Per-particle random values and curves are sent
+  to the shader in Custom Data 2.
+- Each renderer reads its own colour attribute, so a glow layer uses its own glow colour.
+- Shaders with dynamic parameters need to be converted again with this version.
 - Installation profiles: App Settings, Installation now keeps a list of
   profiles, one per Fortnite build. Each has its own archive folder, version
   (Latest Installed or Custom), encryption keys, mappings file, game language

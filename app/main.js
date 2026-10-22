@@ -1711,10 +1711,10 @@ async function runPropQueue(paths, payload, flag) {
                   if (note) send('engine:log', note + '\n')
                 }
               } catch (err) {
-                send('engine:log', 'fbx conversion failed, keeping the glb: ' + (err && err.message ? err.message : err) + '\n')
+                send('engine:log', 'fbx conversion FAILED for ' + ref.slice(ref.lastIndexOf('/') + 1).split('.')[0] + ', keeping the glb: ' + (err && err.message ? err.message : err) + '\nUnity cannot import a .glb, so this mesh will show as missing in Unity until the conversion works\n')
               }
             }
-            send('engine:log', 'mesh exported: ' + file + '\n')
+            send('engine:log', (/\.glb$/i.test(file) ? 'mesh exported as a .glb only, NOT usable in Unity: ' : 'mesh exported: ') + file + '\n')
           } else {
             send('engine:log', 'mesh not exported: ' + ((r && r.error) || 'unknown error') + '\n')
           }

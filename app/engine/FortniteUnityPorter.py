@@ -588,6 +588,8 @@ class Translator:
         self.mode = "ps"
         self.bodies = {"ps": [], "vs": []}
         self.uses = set()
+        self.dpidx = set()
+        self.slotprops = set()
         self.props = {}
         self.tex_trace = []
         self.override_hits = 0
@@ -1587,6 +1589,7 @@ class Translator:
         if t in ("ParticleColor",):
             self.uses.add("color")
             self.uses.add("pstreams")
+            self.uses.add("pcolor")
             if self.mode == "ps":
                 col = self.tmp("lerp(IN.color, IN.pcol, _PorterParticleStreams)", 4).e
             else:
@@ -1636,7 +1639,14 @@ class Translator:
             fd = self.input(g, p.get("FadeDistance"), scope, C(float(p.get("FadeDistanceDefault", 100.0))))
             self.uses.add("depth")
             return self.tmp("%s * DepthFadeUE(%s, %s)" % (par(op.e), self.screen_pos(), fd.e), 1)
-        if t in ("ParticleRelativeTime", "ParticleRandom", "ParticleSpeed", "ParticleRadius", "ParticleMotionBlurFade", "DeltaTime", "PerInstanceRandom", "PerInstanceFadeAmount", "DistanceCullFade"):
+        if t in ("ParticleRelativeTime", "ParticleRandom"):
+            prop = "_PorterAgeSlot" if t == "ParticleRelativeTime" else "_PorterRandSlot"
+            self.uses.add("pstreams")
+            self.uses.add("dpstreams")
+            self.slotprops.add(prop)
+            self.note("%s is the particle's %s, sent per particle by the converted prefab in Custom Data 2; it reads 0 when the material is not on a converted particle system" % (t, "age from 0 to 1" if t == "ParticleRelativeTime" else "random number from 0 to 1"))
+            return self.tmp("PorterDP1(0.0, %s, %s)" % (prop, "IN.pdp" if self.mode == "ps" else "v.texcoord2"), 1)
+        if t in ("ParticleSpeed", "ParticleRadius", "ParticleMotionBlurFade", "DeltaTime", "PerInstanceRandom", "PerInstanceFadeAmount", "DistanceCullFade"):
             self.warn("stand-in 0: %s" % t)
             return C(1.0 if t in ("PerInstanceFadeAmount", "ParticleMotionBlurFade", "DistanceCullFade") else 0.0)
         if t in ("ParticleSize", "ParticleDirection", "ParticleMacroUV"):
@@ -1652,6 +1662,10 @@ class Translator:
             msg = "DynamicParameter %d is set per particle by the game's Niagara system; exposed as %s (default %s)" % (idx, v.e, dflt)
             if msg not in self.notes:
                 self.notes.append(msg)
+            self.uses.add("dpstreams")
+            self.uses.add("pstreams")
+            self.dpidx.add(idx)
+            v = self.tmp("PorterDP4(%s, _PorterDPSlot%d, %s)" % (v.e, idx, "IN.pdp" if self.mode == "ps" else "v.texcoord2"), 4)
             if out < 4:
                 return self.mask(v, [out])
             if out == 4:
@@ -2324,6 +2338,17 @@ def ue_custom_code(code, ow):
     return decls, code, True
 
 
+PORTER_DP_HELPERS = """
+float PorterDP1(float b, float s, float4 d)
+{
+    return s < -0.5 ? b : (s < 0.5 ? d.x : (s < 1.5 ? d.y : (s < 2.5 ? d.z : d.w)));
+}
+float4 PorterDP4(float4 b, float4 s, float4 d)
+{
+    return float4(PorterDP1(b.x, s.x, d), PorterDP1(b.y, s.y, d), PorterDP1(b.z, s.z, d), PorterDP1(b.w, s.w, d));
+}
+"""
+
 HELPERS = """
 float3 RgbToHsvUE(float3 c)
 {
@@ -2764,6 +2789,10 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        [Space(6)]")
     if "pstreams" in tr.uses:
         o.append('        [HideInInspector] _PorterParticleStreams ("Particle Streams", Float) = 0')
+    for i in sorted(tr.dpidx):
+        o.append('        [HideInInspector] _PorterDPSlot%d ("Particle Data Slots %d", Vector) = (-1, -1, -1, -1)' % (i, i))
+    for prop in sorted(tr.slotprops):
+        o.append('        [HideInInspector] %s ("Particle Data Slot", Float) = -1' % prop)
     cloud_tone = unlit and bm == "BLEND_Translucent" and "bakedclouds" in name.lower()
     if cloud_tone:
         o.append("        [Header(Brightness)]")
@@ -2859,6 +2888,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        #define FPU_NZ(b) ((b) + ((b) == 0.0) * 0.00001)")
     if "FPU_UV_SPAN" in used:
         o.append("        #define FPU_UV_SPAN %s" % fl(LOCAL_UV_SPAN))
+    if "PorterDP4(" in used or "PorterDP1(" in used:
+        o.extend("        " + l if l else "" for l in PORTER_DP_HELPERS.strip("\n").split("\n"))
     for fn_name in ("RgbToHsvUE", "HsvToRgbUE", "RotateAboutAxisUE", "BlackBodyUE"):
         if fn_name in used:
             block = re.search(r"float3 %s\(.*?\n\}\n" % fn_name, HELPERS, re.S).group(0)
@@ -2882,6 +2913,10 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             o.append("        %s %s;" % ("float" if v["kind"] == "float" else "float4", k))
     if "pstreams" in tr.uses:
         o.append("        float _PorterParticleStreams;")
+    for i in sorted(tr.dpidx):
+        o.append("        float4 _PorterDPSlot%d;" % i)
+    for prop in sorted(tr.slotprops):
+        o.append("        float %s;" % prop)
     if not unlit:
         o.append("        float _FlipNormalY;")
     if cloud_tone:
@@ -2899,8 +2934,10 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     o.append("            float3 worldPos;")
     o.append("            float3 viewDir;")
     o.append("            float4 color : COLOR;")
-    if "pstreams" in tr.uses:
+    if "pcolor" in tr.uses:
         o.append("            float4 pcol;")
+    if "dpstreams" in tr.uses:
+        o.append("            float4 pdp;")
     o.append("            float3 objPos;")
     o.append("            float4 screenPos;")
     o.append("            float3 worldNormal;")
@@ -2914,9 +2951,12 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     o.append("            UNITY_INITIALIZE_OUTPUT(Input, o);")
     if "pstreams" in tr.uses:
         o.append("            o.tc01 = float4(v.texcoord.xy, lerp(v.texcoord1.xy, v.texcoord.zw, _PorterParticleStreams));")
-        o.append("            o.pcol = v.texcoord1;")
+        if "pcolor" in tr.uses:
+            o.append("            o.pcol = v.texcoord1;")
     else:
         o.append("            o.tc01 = float4(v.texcoord.xy, v.texcoord1.xy);")
+    if "dpstreams" in tr.uses:
+        o.append("            o.pdp = v.texcoord2;")
     o.append("            o.objPos = v.vertex.xyz;")
     if has_wpo:
         o.append("            float3 vpos = v.vertex.xyz;")
@@ -4211,7 +4251,7 @@ CHK_WIDTH = {"float": 1, "half": 1, "fixed": 1, "int": 1, "bool": 1, "float2": 2
              "float3": 3, "half3": 3, "fixed3": 3, "float4": 4, "half4": 4, "fixed4": 4}
 CHK_INPUT_MEMBERS = {"tc01": "float4 tc01;", "worldPos": "float3 worldPos;", "viewDir": "float3 viewDir;",
                      "color": "float4 color : COLOR;", "objPos": "float3 objPos;", "screenPos": "float4 screenPos;",
-                     "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;", "pcol": "float4 pcol;"}
+                     "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;", "pcol": "float4 pcol;", "pdp": "float4 pdp;"}
 CHK_OURS = re.compile(r"\b_(?:[SVCOT])_\w+\b")
 UNITY_EDITOR_PATH = os.environ.get("UNITY_EDITOR", "")
 UNITY_FIX_ROUNDS = 10

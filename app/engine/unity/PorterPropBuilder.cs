@@ -130,10 +130,10 @@ public static class PorterPropBuilder
             }
         }
         string meshName = S(n["mesh"]);
-        var mesh = FindAsset<Mesh>(meshName);
+        var mesh = FindMesh(meshName);
         var mf = go.AddComponent<MeshFilter>();
         var mr = go.AddComponent<MeshRenderer>();
-        if (mesh == null) Miss("mesh", meshName, "the .fbx in the Meshes folder");
+        if (mesh == null) Miss("mesh", meshName, meshWhy);
         else mf.sharedMesh = mesh;
         var slots = L(n["slots"]);
         var mats = new Material[slots.Count];
@@ -159,12 +159,75 @@ public static class PorterPropBuilder
             log.Add("CHECK mesh '" + meshName + "' has " + mesh.subMeshCount + " submeshes but the blueprint lists " + slots.Count + " material slots");
     }
 
+    static string meshWhy = "";
+
+    static Mesh MeshIn(string path, string name)
+    {
+        var all = AssetDatabase.LoadAllAssetsAtPath(path);
+        Mesh first = null;
+        for (int i = 0; i < all.Length; i++)
+        {
+            var m = all[i] as Mesh;
+            if (m == null) continue;
+            if (m.name == name) return m;
+            if (first == null) first = m;
+        }
+        return first;
+    }
+
+    static Mesh FindMesh(string name)
+    {
+        meshWhy = "";
+        if (string.IsNullOrEmpty(name))
+        {
+            meshWhy = "the blueprint names no mesh for it";
+            return null;
+        }
+        var found = FindAsset<Mesh>(name);
+        if (found != null) return found;
+        string[] exts = { ".fbx", ".obj", ".dae" };
+        var candidates = new List<string>();
+        foreach (string ext in exts) candidates.Add(specFolder + "/Meshes/" + name + ext);
+        foreach (string guid in AssetDatabase.FindAssets(name))
+        {
+            string p = AssetDatabase.GUIDToAssetPath(guid);
+            if (Path.GetFileNameWithoutExtension(p) != name) continue;
+            string e = Path.GetExtension(p).ToLowerInvariant();
+            if (Array.IndexOf(exts, e) >= 0 && !candidates.Contains(p)) candidates.Add(p);
+        }
+        string existing = null;
+        foreach (string c in candidates)
+        {
+            if (!File.Exists(c)) continue;
+            existing = c;
+            AssetDatabase.ImportAsset(c, ImportAssetOptions.ForceSynchronousImport);
+            var m = MeshIn(c, name);
+            if (m != null) return m;
+        }
+        if (existing != null)
+        {
+            meshWhy = "the file " + existing + " exists, but Unity found no mesh inside it after importing it (open it in the Project window and check the Model import settings and the Console for import errors)";
+            return null;
+        }
+        foreach (string e in new[] { ".glb", ".gltf" })
+        {
+            string g = specFolder + "/Meshes/" + name + e;
+            if (File.Exists(g))
+            {
+                meshWhy = g + " is a " + e + " file, which Unity cannot import; the .glb to .fbx conversion failed when the mesh was exported, so check the converter log for 'fbx conversion failed'";
+                return null;
+            }
+        }
+        meshWhy = "no " + name + ".fbx was found under " + specFolder + "/Meshes or anywhere else in the project";
+        return null;
+    }
+
     static void Miss(string what, string name, string hint)
     {
         missing++;
         missingNames.Add(name);
         if (loud) Debug.LogWarning("Porter: " + what + " " + name + " was not found in the project (" + hint + "), so its slot stays empty");
-        log.Add("MISSING " + what + " '" + name + "'");
+        log.Add("MISSING " + what + " '" + name + "': " + hint);
     }
 
     static void BuildLight(GameObject go, Dictionary<string, object> n)
@@ -247,6 +310,34 @@ public static class PorterPropBuilder
 
     static void BuildEmitter(GameObject parent, Dictionary<string, object> e, bool awake)
     {
+        var rl = L(e["renderers"]);
+        var picks = new List<int>();
+        for (int i = 0; i < rl.Count; i++)
+        {
+            string t = S(D(rl[i])["type"]);
+            if (t == "Mesh" || t == "Sprite") picks.Add(i);
+        }
+        if (picks.Count < 2)
+        {
+            BuildEmitterOne(parent, e, awake, -1);
+            return;
+        }
+        string baseName = S(e["name"]);
+        int seed = 17;
+        for (int i = 0; i < baseName.Length; i++) seed = seed * 31 + baseName[i];
+        seed = Mathf.Abs(seed % 1000003) + 1;
+        for (int k = 0; k < picks.Count; k++)
+        {
+            var copy = new Dictionary<string, object>(e);
+            copy["renderers"] = new List<object> { rl[picks[k]] };
+            if (k > 0) copy["name"] = baseName + "_Renderer" + (k + 1);
+            BuildEmitterOne(parent, copy, awake, seed);
+        }
+        log.Add("UNVERIFIED " + baseName + ": Unity draws one renderer per Particle System, so its " + picks.Count + " renderers became " + picks.Count + " Particle Systems with identical settings and the same random seed; per-particle random values stay in step only as far as Unity's seeded randomness does");
+    }
+
+    static void BuildEmitterOne(GameObject parent, Dictionary<string, object> e, bool awake, int sharedSeed)
+    {
         string name = S(e["name"]);
         var mod = D(e["modules"]);
         var rends = L(e["renderers"]);
@@ -266,6 +357,11 @@ public static class PorterPropBuilder
 
         var ps = go.AddComponent<ParticleSystem>();
         ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        if (sharedSeed >= 0)
+        {
+            ps.useAutoRandomSeed = false;
+            ps.randomSeed = (uint)sharedSeed;
+        }
         var pr = go.GetComponent<ParticleSystemRenderer>();
         var main = ps.main;
         var loop = D(e["loop"]);
@@ -317,7 +413,7 @@ public static class PorterPropBuilder
         }
         emission.SetBursts(bursts.ToArray());
 
-        BuildShape(ps, mod, name, hasPos, posMin, posMax);
+        BuildShape(ps, mod, name, hasPos, posMin, posMax, e);
         BuildVelocity(ps, mod, lmin, lmax, name);
         BuildForces(ps, mod, name);
 
@@ -337,7 +433,7 @@ public static class PorterPropBuilder
             log.Add("NOT APPLIED " + name + ": SubUV animation (" + S(su["frames"]) + " frames, mode " + S(su["mode"]) + "); only sprite emitters get sheet animation");
         }
 
-        bool streamed = BuildColorStreams(ps, pr, mod, name);
+        bool streamed = BuildColorStreams(ps, pr, mod, name, rends.Count > 0 ? D(rends[0]) : null);
         if (!streamed && mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
         {
             var values = L(D(mod["scaleColor"])["values"]);
@@ -372,12 +468,85 @@ public static class PorterPropBuilder
         log.Add("APPROX light emitter " + go.name + ": colour from first colour-scale key, intensity 1, range " + l.range.ToString("0.##") + " m (UE per-particle radius/intensity not exported)");
     }
 
-    static void BuildShape(ParticleSystem ps, Dictionary<string, object> mod, string name, bool hasPos, Vector3 posMin, Vector3 posMax)
+    static bool ReplayRange(Dictionary<string, object> e, out Vector3 lo, out Vector3 hi)
+    {
+        lo = hi = Vector3.zero;
+        if (e == null || !e.ContainsKey("replayPosition") || e["replayPosition"] == null) return false;
+        var r = D(e["replayPosition"]);
+        if (r == null || !r.ContainsKey("min") || !r.ContainsKey("max")) return false;
+        if ((int)N(r.ContainsKey("births") ? r["births"] : null, 0) < 6) return false;
+        lo = V3(r["min"]);
+        hi = V3(r["max"]);
+        return true;
+    }
+
+    static void ShapeSupport(Dictionary<string, object> s, string prim, out Vector3 lo, out Vector3 hi)
+    {
+        lo = hi = Vector3.zero;
+        float a, b;
+        if (prim == "Box")
+        {
+            Vector3 size = VecMid(s.ContainsKey("boxSize") ? s["boxSize"] : null, new Vector3(100f, 100f, 100f));
+            hi = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)) * 0.5f;
+            lo = -hi;
+        }
+        else if (prim == "Plane")
+        {
+            Vector3 size = VecMid(s.ContainsKey("planeSize") ? s["planeSize"] : null, new Vector3(100f, 100f, 0f));
+            hi = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), 0f) * 0.5f;
+            lo = -hi;
+        }
+        else if (prim == "Cylinder")
+        {
+            ScalarRange(s.ContainsKey("cylinderRadius") ? s["cylinderRadius"] : null, 100, out a, out b);
+            float h1, h2, m1, m2;
+            ScalarRange(s.ContainsKey("cylinderHeight") ? s["cylinderHeight"] : null, 100, out h1, out h2);
+            ScalarRange(s.ContainsKey("heightMidpoint") ? s["heightMidpoint"] : null, 0.5, out m1, out m2);
+            float r = Mathf.Max(Mathf.Abs(a), Mathf.Abs(b));
+            float h = Mathf.Max(Mathf.Abs(h1), Mathf.Abs(h2));
+            float mid = (m1 + m2) * 0.5f;
+            lo = new Vector3(-r, -r, -mid * h);
+            hi = new Vector3(r, r, (1f - mid) * h);
+        }
+        else if (prim == "Ring")
+        {
+            ScalarRange(s.ContainsKey("ringRadius") ? s["ringRadius"] : null, 100, out a, out b);
+            float r = Mathf.Max(Mathf.Abs(a), Mathf.Abs(b));
+            lo = new Vector3(-r, -r, 0f);
+            hi = new Vector3(r, r, 0f);
+        }
+        else
+        {
+            ScalarRange(s.ContainsKey("sphereRadius") ? s["sphereRadius"] : null, 100, out a, out b);
+            float r = Mathf.Max(Mathf.Abs(a), Mathf.Abs(b));
+            lo = new Vector3(-r, -r, -r);
+            hi = new Vector3(r, r, r);
+        }
+    }
+
+    static void ApplyBox(ParticleSystem.ShapeModule shape, Vector3 lo, Vector3 hi)
+    {
+        Vector3 c = P((lo + hi) * 0.5f) * CmToM;
+        Vector3 e = P(hi - lo) * CmToM;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.rotation = Vector3.zero;
+        shape.scale = new Vector3(Mathf.Abs(e.x), Mathf.Abs(e.y), Mathf.Abs(e.z));
+        shape.position = c;
+    }
+
+    static string Cm3(Vector3 v)
+    {
+        return "(" + v.x.ToString("0.#") + ", " + v.y.ToString("0.#") + ", " + v.z.ToString("0.#") + ")";
+    }
+
+    static void BuildShape(ParticleSystem ps, Dictionary<string, object> mod, string name, bool hasPos, Vector3 posMin, Vector3 posMax, Dictionary<string, object> emitter)
     {
         var shape = ps.shape;
         Vector3 mid = (posMin + posMax) * 0.5f;
         bool hasShape = mod.ContainsKey("shape") && mod["shape"] != null;
         string vtype = mod.ContainsKey("velocityType") ? S(mod["velocityType"]) : "";
+        Vector3 rLo, rHi;
+        bool hasReplay = ReplayRange(emitter, out rLo, out rHi);
         if (vtype == "InCone" || vtype == "FromPoint")
         {
             if (!hasShape && (!hasPos || (posMax - posMin).sqrMagnitude <= 0f))
@@ -393,10 +562,39 @@ public static class PorterPropBuilder
             string prim = S(s["primitive"]);
             float a, b;
             shape.enabled = true;
-            Vector3 off = s.ContainsKey("offset") && s["offset"] != null ? P(VecMid(s["offset"], Vector3.zero)) * CmToM : Vector3.zero;
-            if (s.ContainsKey("scale") && s["scale"] != null && (VecMid(s["scale"], Vector3.one) - Vector3.one).sqrMagnitude > 0.0001f)
-                log.Add("NOT APPLIED " + name + ": shape scale " + VecMid(s["scale"], Vector3.one).ToString());
-            if (prim == "Cylinder")
+            Vector3 offUE = s.ContainsKey("offset") && s["offset"] != null ? VecMid(s["offset"], Vector3.zero) : Vector3.zero;
+            Vector3 off = P(offUE) * CmToM;
+            Vector3 scaleUE = s.ContainsKey("scale") && s["scale"] != null ? VecMid(s["scale"], Vector3.one) : Vector3.one;
+            Vector3 sLo, sHi;
+            ShapeSupport(s, prim, out sLo, out sHi);
+            Vector3 q1 = Vector3.Scale(sLo, scaleUE), q2 = Vector3.Scale(sHi, scaleUE);
+            sLo = Vector3.Min(q1, q2) + offUE + (hasPos ? posMin : Vector3.zero);
+            sHi = Vector3.Max(q1, q2) + offUE + (hasPos ? posMax : Vector3.zero);
+            bool known = prim == "Box" || prim == "Plane" || prim == "Cylinder" || prim == "Ring" || prim == "Sphere";
+            bool posSpread = hasPos && (posMax - posMin).sqrMagnitude > 0f;
+            bool wider = false;
+            if (hasReplay && known)
+            {
+                Vector3 span = sHi - sLo;
+                float tolX = Mathf.Max(10f, span.x * 0.25f), tolY = Mathf.Max(10f, span.y * 0.25f), tolZ = Mathf.Max(10f, span.z * 0.25f);
+                wider = rLo.x < sLo.x - tolX || rHi.x > sHi.x + tolX || rLo.y < sLo.y - tolY || rHi.y > sHi.y + tolY || rLo.z < sLo.z - tolZ || rHi.z > sHi.z + tolZ;
+            }
+            bool asBox = prim == "Box" || (prim == "Plane" && (posSpread || wider)) || !known || wider;
+            if (asBox)
+            {
+                Vector3 lo = known ? sLo : (hasPos ? posMin : Vector3.zero), hi = known ? sHi : (hasPos ? posMax : Vector3.zero);
+                if (hasReplay)
+                {
+                    lo = Vector3.Min(lo, rLo);
+                    hi = Vector3.Max(hi, rHi);
+                }
+                ApplyBox(shape, lo, hi);
+                if (prim != "Box")
+                    log.Add("APPROX " + name + ": " + prim + " spawn shape drawn as a box covering the Unreal spawn spread " + Cm3(lo) + " to " + Cm3(hi) + " cm" + (!known ? " (the shape type is not supported)" : ""));
+                if (posSpread && prim == "Box")
+                    log.Add("APPROX " + name + ": box size and position range are added together, so the box is as wide as both; Unity spreads particles evenly over it");
+            }
+            else if (prim == "Cylinder")
             {
                 ScalarRange(s["cylinderRadius"], 100, out a, out b);
                 float h1, h2;
@@ -407,10 +605,11 @@ public static class PorterPropBuilder
                 shape.radiusThickness = 1f;
                 shape.length = h1 * CmToM;
                 shape.rotation = new Vector3(-90f, 0f, 0f);
+                shape.scale = new Vector3(Mathf.Abs(scaleUE.x), Mathf.Abs(scaleUE.y), Mathf.Abs(scaleUE.z));
                 float m1, m2;
                 ScalarRange(s.ContainsKey("heightMidpoint") ? s["heightMidpoint"] : null, 0.5, out m1, out m2);
                 float midpoint = (m1 + m2) * 0.5f;
-                shape.position = P(mid) * CmToM + off + new Vector3(0f, -h1 * midpoint * CmToM, 0f);
+                shape.position = P(mid) * CmToM + off + new Vector3(0f, -h1 * midpoint * CmToM * Mathf.Abs(scaleUE.z), 0f);
                 log.Add("DEFAULT " + name + ": cylinder surface thickness not exported, volume-filled");
             }
             else if (prim == "Ring")
@@ -421,48 +620,44 @@ public static class PorterPropBuilder
                 shape.radiusThickness = 0f;
                 shape.arc = 360f;
                 shape.rotation = new Vector3(-90f, 0f, 0f);
-                shape.position = P(mid) * CmToM + off;
-            }
-            else if (prim == "Box")
-            {
-                Vector3 size = P(VecMid(s.ContainsKey("boxSize") ? s["boxSize"] : null, new Vector3(100f, 100f, 100f)));
-                shape.shapeType = ParticleSystemShapeType.Box;
-                shape.scale = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)) * CmToM;
+                shape.scale = new Vector3(Mathf.Abs(scaleUE.x), Mathf.Abs(scaleUE.y), 1f);
                 shape.position = P(mid) * CmToM + off;
             }
             else if (prim == "Plane")
             {
                 Vector3 size = VecMid(s.ContainsKey("planeSize") ? s["planeSize"] : null, new Vector3(100f, 100f, 0f));
                 shape.shapeType = ParticleSystemShapeType.Rectangle;
-                shape.scale = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), 1f) * CmToM;
+                shape.scale = new Vector3(Mathf.Abs(size.x * scaleUE.x), Mathf.Abs(size.y * scaleUE.y), 1f) * CmToM;
                 shape.rotation = new Vector3(-90f, 0f, 0f);
                 shape.position = P(mid) * CmToM + off;
             }
-            else if (prim == "Sphere")
+            else
             {
                 ScalarRange(s.ContainsKey("sphereRadius") ? s["sphereRadius"] : null, 100, out a, out b);
                 float rmax = Mathf.Max(a, b), rmin = Mathf.Min(a, b);
                 shape.shapeType = ParticleSystemShapeType.Sphere;
                 shape.radius = Mathf.Max(rmax, 0.01f) * CmToM;
                 shape.radiusThickness = rmax > 0f ? Mathf.Clamp01(1f - rmin / rmax) : 1f;
+                Vector3 sc = P(scaleUE);
+                shape.scale = new Vector3(Mathf.Abs(sc.x), Mathf.Abs(sc.y), Mathf.Abs(sc.z));
                 shape.position = P(mid) * CmToM + off;
                 log.Add("APPROX " + name + ": sphere radius range mapped to Unity radius thickness");
             }
-            else
-            {
-                shape.enabled = false;
-                log.Add("UNSUPPORTED shape " + prim + " in " + name);
-            }
-            if (hasPos && (posMax - posMin).sqrMagnitude > 0f) log.Add("APPROX " + name + ": initial position range collapsed to its midpoint because a shape is also used");
+            if (!asBox && posSpread) log.Add("APPROX " + name + ": initial position range collapsed to its midpoint because the " + prim + " shape is also used");
+            log.Add("SHAPE " + name + ": Unity " + shape.shapeType + " scale " + shape.scale.ToString("0.###") + " m at " + shape.position.ToString("0.###") + " m; Unreal static spread " + Cm3(sLo) + " to " + Cm3(sHi) + " cm" + (hasReplay ? ", replayed spawn spread " + Cm3(rLo) + " to " + Cm3(rHi) + " cm" : ", no replay spread available"));
             return;
         }
-        if (hasPos)
+        if (hasPos || hasReplay)
         {
+            Vector3 lo = hasPos ? posMin : rLo, hi = hasPos ? posMax : rHi;
+            if (hasPos && hasReplay)
+            {
+                lo = Vector3.Min(lo, rLo);
+                hi = Vector3.Max(hi, rHi);
+            }
             shape.enabled = true;
-            shape.shapeType = ParticleSystemShapeType.Box;
-            shape.position = P(mid) * CmToM;
-            Vector3 ext = P(posMax - posMin);
-            shape.scale = new Vector3(Mathf.Abs(ext.x), Mathf.Abs(ext.y), Mathf.Abs(ext.z)) * CmToM;
+            ApplyBox(shape, lo, hi);
+            log.Add("SHAPE " + name + ": Unity Box scale " + shape.scale.ToString("0.###") + " m at " + shape.position.ToString("0.###") + " m from the spawn spread " + Cm3(lo) + " to " + Cm3(hi) + " cm");
         }
         else shape.enabled = false;
     }
@@ -675,8 +870,8 @@ public static class PorterPropBuilder
     static void BuildMeshParticle(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, Dictionary<string, object> r, string name)
     {
         string meshName = S(r["mesh"]);
-        var mesh = FindAsset<Mesh>(meshName);
-        if (mesh == null) Miss("mesh", meshName, "the .fbx in the Meshes folder");
+        var mesh = FindMesh(meshName);
+        if (mesh == null) Miss("mesh", meshName, meshWhy);
         string facing = r.ContainsKey("facing") ? S(r["facing"]) : "Default";
         bool faced = facing == "CameraPosition" || facing == "CameraPlane" || facing == "Velocity";
         bool negativeX = PorterBlueprintSetup.MeshArrivesMirroredX;
@@ -832,12 +1027,54 @@ public static class PorterPropBuilder
         return sb.ToString();
     }
 
-    static bool BuildColorStreams(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, string name)
+    static Color StreamCol(object o)
+    {
+        var d = D(o);
+        return new Color((float)N(d["r"], 1), (float)N(d["g"], 1), (float)N(d["b"], 1), (float)N(d["a"], 1));
+    }
+
+    static AnimationCurve CurveOf(List<object> values, out float mid)
+    {
+        var c = new AnimationCurve();
+        int n = values.Count;
+        float sum = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float v = (float)N(values[i], 0);
+            sum += v;
+            c.AddKey(new Keyframe(n > 1 ? i / (float)(n - 1) : 0f, v));
+        }
+        LinearTangents(c);
+        mid = n > 0 ? sum / n : 0f;
+        return c;
+    }
+
+    static ParticleSystem.MinMaxCurve DataCurve(Dictionary<string, object> c, string mode, out float mid)
+    {
+        if (mode == "curve")
+            return new ParticleSystem.MinMaxCurve(1f, CurveOf(L(c["values"]), out mid));
+        if (mode == "range")
+        {
+            float a = (float)N(c["min"], 0), b = (float)N(c["max"], 0);
+            mid = (a + b) * 0.5f;
+            return new ParticleSystem.MinMaxCurve(a, b);
+        }
+        float m1, m2;
+        var lo = CurveOf(L(c["min"]), out m1);
+        var hi = CurveOf(L(c["max"]), out m2);
+        mid = (m1 + m2) * 0.5f;
+        return new ParticleSystem.MinMaxCurve(1f, lo, hi);
+    }
+
+    static bool BuildColorStreams(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, string name, Dictionary<string, object> rend)
     {
         var shared = pr.sharedMaterials;
         if (shared == null || shared.Length == 0) return false;
         foreach (var m in shared)
             if (m == null || !m.HasProperty("_PorterParticleStreams")) return false;
+        var st = rend != null && rend.ContainsKey("streams") && rend["streams"] != null ? D(rend["streams"]) : null;
+        List<object> streamColor = st != null && st.ContainsKey("color") && st["color"] != null ? L(st["color"]) : null;
+        if (streamColor != null && streamColor.Count < 2) streamColor = null;
 
         Color cmin = Color.white, cmax = Color.white;
         if (mod.ContainsKey("color") && mod["color"] != null) ColorRange(mod["color"], out cmin, out cmax);
@@ -846,6 +1083,11 @@ public static class PorterPropBuilder
             log.Add("APPROX " + name + ": random start colour range averaged");
         List<object> values = mod.ContainsKey("scaleColor") && mod["scaleColor"] != null ? L(D(mod["scaleColor"])["values"]) : null;
         int n = values == null ? 0 : values.Count;
+        if (streamColor != null)
+        {
+            n = streamColor.Count;
+            start = Color.white;
+        }
         var cr = new AnimationCurve();
         var cg = new AnimationCurve();
         var cb = new AnimationCurve();
@@ -855,7 +1097,7 @@ public static class PorterPropBuilder
         for (int i = 0; i < steps; i++)
         {
             float t = steps > 1 ? i / (float)(steps - 1) : 0f;
-            Color c = n > 0 ? Col(values[i]) : Color.white;
+            Color c = streamColor != null ? StreamCol(streamColor[i]) : (n > 0 ? Col(values[i]) : Color.white);
             cr.AddKey(new Keyframe(t, start.r * c.r));
             cg.AddKey(new Keyframe(t, start.g * c.g));
             cb.AddKey(new Keyframe(t, start.b * c.b));
@@ -879,6 +1121,76 @@ public static class PorterPropBuilder
         cd.SetVector(ParticleSystemCustomData.Custom1, 1, new ParticleSystem.MinMaxCurve(1f, cg));
         cd.SetVector(ParticleSystemCustomData.Custom1, 2, new ParticleSystem.MinMaxCurve(1f, cb));
         cd.SetVector(ParticleSystemCustomData.Custom1, 3, new ParticleSystem.MinMaxCurve(1f, ca));
+        var dpList = st != null && st.ContainsKey("dp") && st["dp"] != null ? L(st["dp"]) : new List<object>();
+        var slotCurves = new ParticleSystem.MinMaxCurve[4];
+        for (int q = 0; q < 4; q++) slotCurves[q] = new ParticleSystem.MinMaxCurve(0f);
+        int slot = 0;
+        var dpBase = new Dictionary<int, Vector4>();
+        var dpSlot = new Dictionary<int, Vector4>();
+        foreach (var dpo in dpList)
+        {
+            var dp = D(dpo);
+            int idx = (int)N(dp["index"], 0);
+            var comps = L(dp["comps"]);
+            var bv = Vector4.zero;
+            var sv = new Vector4(-1f, -1f, -1f, -1f);
+            for (int k = 0; k < 4 && k < comps.Count; k++)
+            {
+                var cc = D(comps[k]);
+                string mode = S(cc["mode"]);
+                if (mode == "const")
+                {
+                    bv[k] = (float)N(cc["value"], 0);
+                    continue;
+                }
+                float mid;
+                var curve = DataCurve(cc, mode, out mid);
+                if (slot >= 4)
+                {
+                    bv[k] = mid;
+                    log.Add("NOT APPLIED " + name + ": " + S(dp["attr"]) + " component " + "xyzw"[k] + " has no free Custom Data slot, held at " + mid.ToString("0.###"));
+                    continue;
+                }
+                slotCurves[slot] = curve;
+                sv[k] = slot;
+                slot++;
+            }
+            dpBase[idx] = bv;
+            dpSlot[idx] = sv;
+        }
+        bool wantAge = false, wantRand = false;
+        foreach (var sm in shared)
+        {
+            if (sm.HasProperty("_PorterAgeSlot")) wantAge = true;
+            if (sm.HasProperty("_PorterRandSlot")) wantRand = true;
+        }
+        float ageSlot = -1f, randSlot = -1f;
+        if (wantAge)
+        {
+            if (slot < 4)
+            {
+                slotCurves[slot] = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0f, 1f, 1f));
+                ageSlot = slot;
+                slot++;
+            }
+            else log.Add("NOT APPLIED " + name + ": the shader reads the particle age (ParticleRelativeTime) but all 4 Custom Data slots are taken by dynamic parameters, so it reads 0");
+        }
+        if (wantRand)
+        {
+            if (slot < 4)
+            {
+                slotCurves[slot] = new ParticleSystem.MinMaxCurve(0f, 1f);
+                randSlot = slot;
+                slot++;
+            }
+            else log.Add("NOT APPLIED " + name + ": the shader reads the particle random number (ParticleRandom) but all 4 Custom Data slots are taken, so it reads 0");
+        }
+        if (slot > 0)
+        {
+            cd.SetMode(ParticleSystemCustomData.Custom2, ParticleSystemCustomDataMode.Vector);
+            cd.SetVectorComponentCount(ParticleSystemCustomData.Custom2, 4);
+            for (int q = 0; q < 4; q++) cd.SetVector(ParticleSystemCustomData.Custom2, q, slotCurves[q]);
+        }
         var streams = new List<ParticleSystemVertexStream>
         {
             ParticleSystemVertexStream.Position,
@@ -889,9 +1201,31 @@ public static class PorterPropBuilder
             ParticleSystemVertexStream.Custom1XYZW,
             ParticleSystemVertexStream.Tangent
         };
+        if (slot > 0) streams.Insert(streams.Count - 1, ParticleSystemVertexStream.Custom2XYZW);
         pr.SetActiveVertexStreams(streams);
         var copies = new Material[shared.Length];
         for (int i = 0; i < shared.Length; i++) copies[i] = StreamCopy(shared[i], name);
+        foreach (var kv in dpBase)
+        {
+            foreach (var cm in copies)
+            {
+                string bp = "_DP_Dynamic_Parameter_" + kv.Key;
+                string sp = "_PorterDPSlot" + kv.Key;
+                if (cm.HasProperty(bp)) cm.SetVector(bp, kv.Value);
+                var sv2 = dpSlot[kv.Key];
+                if (cm.HasProperty(sp)) cm.SetVector(sp, sv2);
+                else if (sv2.x >= 0f || sv2.y >= 0f || sv2.z >= 0f || sv2.w >= 0f)
+                    log.Add("CHECK " + name + ": material " + cm.name + " has no " + sp + ", convert its shader again with this version so Dynamic Parameter " + kv.Key + " follows the particle");
+                EditorUtility.SetDirty(cm);
+            }
+        }
+        foreach (var cm in copies)
+        {
+            if (cm.HasProperty("_PorterAgeSlot")) cm.SetFloat("_PorterAgeSlot", ageSlot);
+            if (cm.HasProperty("_PorterRandSlot")) cm.SetFloat("_PorterRandSlot", randSlot);
+            EditorUtility.SetDirty(cm);
+        }
+        if (slot > 0) log.Add("STREAMS " + name + ": " + slot + " per-particle value(s) sent to the shader in Custom Data 2 (dynamic parameters" + (ageSlot >= 0f ? ", particle age" : "") + (randSlot >= 0f ? ", particle random" : "") + "), the rest set as fixed values on the material copy");
         pr.sharedMaterials = copies;
         log.Add("STREAMS " + name + ": particle colour (start colour x colour scale, up to " + maxV.ToString("0.###") + ", not clamped) is sent to the shader in Custom Data 1, so mesh vertex colours stay separate; materials copied per emitter with _PorterParticleStreams = 1");
         return true;

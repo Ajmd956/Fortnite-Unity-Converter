@@ -311,12 +311,12 @@ class Emitter:
         n = len(self.birth)
         r = self.random[:, 4:9]
         angle = r[:, 0] * 2 * np.pi
-        first = lambda name, usual: float(Distribution(shape.get(name), usual, 1).low[0])
+        first = lambda name, usual: float(Distribution(shape.get(name), usual, 1, self.system).low[0])
         if kind == "Box":
-            size = Distribution(shape.get("BoxSize"), 100.0, 3).low
+            size = Distribution(shape.get("BoxSize"), 100.0, 3, self.system).low
             local = (r[:, :3] - 0.5) * size
         elif kind == "Plane":
-            size = Distribution(shape.get("PlaneSize"), 100.0, 2).low
+            size = Distribution(shape.get("PlaneSize"), 100.0, 2, self.system).low
             local = np.concatenate([(r[:, :2] - 0.5) * size, np.zeros((n, 1))], axis=1)
         elif kind == "Cylinder":
             radius = first("CylinderRadius", 100.0) * np.sqrt(r[:, 1])
@@ -326,13 +326,13 @@ class Emitter:
             radius = first("RingRadius", 100.0) * np.sqrt(1 - first("DiscCoverage", 0.0) * (1 - r[:, 1]))
             local = np.stack([np.cos(angle) * radius, np.sin(angle) * radius, np.zeros(n)], axis=1)
         else:
-            d = Distribution(shape.get("SphereRadius"), 100.0, 1)
+            d = Distribution(shape.get("SphereRadius"), 100.0, 1, self.system)
             radius = d.low[0] + (d.high[0] - d.low[0]) * r[:, 1]
             z = r[:, 2] * 2 - 1
             flat = np.sqrt(np.maximum(1 - z * z, 0.0))
             local = np.stack([np.cos(angle) * flat, np.sin(angle) * flat, z], axis=1) * radius[:, None]
-        local = local * Distribution(shape.get("ShapeScale"), 1.0, 3).low
-        return local + Distribution(shape.get("TransformOffset"), 0.0, 3).low
+        local = local * Distribution(shape.get("ShapeScale"), 1.0, 3, self.system).low
+        return local + Distribution(shape.get("TransformOffset"), 0.0, 3, self.system).low
 
     def _velocity(self, position, life):
         """Each particle's first velocity: straight, within a cone, or away from a point."""

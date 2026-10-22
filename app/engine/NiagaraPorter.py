@@ -18,6 +18,31 @@ DT = 1.0 / 60.0
 CURVE_POINTS = 8            # a Unity gradient holds at most 8 colour keys
 BURST_WINDOW = 0.1          # births in the first 0.1 s count as a burst at time 0
 INITIAL_ATTRIBUTES = ("Position", "Velocity", "SpriteRotation", "MeshOrientation")
+STREAM_POINTS = 16
+BINDINGS = (("ColorBinding", "Color"), ("DynamicMaterialBinding", "DynamicMaterialParameter"),
+            ("DynamicMaterial1Binding", "DynamicMaterialParameter1"), ("DynamicMaterial2Binding", "DynamicMaterialParameter2"),
+            ("DynamicMaterial3Binding", "DynamicMaterialParameter3"))
+
+
+def renderer_bindings(props):
+    """The particle attributes a renderer reads: (colour attribute, [dynamic parameter 0..3 attributes])."""
+    names = []
+    for key, default in BINDINGS:
+        b = props.get(key)
+        names.append((b.get("RootName") if isinstance(b, dict) else None) or default)
+    return names[0], names[1:]
+
+
+def tracked_names(system, emitter):
+    found = []
+    for rtype, props in renderer_exports(system, emitter):
+        if "Mesh" not in rtype and "Sprite" not in rtype:
+            continue
+        color, dps = renderer_bindings(props)
+        for n in [color] + dps:
+            if n not in found:
+                found.append(n)
+    return found
 
 
 # ---------------------------------------------------------------- getting the asset
@@ -69,7 +94,9 @@ class Recorder:
     """What one emitter did over a play: when particles were born, what they were born with, and how
     colour and size run over a particle's age."""
 
-    def __init__(self):
+    def __init__(self, track=()):
+        self.track = list(track)
+        self.tracked = {}       # attribute: {particle: [(normalised age, components)]}
         self.births = []        # (time, count)
         self.total = 0
         self.max_alive = 0
@@ -112,7 +139,18 @@ class Recorder:
             size = np.vstack([size[:2], np.ones((1, count))])
         else:
             size = rows["Scale"]
-        self.ages.append((age / np.where(ok, life, 1.0))[ok])
+        norm = age / np.where(ok, life, 1.0)
+        if self.track:
+            ids = e.attribute("ID")
+            for name in self.track:
+                a = e.attribute(name)
+                if a is None or ids is None or a.shape[0] == 0:
+                    continue
+                a = np.array(a[:, :count], np.float64)
+                book = self.tracked.setdefault(name, {})
+                for j in np.nonzero(ok)[0]:
+                    book.setdefault((int(ids[0, j]), int(ids[1, j])), []).append((float(norm[j]), a[:, j]))
+        self.ages.append(norm[ok])
         self.colors.append(None if rows["Color"] is None else rows["Color"][:, ok])
         self.sizes.append(None if size is None else size[:, ok])
 
@@ -123,7 +161,9 @@ def play(exports, user, seconds, seed=1):
     for i in range(int(round(seconds / DT))):
         system.tick(DT)
         for e in system.emitters:
-            recorders.setdefault(e.name, Recorder()).tick(e, i * DT)
+            if e.name not in recorders:
+                recorders[e.name] = Recorder(tracked_names(system, e))
+            recorders[e.name].tick(e, i * DT)
         if system.done:
             break
     for e in system.emitters:
@@ -231,6 +271,30 @@ def curves(r):
         drive = top[0] if top[0] > 0 else 1.0
         size_out = [{"t": r4(c), "s": r4(s[0] / drive)} for c, s in size_pts]
     return color_out, size_out, start
+
+
+def stream_curves(r):
+    """Each tracked attribute over normalised age on STREAM_POINTS points: the smallest, largest and mean value of
+    every component across the particles, each particle's own samples interpolated onto the points."""
+    out = {}
+    grid = np.linspace(0.0, 1.0, STREAM_POINTS)
+    for name, book in r.tracked.items():
+        rows = []
+        for samples in book.values():
+            if len(samples) < 2:
+                continue
+            samples = sorted(samples, key=lambda x: x[0])
+            if samples[-1][0] < 0.9:
+                continue
+            ages = np.array([x[0] for x in samples])
+            vals = np.array([x[1] for x in samples])
+            rows.append(np.stack([np.interp(grid, ages, vals[:, c]) for c in range(vals.shape[1])], axis=1))
+        if not rows:
+            continue
+        cube = np.stack(rows)
+        out[name] = {"width": int(cube.shape[2]), "particles": int(cube.shape[0]),
+                     "min": cube.min(axis=0).tolist(), "max": cube.max(axis=0).tolist(), "mean": cube.mean(axis=0).tolist()}
+    return out
 
 
 def strip(path):
@@ -345,6 +409,7 @@ def summarize(system, e, r, required, approximate):
         "startSize": start or {"x": 1.0, "y": 1.0, "z": 1.0},
         "sizeUnit": "cm" if r.sprite else "scale",
         "initial": initial_ranges(r),
+        "streams": stream_curves(r),
         "renderers": renderers(system, e),
     }
     return out
