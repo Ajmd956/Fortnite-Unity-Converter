@@ -1541,6 +1541,9 @@ class Translator:
         if t == "ChannelMaskParameter":
             ch = str(p.get("MaskChannel", "Red")).split("::")[-1]
             i = {"Red": 0, "Green": 1, "Blue": 2, "Alpha": 3}.get(ch, 0)
+            if p.get("ParameterName") in (self.entry.get("vectors") or {}):
+                self.override_hits += 1
+                self.used_values.add(("vector", str(p.get("ParameterName")).lower()))
             vec = list(self.entry.get("vectors", {}).get(p.get("ParameterName"), [1.0 if k == i else 0.0 for k in range(4)])) + [0.0] * 4
             v = self.input(g, p.get("Input"), scope, C(0.0))
             v4 = self.fit(v, 4) if v.w != 1 else self.fit(v, 4)
@@ -1889,6 +1892,9 @@ class Translator:
             pname = p.get("ParameterName")
             at = p.get("Atlas") or {}
             row = (self.entry.get("scalars") or {}).get(pname, p.get("DefaultValue")) if pname else None
+            if pname in (self.entry.get("scalars") or {}):
+                self.override_hits += 1
+                self.used_values.add(("scalar", str(pname).lower()))
             if row is not None and at and hasattr(self.src, "atlas"):
                 rows = self.src.atlas(str(at.get("ObjectPath", "")), inner(str(at.get("ObjectName", ""))))
                 if rows:
