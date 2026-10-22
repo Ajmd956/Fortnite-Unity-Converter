@@ -1587,7 +1587,7 @@ async function buildBlueprintPrefabs(made) {
       if (bm) built.add(bm[1].slice(bm[1].lastIndexOf('/') + 1))
       else if (line.trim()) send('engine:log', 'Unity: ' + line.trim() + '\n')
     }
-    const prefabOnly = n => /\.(prefab|mat|meta)$/i.test(n)
+    const prefabOnly = n => /\.(prefab|mat|asset|meta)$/i.test(n)
     for (const row of made) {
       if (built.has(row.name)) syncTree(path.join(projRoot, path.basename(row.dir)), row.dir, prefabOnly)
     }
