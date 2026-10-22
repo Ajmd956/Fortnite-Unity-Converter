@@ -90,6 +90,65 @@ def to_exports(dump):
 
 # ---------------------------------------------------------------- playing it
 
+class Motion:
+    """How far particles travelled and turned after they were born, per particle ID."""
+
+    LIMIT = 400
+
+    def __init__(self):
+        self.born = {}
+        self.drift = 0.0
+        self.spin = 0.0
+        self.moved = set()
+        self.last = 0
+        self.previous = {}
+        self.rates = []
+
+    def feed(self, ids, position, orientation, rotation, count=0, dt=DT):
+        if ids is None:
+            if not count:
+                return
+            if count < self.last:
+                self.born.clear()
+                self.previous.clear()
+            self.last = count
+            ids = np.vstack([np.arange(count), np.zeros(count, dtype=np.int64)])
+        if ids.shape[0] < 2 or not ids.shape[1]:
+            return
+        for j in range(min(ids.shape[1], self.LIMIT)):
+            key = (int(ids[0, j]), int(ids[1, j]))
+            pos = None if position is None or position.shape[0] < 3 else position[:3, j]
+            quat = None if orientation is None or orientation.shape[0] < 4 else orientation[:4, j]
+            rot = None if rotation is None or rotation.shape[0] < 1 else float(rotation[0, j])
+            start = self.born.get(key)
+            if start is None:
+                self.born[key] = (None if pos is None else pos.copy(), None if quat is None else quat.copy(), rot)
+                continue
+            if pos is not None and start[0] is not None:
+                d = float(np.linalg.norm(pos - start[0]))
+                if d > 1.0:
+                    self.moved.add(key)
+                self.drift = max(self.drift, d)
+            if quat is not None and start[1] is not None:
+                dot = min(1.0, abs(float(np.dot(quat, start[1]))))
+                self.spin = max(self.spin, float(np.degrees(2.0 * np.arccos(dot))))
+            if rot is not None and start[2] is not None:
+                self.spin = max(self.spin, abs(rot - start[2]))
+            before = self.previous.get(key)
+            if before is not None and len(self.rates) < 20000:
+                if quat is not None and before[0] is not None:
+                    step = np.degrees(2.0 * np.arccos(min(1.0, abs(float(np.dot(quat, before[0]))))))
+                    self.rates.append(float(step) / dt)
+                elif rot is not None and before[1] is not None:
+                    self.rates.append(abs(rot - before[1]) / dt)
+            self.previous[key] = (None if quat is None else quat.copy(), rot)
+
+    def summary(self):
+        rates = [x for x in self.rates if x > 0.5]
+        typical = float(np.median(rates)) if len(rates) >= 3 else 0.0
+        return {"driftCm": r4(self.drift), "spinDeg": r4(self.spin), "spinRateDegPerSec": r4(typical), "movedParticles": len(self.moved), "tracked": len(self.born)}
+
+
 class Recorder:
     """What one emitter did over a play: when particles were born, what they were born with, and how
     colour and size run over a particle's age."""
@@ -107,6 +166,7 @@ class Recorder:
         self.sizes = []         # and its size (3, n): sprite size (x, y, 1) or mesh scale
         self.sprite = False
         self.initial = {}       # per attribute: what each particle was born with, (components, born) per birth tick
+        self.motion = Motion()
 
     def tick(self, e, t0):
         count = int(e.data.count)
@@ -116,6 +176,9 @@ class Recorder:
         for name in ("Age", "Lifetime", "Color", "SpriteSize", "Scale") + INITIAL_ATTRIBUTES:
             a = e.attribute(name)
             rows[name] = None if a is None else np.array(a[:, :count], np.float64)
+        if count:
+            ids = e.attribute("ID")
+            self.motion.feed(None if ids is None else np.array(ids[:, :count]), rows["Position"], rows["MeshOrientation"], rows["SpriteRotation"], count)
         if born > 0:
             self.births.append((t0, born))
             self.total += born
@@ -383,6 +446,17 @@ def initial_ranges(r):
     return out
 
 
+def motion_summary(r):
+    out = r.motion.summary()
+    velocity = (initial_ranges(r).get("Velocity") or {})
+    speed = 0.0
+    if velocity:
+        speed = float(np.linalg.norm([max(abs(a), abs(b)) for a, b in zip(velocity["min"], velocity["max"])]))
+    life = max(r.lifetimes) if r.lifetimes else 0.0
+    out["explainedCm"] = r4(speed * life)
+    return out
+
+
 def short(path):
     return (path or "").rsplit("/", 1)[-1]
 
@@ -409,6 +483,7 @@ def summarize(system, e, r, required, approximate):
         "startSize": start or {"x": 1.0, "y": 1.0, "z": 1.0},
         "sizeUnit": "cm" if r.sprite else "scale",
         "initial": initial_ranges(r),
+        "motion": motion_summary(r),
         "streams": stream_curves(r),
         "renderers": renderers(system, e),
     }

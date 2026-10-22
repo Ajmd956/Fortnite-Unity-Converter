@@ -825,6 +825,18 @@ def stream_spec(emname, em, rs):
     return out
 
 
+def motion_notes(em):
+    m = em.get("motion") or {}
+    name = em["name"]
+    drift, bound = float(m.get("driftCm", 0.0)), float(m.get("explainedCm", 0.0))
+    if drift > 1.0 and drift > bound * 1.25 + 2.0:
+        note("APPROX", "%s: in Unreal %d of %d particles move after they spawn, up to %.1f cm from where they were born, which is more than the spawn velocity explains (%.1f cm); the Unity particle system only reproduces the spawn position and velocity, so this movement is missing" % (name, int(m.get("movedParticles", 0)), int(m.get("tracked", 0)), drift, bound))
+    spin = float(m.get("spinDeg", 0.0))
+    if spin > 5.0:
+        rate = float(m.get("spinRateDegPerSec", 0.0))
+        note("APPROX", "%s: in Unreal particles keep turning after they spawn, by up to %.0f degrees%s; spin after spawn is not carried over to the Unity particle system" % (name, spin, (" at about %.0f degrees per second" % rate) if rate > 0.0 else ""))
+
+
 def replay_position(em):
     """Where the replay's particles were born, as the smallest and largest value of each axis in cm (None if nothing spawned)."""
     pos = (em.get("initial") or {}).get("Position")
@@ -922,6 +934,7 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
     system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
     emitters = []
     for em in summaries:
+        motion_notes(em)
         if em["name"] in stateless:
             spec = stateless.pop(em["name"])
             replayed = replay_position(em)

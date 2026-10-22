@@ -68,6 +68,10 @@ or Unity. Fortnite is a trademark of Epic Games.
 
 ## What's new in this update
 
+- Particle converter: mesh particles whose Niagara orientation is fully random now start with a random rotation in Unity
+  instead of one fixed rotation, and the mirrored particle meshes are copied back so the mesh stays assigned.
+- Particle converter: the replay now measures how far particles move and how fast they turn after they spawn, and the
+  report warns when the Unity particle system does not reproduce that.
 - Particle converter: a Niagara system with more than one renderer (for example a bolt and its glow) now becomes one Unity
   Particle System per renderer, with the same settings and random seed.
 - Dynamic material parameters set by Niagara follow the particle over its life, using the exact values the Niagara
