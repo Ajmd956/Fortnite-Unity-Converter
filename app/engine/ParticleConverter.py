@@ -378,9 +378,9 @@ def bake_emitter(system, em, spec, stem, scripted=False):
     # A scripted emitter moves, turns, scales and fades its particles in scripts that starting ranges cannot carry, so its sprites and
     # meshes are played from the replay (PORTER_BAKE=off turns that off, PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems).
     bake_mode = ParticleBake.mode()
-    if scripted and bake_mode == "auto":
+    if scripted and bake_mode == "auto" and os.environ.get("PORTER_BAKE_SCRIPTED", "0") == "1":
         bake_mode = "all"
-    with_meshes = bake_mode != "off" and (scripted or bake_mode == "all") and os.environ.get("PORTER_BAKE_MESHES", "1") != "0"
+    with_meshes = bake_mode != "off" and ((scripted and os.environ.get("PORTER_BAKE_SCRIPTED", "0") == "1") or bake_mode == "all") and os.environ.get("PORTER_BAKE_MESHES", "1") != "0"
     for i, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter)):
         fname = "%s_%s_%d" % (stem, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
         b = ParticleBake.bake_renderer(recorder, rtype, props, fname, notes, dt=NiagaraPorter.DT, bake_mode=bake_mode, meshes=with_meshes,

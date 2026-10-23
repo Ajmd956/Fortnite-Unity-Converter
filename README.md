@@ -120,7 +120,7 @@ the .propreport.txt next to each system):
   emitters are left as still pieces, as the Material Porter does.
 - Meshes or materials that are missing from the export are named.
 
-Scripted emitters (those without stateless module settings) are now played from the baked replay for their sprites and meshes, so their per-particle motion, rotation, scale, colour fade and Dynamic Parameters match the replay instead of a starting range. Set PORTER_BAKE=off to turn that off, or PORTER_BAKE_MESHES=0 to keep their meshes as Particle Systems. Baked meshes are made readable (Read/Write) automatically. This path has not been run in Unity yet.
+Scripted emitters stay Particle Systems by default. Set PORTER_BAKE_SCRIPTED=1 to play their sprites and meshes from the baked replay instead (PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems, PORTER_BAKE=off bakes nothing). Baked meshes are made readable automatically. The baked mesh path has not been run in Unity.
 
 Every Particle System renderer gets Max Particle Size 555 (Unity's default of 0.5 made particles shrink when the camera came close).
 
