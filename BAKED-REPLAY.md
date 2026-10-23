@@ -51,4 +51,8 @@ GPU emitters, and a Mesh renderer whose mesh the game sets through a user parame
 - Bake of renderers enabled by system/emitter/user bindings is respected.
 
 NOT tested: none of the C# was compiled or run in Unity (only syntax-checked); the bake was not run on real Niagara dumps here.
-Still not done: decal projection, bound material parameters, light brightness calibration, GPU emitters.
+- Decals are now projected onto the scene: `Porter/DecalProject` (Scripts/PorterDecalProject.shader) draws a box per decal and rebuilds the
+  surface from the camera depth texture (the player turns the depth texture on for every camera). It uses the decal material's texture and tint,
+  not its graph. Without the shader, or with `projectDecals` off, they are flat quads as before. Needs the depth texture, so no use in a build that strips it.
+Still not done: bound material parameters, light brightness calibration (one number, `lightScale` on the prefab), the decal material's own graph.
+GPU emitters are left as still pieces, as the Material Porter does.

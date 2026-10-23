@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
@@ -1034,6 +1035,9 @@ def convert(exports, name, source, out, seconds):
         os.makedirs(os.path.join(out, "Scripts"), exist_ok=True)
         text = open(player, encoding="utf-8").read().replace("PorterParticleReplay", "PorterParticlePlayer")
         open(os.path.join(out, "Scripts", "PorterParticlePlayer.cs"), "w", encoding="utf-8").write(text)
+        shader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity", "PorterDecalProject.shader")
+        if os.path.exists(shader):
+            shutil.copyfile(shader, os.path.join(out, "Scripts", "PorterDecalProject.shader"))
     else:
         warnings.append("the baked-replay player script is missing from the app (unity/PorterParticleReplay.cs): baked renderers will have no player")
     report(emitters, skipped, bones)

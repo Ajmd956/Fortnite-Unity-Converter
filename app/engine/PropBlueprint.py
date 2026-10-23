@@ -746,7 +746,7 @@ def finish(spec, out, bp_name, scripts=None):
         fh.write("\n".join(spec["report"]) + "\n")
     here = scripts or os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity")
     for fname, sub in (("PorterBlueprintSetup.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterReplayBuild.cs", "Editor"),
-                       ("PorterParticleReplay.cs", "Scripts")):
+                       ("PorterParticleReplay.cs", "Scripts"), ("PorterDecalProject.shader", "Scripts")):
         srcf = os.path.join(here, fname)
         if not os.path.exists(srcf):
             sys.exit("the Unity scripts are missing from the app (%s: %s)" % (here, fname))

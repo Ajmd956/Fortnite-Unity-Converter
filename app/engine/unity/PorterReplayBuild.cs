@@ -93,7 +93,7 @@ public static partial class PorterPropBuilder
                     player.material = inst;
                 }
                 if (kind == "Ribbon") log.Add("UNVERIFIED " + emName + ": ribbon strung in link order (smoothed through its points), width across " + (player.facingMode == 2 ? "the particles' side vector" : player.facingMode == 1 ? "the particles' facing" : "the view") + ", " + (player.ribbonShape == 2 ? "a tube" : player.ribbonShape == 1 ? "several planes" : "a plane") + ", U along it by the renderer's UV settings; not compared against Unreal in Unity");
-                if (kind == "Decal") log.Add("APPROX " + emName + ": Built-in has no decal projection, each decal is a flat quad in its plane and the decal material's own projection is not applied");
+                if (kind == "Decal") log.Add("APPROX " + emName + ": each decal is projected onto the scene by Porter/DecalProject (texture and tint of the decal material, depth texture needed); the decal material's own graph is not applied. Without the shader it is a flat quad");
             }
             EditorUtility.SetDirty(go);
             log.Add("REPLAY " + emName + ": " + kind + " played from " + file + " (" + (int)N(b["frames"], 0) + " ticks, up to " + (int)N(b["maxPerFrame"], 0) + " particles at once)");

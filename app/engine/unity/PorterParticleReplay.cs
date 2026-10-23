@@ -34,6 +34,8 @@ public class PorterParticleReplay : MonoBehaviour
     public float pivotX = 0.5f, pivotY = 0.5f;  // sprite: where the particle sits on its quad (UV space, V down)
     public int subX = 1, subY = 1;              // sprite: the flipbook's columns and rows
     public int ribbonShape;                     // ribbon: 0 a plane, 1 several planes turned about it, 2 a tube (facingMode: 0 width across the view, 1 across the particles' facing, 2 along their side vector)
+    public bool projectDecals = true;           // decal: project onto the scene (needs the Porter/DecalProject shader in the project and a depth texture), else a flat quad
+    public Shader decalShader;                  // set by the builder; found by name when empty
     public int ribbonSides = 2;                 // ribbon: how many planes (shape 1) or how many sides the tube has (shape 2)
 
     int frames, stride;
@@ -70,6 +72,7 @@ public class PorterParticleReplay : MonoBehaviour
             meshRenderer = GetComponent<MeshRenderer>();
             if (meshRenderer == null) meshRenderer = gameObject.AddComponent<MeshRenderer>();
             if (material != null) meshRenderer.sharedMaterial = material;
+            if (kind == "Decal" && projectDecals) SetUpProjection();
             if (materials != null && materials.Length > 0) meshRenderer.sharedMaterials = materials;
             meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
@@ -81,8 +84,43 @@ public class PorterParticleReplay : MonoBehaviour
         if (playOnAwake) Play();
     }
 
+    // decals: a projection material made from the decal material's texture and tint, and depth textures on the cameras that see it
+    bool projecting;
+    Material projMaterial;
+
+    void SetUpProjection()
+    {
+        if (decalShader == null) decalShader = Shader.Find("Porter/DecalProject");
+        if (decalShader == null) { projecting = false; return; }
+        projMaterial = new Material(decalShader);
+        projMaterial.name = "PorterDecalProject";
+        if (material != null)
+        {
+            Texture best = null;
+            string[] names = material.GetTexturePropertyNames();
+            for (int i = 0; i < names.Length && best == null; i++)
+            {
+                string n = names[i].ToLowerInvariant();
+                if ((n.Contains("base") || n.Contains("diffuse") || n.Contains("main") || n.Contains("color") || n.Contains("albedo")) && material.GetTexture(names[i]) != null) best = material.GetTexture(names[i]);
+            }
+            for (int i = 0; i < names.Length && best == null; i++) best = material.GetTexture(names[i]);
+            if (best != null) projMaterial.SetTexture("_MainTex", best);
+            if (material.HasProperty("_Color")) projMaterial.SetColor("_Color", material.GetColor("_Color"));
+        }
+        meshRenderer.sharedMaterial = projMaterial;
+        projecting = true;
+        Camera.onPreCull += NeedDepth;
+    }
+
+    static void NeedDepth(Camera c)
+    {
+        c.depthTextureMode |= DepthTextureMode.Depth;
+    }
+
     void OnDisable()
     {
+        if (projecting) { Camera.onPreCull -= NeedDepth; projecting = false; }
+        if (projMaterial != null) { if (Application.isPlaying) Destroy(projMaterial); else DestroyImmediate(projMaterial); projMaterial = null; }
         if (mesh != null) { if (Application.isPlaying) Destroy(mesh); else DestroyImmediate(mesh); mesh = null; }
         for (int i = 0; i < lights.Count; i++) if (lights[i] != null) lights[i].enabled = false;
     }
@@ -568,7 +606,8 @@ public class PorterParticleReplay : MonoBehaviour
         }
     }
 
-    // ---- decals: Unity's Built-in pipeline has no decal projection, so each one is a flat quad lying in the particle's plane
+    // ---- decals: projected onto the scene through the depth texture (Porter/DecalProject), a box a decal; when that shader or the
+    // depth texture is not there, each one is a flat quad lying in the particle's plane
     void BuildDecals(int f)
     {
         int fp = Field("pos"), fq = Field("rotation"), fs = Field("size");
@@ -579,9 +618,40 @@ public class PorterParticleReplay : MonoBehaviour
             Vector3 p = new Vector3(Get(r, fp, 0, 0f), Get(r, fp, 1, 0f), Get(r, fp, 2, 0f));
             Quaternion q = new Quaternion(Get(r, fq, 0, 0f), Get(r, fq, 1, 0f), Get(r, fq, 2, 0f), Get(r, fq, 3, 1f));
             if (q.x == 0f && q.y == 0f && q.z == 0f && q.w == 0f) q = Quaternion.identity;
-            float w = Get(r, fs, 0, 1f) * 0.5f, d = Get(r, fs, 2, 1f) * 0.5f;
+            float w = Mathf.Max(Get(r, fs, 0, 1f) * 0.5f, 1e-4f), d = Mathf.Max(Get(r, fs, 2, 1f) * 0.5f, 1e-4f);
+            float h = Get(r, fs, 1, 0f) * 0.5f;
             Vector3 rx = q * Vector3.right * w, rz = q * Vector3.forward * d;
             Vector3 nrm = q * Vector3.up;
+            if (projecting)
+            {
+                // how deep it projects: the size's own depth, else as far as it is wide
+                if (h < 1e-4f) h = Mathf.Min(w, d);
+                Vector3 ax = q * Vector3.right / w, ay = nrm / h, az = q * Vector3.forward / d;
+                Vector4 c;
+                int fc = Field("color");
+                c = new Vector4(Get(r, fc, 0, 1f), Get(r, fc, 1, 1f), Get(r, fc, 2, 1f), Get(r, fc, 3, 1f));
+                int a0 = verts.Count;
+                for (int k = 0; k < 8; k++)
+                {
+                    float sx = (k & 1) == 0 ? -1f : 1f, sy = (k & 2) == 0 ? -1f : 1f, sz = (k & 4) == 0 ? -1f : 1f;
+                    verts.Add(p + rx * sx + nrm * (h * sy) + rz * sz);
+                    normals.Add(ax);
+                    tangents.Add(new Vector4(ay.x, ay.y, ay.z, 1f));
+                    uv0.Add(new Vector4(az.x, az.y, az.z, 0f));
+                    uv1.Add(c);
+                    uv2.Add(new Vector4(p.x, p.y, p.z, 0f));
+                    uv3.Add(Vector4.zero);
+                    cols.Add(Color.white);
+                }
+                // six faces; the shader draws their back sides, so each pixel in the box is drawn once
+                int[,] fcs = { {0,2,3,1}, {4,5,7,6}, {0,1,5,4}, {2,6,7,3}, {0,4,6,2}, {1,3,7,5} };
+                for (int s = 0; s < 6; s++)
+                {
+                    tris.Add(a0 + fcs[s, 0]); tris.Add(a0 + fcs[s, 1]); tris.Add(a0 + fcs[s, 2]);
+                    tris.Add(a0 + fcs[s, 0]); tris.Add(a0 + fcs[s, 2]); tris.Add(a0 + fcs[s, 3]);
+                }
+                continue;
+            }
             Vector4 tan = new Vector4(rx.normalized.x, rx.normalized.y, rx.normalized.z, 1f);
             int a = verts.Count;
             AddVertex(p - rx - rz, nrm, tan, new Vector2(0f, 0f), r);
