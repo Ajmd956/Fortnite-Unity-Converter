@@ -120,6 +120,10 @@ the .propreport.txt next to each system):
   emitters are left as still pieces, as the Material Porter does.
 - Meshes or materials that are missing from the export are named.
 
+Scripted emitters (those without stateless module settings) are now played from the baked replay for their sprites and meshes, so their per-particle motion, rotation, scale, colour fade and Dynamic Parameters match the replay instead of a starting range. Set PORTER_BAKE=off to turn that off, or PORTER_BAKE_MESHES=0 to keep their meshes as Particle Systems. Baked meshes are made readable (Read/Write) automatically. This path has not been run in Unity yet.
+
+Every Particle System renderer gets Max Particle Size 555 (Unity's default of 0.5 made particles shrink when the camera came close).
+
 Body anchor: every particle system has a PorterParticleBodyAnchor. Drop the character's body or a bone into Body (or type its name in Body Name) and the whole system is parented to it at zero, so it sits where the Unreal system sat on the rig.
 
 Material instance overrides: blend mode, shading model, two-sided and mask clip set on the material instance are read, so an instance that overrides its parent (for example translucent to opaque) converts as in Unreal. Masked shaders get a hidden Mask Clip value.

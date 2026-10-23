@@ -377,6 +377,8 @@ public static partial class PorterPropBuilder
             ps.randomSeed = (uint)sharedSeed;
         }
         var pr = go.GetComponent<ParticleSystemRenderer>();
+        pr.minParticleSize = 0f;
+        pr.maxParticleSize = 555f;
         var main = ps.main;
         var loop = D(e["loop"]);
 

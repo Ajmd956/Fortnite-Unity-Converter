@@ -66,6 +66,54 @@ public static partial class PorterPropBuilder
                 player.radiusScale = (float)N(b.ContainsKey("radiusScale") ? b["radiusScale"] : null, 1.0);
                 log.Add("UNVERIFIED " + emName + ": baked light brightness uses " + ReplayLightScale.ToString("0.##") + " Unity intensity per unit of Unreal colour brightness, range = LightRadius x RadiusScale; match it by eye, PorterParticleReplay.lightScale on the prefab is the one number to change");
             }
+            else if (kind == "Mesh")
+            {
+                var names = b.ContainsKey("meshes") ? Strings(b["meshes"]) : new string[0];
+                player.meshes = new Mesh[names.Length];
+                for (int i = 0; i < names.Length; i++)
+                {
+                    var m = FindMesh(names[i]);
+                    if (m != null)
+                    {
+                        var imp = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(m)) as ModelImporter;
+                        if (imp != null && !imp.isReadable)
+                        {
+                            imp.isReadable = true;
+                            imp.SaveAndReimport();
+                            m = FindMesh(names[i]);
+                        }
+                    }
+                    if (m == null) Miss("mesh", names[i], meshWhy);
+                    player.meshes[i] = m;
+                }
+                var matNames = b.ContainsKey("materials") ? Strings(b["materials"]) : new string[0];
+                var mats = new List<Material>();
+                foreach (string mn in matNames)
+                {
+                    var mat = FindMaterial(mn);
+                    if (mat == null)
+                    {
+                        log.Add("MISSING " + emName + ": material " + mn + " for the baked Mesh renderer was not found, it draws with the default material");
+                        missing++;
+                        continue;
+                    }
+                    var inst = StreamCopy(mat, emName + "_" + kind);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var v = new Vector4(-1f, -1f, -1f, -1f);
+                        for (int k = 0; k < comps.Length; k++)
+                            if (comps[k] / 4 == i) v[comps[k] % 4] = k;
+                        inst.SetVector("_PorterDPSlot" + i, v);
+                    }
+                    if (comps.Length < 8) { player.ageSlot = comps.Length; inst.SetFloat("_PorterAgeSlot", comps.Length); }
+                    if (comps.Length < 7) { player.randSlot = comps.Length + 1; inst.SetFloat("_PorterRandSlot", comps.Length + 1); }
+                    EditorUtility.SetDirty(inst);
+                    mats.Add(inst);
+                }
+                player.materials = mats.ToArray();
+                if (mats.Count > 0) player.material = mats[0];
+                log.Add("UNVERIFIED " + emName + ": mesh renderer played from the replay (rotation, scale, colour and Dynamic Parameters per particle); not compared against Unreal in Unity");
+            }
             else
             {
                 var mat = FindMaterial(S(b.ContainsKey("material") ? b["material"] : null));

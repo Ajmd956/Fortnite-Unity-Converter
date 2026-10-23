@@ -366,7 +366,7 @@ def scripted_emitter_spec(loader, system, em, seconds):
     }
 
 
-def bake_emitter(system, em, spec, stem):
+def bake_emitter(system, em, spec, stem, scripted=False):
     """Write the baked replay of the renderers of this emitter that need it. They are listed on its spec as "baked",
     with the material each draws with, and the renderers the Particle System cannot draw are no longer reported as lost."""
     import NiagaraPorter, ParticleBake
@@ -375,13 +375,24 @@ def bake_emitter(system, em, spec, stem):
         return
     recorder, emitter = track
     baked, notes = [], []
+    # A scripted emitter moves, turns, scales and fades its particles in scripts that starting ranges cannot carry, so its sprites and
+    # meshes are played from the replay (PORTER_BAKE=off turns that off, PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems).
+    bake_mode = ParticleBake.mode()
+    if scripted and bake_mode == "auto":
+        bake_mode = "all"
+    with_meshes = bake_mode != "off" and (scripted or bake_mode == "all") and os.environ.get("PORTER_BAKE_MESHES", "1") != "0"
     for i, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter)):
         fname = "%s_%s_%d" % (stem, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
-        b = ParticleBake.bake_renderer(recorder, rtype, props, fname, notes, dt=NiagaraPorter.DT, system=system, emitter_name=em["name"])
+        b = ParticleBake.bake_renderer(recorder, rtype, props, fname, notes, dt=NiagaraPorter.DT, bake_mode=bake_mode, meshes=with_meshes,
+                                       system=system, emitter_name=em["name"])
         if b is None:
             continue
         BAKED[b["file"]] = b.pop("blob")
         b["srcIndex"] = i
+        if b["kind"] == "Mesh":
+            rs = next((r for r in spec.get("renderers", []) if r.get("srcIndex") == i), {})
+            b["meshes"] = [asset_name(m.get("Mesh")) for m in (props.get("Meshes") or []) if m and m.get("Mesh")] or [rs.get("mesh")]
+            b["materials"] = rs.get("materials") or []
         b["material"] = asset_name(props.get("Material")) if b["kind"] in ("Sprite", "Ribbon", "Decal") else None
         if b["kind"] == "Decal" and not b["material"]:
             b["material"] = asset_name(props.get("DecalMaterial") or props.get("Material"))
@@ -440,7 +451,7 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
             continue
         spec = scripted_emitter_spec(loader, system, em, seconds)
         if spec is not None:
-            bake_emitter(system, em, spec, sysname)
+            bake_emitter(system, em, spec, sysname, scripted=True)
             emitters.append(spec)
     emitters += list(stateless.values())
     for s in skipped:
