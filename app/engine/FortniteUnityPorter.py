@@ -1541,9 +1541,6 @@ class Translator:
         if t == "ChannelMaskParameter":
             ch = str(p.get("MaskChannel", "Red")).split("::")[-1]
             i = {"Red": 0, "Green": 1, "Blue": 2, "Alpha": 3}.get(ch, 0)
-            if p.get("ParameterName") in (self.entry.get("vectors") or {}):
-                self.override_hits += 1
-                self.used_values.add(("vector", str(p.get("ParameterName")).lower()))
             vec = list(self.entry.get("vectors", {}).get(p.get("ParameterName"), [1.0 if k == i else 0.0 for k in range(4)])) + [0.0] * 4
             v = self.input(g, p.get("Input"), scope, C(0.0))
             v4 = self.fit(v, 4) if v.w != 1 else self.fit(v, 4)
@@ -1648,7 +1645,7 @@ class Translator:
             self.uses.add("dpstreams")
             self.slotprops.add(prop)
             self.note("%s is the particle's %s, sent per particle by the converted prefab in Custom Data 2; it reads 0 when the material is not on a converted particle system" % (t, "age from 0 to 1" if t == "ParticleRelativeTime" else "random number from 0 to 1"))
-            return self.tmp("PorterDP1(0.0, %s, %s)" % (prop, "IN.pdp" if self.mode == "ps" else "v.texcoord2"), 1)
+            return self.tmp("PorterDP1(0.0, %s, %s, %s)" % (prop, "IN.pdp" if self.mode == "ps" else "v.texcoord2", "IN.pdp2" if self.mode == "ps" else "v.texcoord3"), 1)
         if t in ("ParticleSpeed", "ParticleRadius", "ParticleMotionBlurFade", "DeltaTime", "PerInstanceRandom", "PerInstanceFadeAmount", "DistanceCullFade"):
             self.warn("stand-in 0: %s" % t)
             return C(1.0 if t in ("PerInstanceFadeAmount", "ParticleMotionBlurFade", "DistanceCullFade") else 0.0)
@@ -1661,10 +1658,6 @@ class Translator:
             d = p.get("DefaultValue") or {}
             idx = int(p.get("ParameterIndex", 0) or 0)
             dflt = [float(d.get(k, 0.0)) for k in ("R", "G", "B", "A")]
-            seen = self.__dict__.setdefault("dp_defaults", {})
-            if idx in seen and seen[idx] != dflt:
-                self.warn("Dynamic Parameter %d is declared by several nodes with different defaults (%s and %s): the first one, %s, is used for any component the Niagara system does not set" % (idx, seen[idx], dflt, seen[idx]))
-            seen.setdefault(idx, dflt)
             v = self.vector_prop("Dynamic Parameter %d" % idx, dflt, tag="_DP_")
             msg = "DynamicParameter %d is set per particle by the game's Niagara system; exposed as %s (default %s)" % (idx, v.e, dflt)
             if msg not in self.notes:
@@ -1672,7 +1665,7 @@ class Translator:
             self.uses.add("dpstreams")
             self.uses.add("pstreams")
             self.dpidx.add(idx)
-            v = self.tmp("PorterDP4(%s, _PorterDPSlot%d, %s)" % (v.e, idx, "IN.pdp" if self.mode == "ps" else "v.texcoord2"), 4)
+            v = self.tmp("PorterDP4(%s, _PorterDPSlot%d, %s, %s)" % (v.e, idx, "IN.pdp" if self.mode == "ps" else "v.texcoord2", "IN.pdp2" if self.mode == "ps" else "v.texcoord3"), 4)
             if out < 4:
                 return self.mask(v, [out])
             if out == 4:
@@ -1892,9 +1885,6 @@ class Translator:
             pname = p.get("ParameterName")
             at = p.get("Atlas") or {}
             row = (self.entry.get("scalars") or {}).get(pname, p.get("DefaultValue")) if pname else None
-            if pname in (self.entry.get("scalars") or {}):
-                self.override_hits += 1
-                self.used_values.add(("scalar", str(pname).lower()))
             if row is not None and at and hasattr(self.src, "atlas"):
                 rows = self.src.atlas(str(at.get("ObjectPath", "")), inner(str(at.get("ObjectName", ""))))
                 if rows:
@@ -2349,13 +2339,15 @@ def ue_custom_code(code, ow):
 
 
 PORTER_DP_HELPERS = """
-float PorterDP1(float b, float s, float4 d)
+float PorterDP1(float b, float s, float4 d, float4 e)
 {
-    return s < -0.5 ? b : (s < 0.5 ? d.x : (s < 1.5 ? d.y : (s < 2.5 ? d.z : d.w)));
+    // slots 0..3 ride in the first custom stream (d), 4..7 in the second (e); a negative slot keeps the property's own value
+    return s < -0.5 ? b : (s < 3.5 ? (s < 1.5 ? (s < 0.5 ? d.x : d.y) : (s < 2.5 ? d.z : d.w))
+                                   : (s < 5.5 ? (s < 4.5 ? e.x : e.y) : (s < 6.5 ? e.z : e.w)));
 }
-float4 PorterDP4(float4 b, float4 s, float4 d)
+float4 PorterDP4(float4 b, float4 s, float4 d, float4 e)
 {
-    return float4(PorterDP1(b.x, s.x, d), PorterDP1(b.y, s.y, d), PorterDP1(b.z, s.z, d), PorterDP1(b.w, s.w, d));
+    return float4(PorterDP1(b.x, s.x, d, e), PorterDP1(b.y, s.y, d, e), PorterDP1(b.z, s.z, d, e), PorterDP1(b.w, s.w, d, e));
 }
 """
 
@@ -2880,7 +2872,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     # the 3 tangent-to-world rows from INTERNAL_DATA) from 9 to 11 and fails "Too many texture interpolators" on target 3.0 (max 10).
     pragma += " nofog noforwardadd nolightmap nodynlightmap nodirlightmap novertexlights noambient" if unlit else ""
     o.append("        " + pragma)
-    o.append("        #pragma target %s" % ("4.0" if "atmosphere" in tr.uses else "3.0"))
+    o.append("        #pragma target %s" % ("4.0" if "atmosphere" in tr.uses else ("3.5" if ("pcolor" in tr.uses or "dpstreams" in tr.uses) else "3.0")))
     o.append("        #include \"UnityCG.cginc\"")
     o.append("        #include \"Lighting.cginc\"")
     if "atmosphere" in tr.uses:
@@ -2948,6 +2940,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("            float4 pcol;")
     if "dpstreams" in tr.uses:
         o.append("            float4 pdp;")
+        o.append("            float4 pdp2;")
     o.append("            float3 objPos;")
     o.append("            float4 screenPos;")
     o.append("            float3 worldNormal;")
@@ -2967,6 +2960,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("            o.tc01 = float4(v.texcoord.xy, v.texcoord1.xy);")
     if "dpstreams" in tr.uses:
         o.append("            o.pdp = v.texcoord2;")
+        o.append("            o.pdp2 = v.texcoord3;")
     o.append("            o.objPos = v.vertex.xyz;")
     if has_wpo:
         o.append("            float3 vpos = v.vertex.xyz;")
@@ -4261,7 +4255,7 @@ CHK_WIDTH = {"float": 1, "half": 1, "fixed": 1, "int": 1, "bool": 1, "float2": 2
              "float3": 3, "half3": 3, "fixed3": 3, "float4": 4, "half4": 4, "fixed4": 4}
 CHK_INPUT_MEMBERS = {"tc01": "float4 tc01;", "worldPos": "float3 worldPos;", "viewDir": "float3 viewDir;",
                      "color": "float4 color : COLOR;", "objPos": "float3 objPos;", "screenPos": "float4 screenPos;",
-                     "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;", "pcol": "float4 pcol;", "pdp": "float4 pdp;"}
+                     "worldNormal": "float3 worldNormal;", "facing": "float facing : VFACE;", "pcol": "float4 pcol;", "pdp": "float4 pdp;", "pdp2": "float4 pdp2;"}
 CHK_OURS = re.compile(r"\b_(?:[SVCOT])_\w+\b")
 UNITY_EDITOR_PATH = os.environ.get("UNITY_EDITOR", "")
 UNITY_FIX_ROUNDS = 10

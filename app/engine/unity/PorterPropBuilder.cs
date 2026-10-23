@@ -7,7 +7,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 
-public static class PorterPropBuilder
+public static partial class PorterPropBuilder
 {
     const float CmToM = 0.01f;
     const float LightIntensityScale = 1f;
@@ -305,50 +305,30 @@ public static class PorterPropBuilder
         if (!n.ContainsKey("system") || n["system"] == null) return;
         bool awake = B(n["playOnAwake"], true);
         foreach (var eo in L(D(n["system"])["emitters"]))
+        {
+            BuildReplayEmitter(go, D(eo));
             BuildEmitter(go, D(eo), awake);
+        }
     }
 
     static void BuildEmitter(GameObject parent, Dictionary<string, object> e, bool awake)
     {
-        var rl = L(e["renderers"]);
+        // renderers played from a baked replay are not Particle System renderers
+        var all = L(e["renderers"]);
+        var rl = new List<object>();
+        for (int i = 0; i < all.Count; i++)
+            if (!D(all[i]).ContainsKey("baked")) rl.Add(all[i]);
+        if (all.Count > 0 && rl.Count == 0) return;
+        if (rl.Count != all.Count)
+        {
+            e = new Dictionary<string, object>(e);
+            e["renderers"] = rl;
+        }
         var picks = new List<int>();
         for (int i = 0; i < rl.Count; i++)
         {
             string t = S(D(rl[i])["type"]);
             if (t == "Mesh" || t == "Sprite") picks.Add(i);
-        }
-        // Unity particle meshes accept exactly one sub mesh. A mesh with several material slots is split into
-        // one renderer entry (and so one Particle System) per sub mesh, each with its own material.
-        var parts = new List<object>();
-        int split = 0;
-        foreach (int pi in picks)
-        {
-            var pr0 = D(rl[pi]);
-            Mesh whole = null;
-            if (S(pr0["type"]) == "Mesh" && pr0.ContainsKey("mesh") && pr0["mesh"] != null) whole = FindMesh(S(pr0["mesh"]));
-            if (whole != null && whole.subMeshCount > 1)
-            {
-                var slotMats = pr0.ContainsKey("materials") && pr0["materials"] != null ? L(pr0["materials"]) : new List<object>();
-                if (slotMats.Count != whole.subMeshCount)
-                    log.Add("CHECK " + S(e["name"]) + ": mesh '" + S(pr0["mesh"]) + "' has " + whole.subMeshCount + " sub meshes but the blueprint lists " + slotMats.Count + " materials");
-                for (int sm = 0; sm < whole.subMeshCount; sm++)
-                {
-                    var part = new Dictionary<string, object>(pr0);
-                    part["submesh"] = sm;
-                    object mat = sm < slotMats.Count ? slotMats[sm] : (slotMats.Count > 0 ? slotMats[slotMats.Count - 1] : null);
-                    part["materials"] = mat != null ? new List<object> { mat } : new List<object>();
-                    parts.Add(part);
-                }
-                split++;
-            }
-            else parts.Add(rl[pi]);
-        }
-        if (split > 0)
-        {
-            picks = new List<int>();
-            for (int i = 0; i < parts.Count; i++) picks.Add(i);
-            rl = parts;
-            log.Add("SPLIT " + S(e["name"]) + ": " + split + " mesh renderer(s) have several sub meshes, which Unity particle meshes do not allow, so each sub mesh became its own Particle System with its own material (" + parts.Count + " in total)");
         }
         if (picks.Count < 2)
         {
@@ -905,17 +885,6 @@ public static class PorterPropBuilder
         string meshName = S(r["mesh"]);
         var mesh = FindMesh(meshName);
         if (mesh == null) Miss("mesh", meshName, meshWhy);
-        if (mesh != null && r.ContainsKey("submesh") && r["submesh"] != null)
-        {
-            int subIndex = (int)N(r["submesh"], 0);
-            var single = SubMeshOnly(mesh, subIndex, meshName);
-            if (single != null)
-            {
-                mesh = single;
-                meshName = meshName + "_sub" + subIndex;
-            }
-            else log.Add("CHECK " + name + ": could not copy sub mesh " + subIndex + " of '" + meshName + "' (is Read/Write enabled on the model?), Unity will report that particle meshes need exactly one sub mesh");
-        }
         string facing = r.ContainsKey("facing") ? S(r["facing"]) : "Default";
         bool faced = facing == "CameraPosition" || facing == "CameraPlane" || facing == "Velocity";
         bool negativeX = PorterBlueprintSetup.MeshArrivesMirroredX;
@@ -955,20 +924,6 @@ public static class PorterPropBuilder
         bool hasOrient = false;
         if (mod.ContainsKey("meshOrientation"))
             hasOrient = SafeVecMid(mod["meshOrientation"], out orient, out orientRange) && orient.sqrMagnitude > 1e-6f;
-        bool fullRandom = false;
-        if (!faced && mod.ContainsKey("meshOrientation") && mod["meshOrientation"] != null)
-        {
-            try
-            {
-                Vector3 oLo, oHi;
-                VecRange(mod["meshOrientation"], out oLo, out oHi);
-                fullRandom = Mathf.Abs(oHi.x - oLo.x) >= 270f && Mathf.Abs(oHi.y - oLo.y) >= 120f && Mathf.Abs(oHi.z - oLo.z) >= 270f;
-            }
-            catch (Exception)
-            {
-                fullRandom = false;
-            }
-        }
         if (faced)
         {
             pr.alignment = facing == "CameraPosition" ? ParticleSystemRenderSpace.Facing : facing == "CameraPlane" ? ParticleSystemRenderSpace.View : ParticleSystemRenderSpace.Velocity;
@@ -992,13 +947,6 @@ public static class PorterPropBuilder
         main.startRotationX = euler.x;
         main.startRotationY = euler.y;
         main.startRotationZ = euler.z;
-        if (fullRandom)
-        {
-            main.startRotationX = new ParticleSystem.MinMaxCurve(0f, 2f * Mathf.PI);
-            main.startRotationY = new ParticleSystem.MinMaxCurve(0f, 2f * Mathf.PI);
-            main.startRotationZ = new ParticleSystem.MinMaxCurve(0f, 2f * Mathf.PI);
-            log.Add("ORIENT " + name + ": Unreal gives every particle a random 3D rotation (recorded range roll/pitch/yaw covers all directions), so each Unity particle now starts with a random rotation on all three axes instead of one fixed rotation. APPROX: the three angles are drawn independently, so the spread of directions is random but not exactly as even as Unreal's");
-        }
         Vector3 ms = r.ContainsKey("meshScale") && r["meshScale"] != null ? P(V3(r["meshScale"])) : Vector3.one;
         Vector3 modScale = Vector3.one;
         bool scaleRange = false;
@@ -1027,43 +975,6 @@ public static class PorterPropBuilder
         if (mod.ContainsKey("dynamicParams") && mod["dynamicParams"] != null)
             log.Add("NOT APPLIED " + name + ": dynamic material parameters (shader keeps its default values)");
         log.Add("UNVERIFIED " + name + ": mesh particle orientation uses the same axis mapping as the sky dome meshes");
-    }
-
-    static Mesh SubMeshOnly(Mesh src, int sub, string meshName)
-    {
-        try
-        {
-            if (sub < 0 || sub >= src.subMeshCount || src.vertexCount == 0) return null;
-            string dir = specFolder + "/ParticleMeshes";
-            if (!AssetDatabase.IsValidFolder(dir)) AssetDatabase.CreateFolder(specFolder, "ParticleMeshes");
-            string path = dir + "/" + Safe(meshName) + "_sub" + sub + ".asset";
-            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            var v = src.vertices;
-            if (v.Length == 0 || v.Length != src.vertexCount) return null;
-            var m = existing != null ? existing : new Mesh();
-            m.Clear();
-            m.name = Safe(meshName) + "_sub" + sub;
-            m.indexFormat = src.indexFormat;
-            m.vertices = v;
-            var n = src.normals;
-            if (n.Length == v.Length) m.normals = n;
-            var t = src.tangents;
-            if (t.Length == v.Length) m.tangents = t;
-            m.uv = src.uv;
-            m.uv2 = src.uv2;
-            var c = src.colors;
-            if (c.Length == v.Length) m.colors = c;
-            m.subMeshCount = 1;
-            m.SetTriangles(src.GetTriangles(sub), 0);
-            m.RecalculateBounds();
-            if (existing == null) AssetDatabase.CreateAsset(m, path);
-            else EditorUtility.SetDirty(m);
-            return m;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 
     static Mesh MirroredMesh(Mesh src, string meshName)

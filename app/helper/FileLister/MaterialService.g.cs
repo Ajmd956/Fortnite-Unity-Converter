@@ -478,7 +478,7 @@ public sealed class MaterialService
     }
 
     /// <summary>Bumped when what a cached texture file holds changes.</summary>
-    const int TextureCacheVersion = 3;   // 3: slice count of arrays and volumes read from the mip's SizeZ
+    const int TextureCacheVersion = 2;
 
     /// <summary>
     /// Textures made here, not in the game (a LEGO figure's colour grids, an effect's exposed curve):
@@ -599,9 +599,6 @@ public sealed class MaterialService
                 _ => "2d",
             };
             var depth = kind is "volume" or "array" && ct.Width > 0 ? Math.Max(1, ct.Height / ct.Width) : 1;
-            // slices need not be square (the ToonLightning arrays are 128x1 with 18 slices): the asset's own depth wins
-            if (kind is "volume" or "array" && tex.PlatformData?.Mips?.FirstOrDefault() is { } mip0 && mip0.SizeZ > 1 && mip0.SizeX > 0 && ct.Width > 0)
-                depth = kind == "array" ? mip0.SizeZ : Math.Max(1, (int)Math.Round(mip0.SizeZ * (double)ct.Width / mip0.SizeX));
             var result = new TextureFile
             {
                 File = file, Srgb = tex.SRGB, Width = ct.Width, Height = ct.Height, FullWidth = full, Kind = kind, Depth = depth,

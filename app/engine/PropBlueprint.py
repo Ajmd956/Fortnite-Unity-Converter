@@ -4,6 +4,7 @@ SKIP_TYPES = {"BoxComponent", "CapsuleComponent", "ChildActorComponent", "FortSo
 DEFAULT_PITCH = (0.95, 1.05)
 report = []
 PATHS = {}
+BAKED = {}      # file name: bytes, the baked replay files finish() writes beside the spec
 
 
 def note(kind, text):
@@ -727,17 +728,29 @@ def finish(spec, out, bp_name, scripts=None):
     os.makedirs(folder, exist_ok=True)
     os.makedirs(os.path.join(out, "Editor"), exist_ok=True)
     meshes, materials, waves = collect_assets(spec)
+    for n in spec["nodes"]:         # a baked renderer draws with its own material
+        for e in (n.get("system") or {}).get("emitters", []):
+            for b in e.get("baked", []):
+                if b.get("material") and b["material"] not in materials:
+                    materials.append(b["material"])
     spec["assets"] = {"meshes": meshes, "materials": materials, "waves": waves}
+    import ParticleBake
+    spec["bakeAll"] = ParticleBake.mode() == "all"
+    os.makedirs(os.path.join(out, "Scripts"), exist_ok=True)
+    for fname, blob in BAKED.items():
+        with open(os.path.join(folder, fname), "wb") as fh:
+            fh.write(blob)
     with open(os.path.join(folder, bp_name + ".propspec.json"), "w", encoding="utf-8") as fh:
         json.dump(spec, fh, indent=1)
     with open(os.path.join(folder, bp_name + ".propreport.txt"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(spec["report"]) + "\n")
     here = scripts or os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity")
-    for fname in ("PorterBlueprintSetup.cs", "PorterPropBuilder.cs"):
+    for fname, sub in (("PorterBlueprintSetup.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterReplayBuild.cs", "Editor"),
+                       ("PorterParticleReplay.cs", "Scripts")):
         srcf = os.path.join(here, fname)
         if not os.path.exists(srcf):
-            sys.exit("the Unity scripts are missing from the app (%s)" % here)
-        shutil.copyfile(srcf, os.path.join(out, "Editor", fname))
+            sys.exit("the Unity scripts are missing from the app (%s: %s)" % (here, fname))
+        shutil.copyfile(srcf, os.path.join(out, sub, fname))
     kinds = {}
     for n in spec["nodes"]:
         kinds[n["kind"]] = kinds.get(n["kind"], 0) + 1
@@ -825,18 +838,6 @@ def stream_spec(emname, em, rs):
     return out
 
 
-def motion_notes(em):
-    m = em.get("motion") or {}
-    name = em["name"]
-    drift, bound = float(m.get("driftCm", 0.0)), float(m.get("explainedCm", 0.0))
-    if drift > 1.0 and drift > bound * 1.25 + 2.0:
-        note("APPROX", "%s: in Unreal %d of %d particles move after they spawn, up to %.1f cm from where they were born, which is more than the spawn velocity explains (%.1f cm); the Unity particle system only reproduces the spawn position and velocity, so this movement is missing" % (name, int(m.get("movedParticles", 0)), int(m.get("tracked", 0)), drift, bound))
-    spin = float(m.get("spinDeg", 0.0))
-    if spin > 5.0:
-        rate = float(m.get("spinRateDegPerSec", 0.0))
-        note("APPROX", "%s: in Unreal particles keep turning after they spawn, by up to %.0f degrees%s; spin after spawn is not carried over to the Unity particle system" % (name, spin, (" at about %.0f degrees per second" % rate) if rate > 0.0 else ""))
-
-
 def replay_position(em):
     """Where the replay's particles were born, as the smallest and largest value of each axis in cm (None if nothing spawned)."""
     pos = (em.get("initial") or {}).get("Position")
@@ -890,9 +891,10 @@ def scripted_emitter_spec(loader, system, em, seconds):
         mods["meshOrientation"] = span3(init["MeshOrientation"])
     emitter = next((e for e in system.emitters if e.name == name), None)
     renderers = []
-    for rtype, props in (NiagaraPorter.renderer_exports(system, emitter) if emitter is not None else []):
+    for src_index, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter) if emitter is not None else []):
         if props.get("bIsEnabled", True):
             rs = renderer_spec(loader, name, rtype, props)
+            rs["srcIndex"] = src_index
             if rs["type"] in ("Mesh", "Sprite"):
                 rs["streams"] = stream_spec(name, em, rs)
             renderers.append(rs)
@@ -913,9 +915,47 @@ def scripted_emitter_spec(loader, system, em, seconds):
     }
 
 
+def bake_emitter(system, em, spec, stem):
+    """Write the baked replay of the renderers of this emitter that need it. They are listed on its spec as "baked",
+    with the material each draws with, and the renderers the Particle System cannot draw are no longer reported as lost."""
+    import NiagaraPorter, ParticleBake
+    track = NiagaraPorter.LAST_TRACKS.get(em["name"])
+    if track is None or ParticleBake.mode() == "off":
+        return
+    recorder, emitter = track
+    baked, notes = [], []
+    for i, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter)):
+        fname = "%s_%s_%d" % (stem, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
+        b = ParticleBake.bake_renderer(recorder, rtype, props, fname, notes, dt=NiagaraPorter.DT, system=system, emitter_name=em["name"])
+        if b is None:
+            continue
+        BAKED[b["file"]] = b.pop("blob")
+        b["srcIndex"] = i
+        b["material"] = asset_name(props.get("Material")) if b["kind"] in ("Sprite", "Ribbon", "Decal") else None
+        if b["kind"] == "Decal" and not b["material"]:
+            b["material"] = asset_name(props.get("DecalMaterial") or props.get("Material"))
+        b["decalParams"] = props.get("MaterialParameters") if b["kind"] == "Decal" else None
+        b["visibility"] = int(props.get("RendererVisibility", 0) or 0)
+        baked.append(b)
+        note("INFERRED", "%s: %s renderer %d is played back from a baked replay (%s, %d particles over %d ticks)" % (
+            em["name"], b["kind"], i, b["why"], b["rows"], b["frames"]))
+        for r in spec.get("renderers", []):
+            if r.get("srcIndex") == i:
+                r["baked"] = b["file"]
+        if b["kind"] in ("Ribbon", "Decal"):
+            for r in list(report):
+                if r.startswith("UNSUPPORTED: %s: renderer %s" % (em["name"], b["kind"])):
+                    report.remove(r)
+    for n in notes:
+        note("UNSUPPORTED", n)
+    if baked:
+        spec["baked"] = baked
+
+
 def run_system(source, path, out, name, scripts=None, seconds=6.0):
     """A Niagara system as a prefab spec: stateless emitters from their module settings, the rest from a replay."""
     import NiagaraPorter
+    BAKED.clear()
     pkg = package_of(path)
     sysname = pkg.rpartition("/")[2]
     PATHS.setdefault(sysname, path if "." in path.rpartition("/")[2] else path + "." + sysname)
@@ -931,25 +971,29 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
         dump = NiagaraPorter.fetch_dump(source.bridge, path)
     except RuntimeError as ex:
         sys.exit(str(ex))
-    system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
+    import ParticleBake
+    NiagaraPorter.BAKE_FRAMES = ParticleBake.mode() != "off"
+    try:
+        system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
+    finally:
+        NiagaraPorter.BAKE_FRAMES = False
     emitters = []
     for em in summaries:
-        motion_notes(em)
         if em["name"] in stateless:
             spec = stateless.pop(em["name"])
             replayed = replay_position(em)
             if replayed is not None:
                 spec["replayPosition"] = replayed
+            bake_emitter(system, em, spec, sysname)
             emitters.append(spec)
             continue
         spec = scripted_emitter_spec(loader, system, em, seconds)
         if spec is not None:
+            bake_emitter(system, em, spec, sysname)
             emitters.append(spec)
     emitters += list(stateless.values())
     for s in skipped:
         note("UNSUPPORTED", s["emitter"] + ": not converted (" + str(s["why"]) + ")")
-    for who, names in sorted(system.field_gaps.items()):
-        note("APPROX", who + ": samples the vector field " + ", ".join(sorted(names)) + ", which is not in the export, so the field gives no motion (the emitter is converted; movement that came from the field is missing)")
     report[:] = [r for r in report if "enabled non-stateless emitter" not in r]
     bp_name = name or sysname
     node = {"name": "Particles", "parent": 0, "kind": "particles", "loc": [0, 0, 0], "rot": [0, 0, 0], "scale": [1, 1, 1],

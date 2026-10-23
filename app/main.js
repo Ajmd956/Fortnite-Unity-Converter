@@ -618,6 +618,42 @@ function engineCommand() {
   }
 }
 
+function shareSharedScripts(blueprintsDir) {
+  const move = (fileName, sharedSub) => {
+    try {
+      const sharedDir = path.join(blueprintsDir, sharedSub)
+      const shared = path.join(sharedDir, fileName)
+      const copies = []
+      for (const d of fs.readdirSync(blueprintsDir, { withFileTypes: true })) {
+        if (!d.isDirectory() || d.name === 'Editor' || d.name === 'Scripts') continue
+        const shaders = path.join(blueprintsDir, d.name, 'Shaders')
+        const dirs = sharedSub === 'Editor' ? [path.join(shaders, 'Editor')] : [shaders]
+        for (const dir of dirs) {
+          const f = path.join(dir, fileName)
+          if (fs.existsSync(f)) copies.push({ f, dir })
+        }
+      }
+      if (!copies.length) return
+      fs.mkdirSync(sharedDir, { recursive: true })
+      if (!fs.existsSync(shared)) fs.copyFileSync(copies[0].f, shared)
+      for (const c of copies) {
+        fs.rmSync(c.f, { force: true })
+        fs.rmSync(c.f + '.meta', { force: true })
+        if (sharedSub === 'Editor') {
+          try {
+            if (!fs.readdirSync(c.dir).length) {
+              fs.rmdirSync(c.dir)
+              fs.rmSync(c.dir + '.meta', { force: true })
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  move('PorterTextureSetup.cs', 'Editor')
+  move('PorterObjectBounds.cs', 'Scripts')
+}
+
 function runEngine(args) {
   return new Promise(resolve => {
     const { cmd, pre } = engineCommand()
@@ -1575,7 +1611,7 @@ async function buildBlueprintPrefabs(made) {
     if (stopped) return built
     const lines = tail().split(/\r?\n/)
     for (const line of lines) {
-      if (/^Porter:|^\[extractor\]/.test(line)) send('engine:log', line + '\n')
+      if (/^Porter:|^\[extractor\]|^(STREAMS|UNVERIFIED|LIGHT|DECAL|SPARK|SPIN|CHECK|NOT APPLIED|APPROX|DEFAULT|FACING|MISSING|SHAPE|STATE|UNSUPPORTED) /.test(line)) send('engine:log', line + '\n')
     }
     if (!fs.existsSync(verdictFile)) {
       const errors = lines.filter(l => /error CS\d+/.test(l)).slice(0, 8)
@@ -1587,7 +1623,7 @@ async function buildBlueprintPrefabs(made) {
       if (bm) built.add(bm[1].slice(bm[1].lastIndexOf('/') + 1))
       else if (line.trim()) send('engine:log', 'Unity: ' + line.trim() + '\n')
     }
-    const prefabOnly = n => /\.(prefab|mat|asset|meta)$/i.test(n)
+    const prefabOnly = n => /\.(prefab|mat|meta)$/i.test(n)
     for (const row of made) {
       if (built.has(row.name)) syncTree(path.join(projRoot, path.basename(row.dir)), row.dir, prefabOnly)
     }
@@ -1666,6 +1702,7 @@ async function runPropQueue(paths, payload, flag) {
         send('engine:log', 'material not converted: ' + short + '\n')
       }
     }
+    shareSharedScripts(blueprintsDir)
     const sounds = []
     for (const mm of res.output.matchAll(/^sound: (.+)$/gm)) {
       const ref = mm[1].trim()

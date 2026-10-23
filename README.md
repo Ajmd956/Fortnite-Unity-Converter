@@ -68,10 +68,6 @@ or Unity. Fortnite is a trademark of Epic Games.
 
 ## What's new in this update
 
-- Particle converter: mesh particles whose Niagara orientation is fully random now start with a random rotation in Unity
-  instead of one fixed rotation, and the mirrored particle meshes are copied back so the mesh stays assigned.
-- Particle converter: the replay now measures how far particles move and how fast they turn after they spawn, and the
-  report warns when the Unity particle system does not reproduce that.
 - Particle converter: a Niagara system with more than one renderer (for example a bolt and its glow) now becomes one Unity
   Particle System per renderer, with the same settings and random seed.
 - Dynamic material parameters set by Niagara follow the particle over its life, using the exact values the Niagara
@@ -79,12 +75,3 @@ or Unity. Fortnite is a trademark of Epic Games.
   to the shader in Custom Data 2.
 - Each renderer reads its own colour attribute, so a glow layer uses its own glow colour.
 - Shaders with dynamic parameters need to be converted again with this version.
-- Installation profiles: App Settings, Installation now keeps a list of
-  profiles, one per Fortnite build. Each has its own archive folder, version
-  (Latest Installed or Custom), encryption keys, mappings file, game language
-  and Nanite and bundle switches. Pick the active one and press Reload.
-- Custom profiles can fetch the keys and mappings for a game version.
-- Right-click a profile to duplicate or delete it, and drag to reorder.
-- Latest (On-Demand) is listed but not available yet.
-- The app looks for a new version every 30 seconds while it is open (the
-  portable exe). The Check for Updates switch still turns it off.

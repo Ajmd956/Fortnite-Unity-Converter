@@ -19,6 +19,9 @@ CURVE_POINTS = 8            # a Unity gradient holds at most 8 colour keys
 BURST_WINDOW = 0.1          # births in the first 0.1 s count as a burst at time 0
 INITIAL_ATTRIBUTES = ("Position", "Velocity", "SpriteRotation", "MeshOrientation")
 STREAM_POINTS = 16
+BAKE_FRAMES = False         # keep every tick's particles so ParticleBake can write the replay files
+BAKE_MOST_ROWS = 400000     # particles over all ticks, per emitter; past that its replay is not written
+LAST_TRACKS = {}            # emitter name: (recorder, emitter) from the last replay()
 BINDINGS = (("ColorBinding", "Color"), ("DynamicMaterialBinding", "DynamicMaterialParameter"),
             ("DynamicMaterial1Binding", "DynamicMaterialParameter1"), ("DynamicMaterial2Binding", "DynamicMaterialParameter2"),
             ("DynamicMaterial3Binding", "DynamicMaterialParameter3"))
@@ -90,65 +93,6 @@ def to_exports(dump):
 
 # ---------------------------------------------------------------- playing it
 
-class Motion:
-    """How far particles travelled and turned after they were born, per particle ID."""
-
-    LIMIT = 400
-
-    def __init__(self):
-        self.born = {}
-        self.drift = 0.0
-        self.spin = 0.0
-        self.moved = set()
-        self.last = 0
-        self.previous = {}
-        self.rates = []
-
-    def feed(self, ids, position, orientation, rotation, count=0, dt=DT):
-        if ids is None:
-            if not count:
-                return
-            if count < self.last:
-                self.born.clear()
-                self.previous.clear()
-            self.last = count
-            ids = np.vstack([np.arange(count), np.zeros(count, dtype=np.int64)])
-        if ids.shape[0] < 2 or not ids.shape[1]:
-            return
-        for j in range(min(ids.shape[1], self.LIMIT)):
-            key = (int(ids[0, j]), int(ids[1, j]))
-            pos = None if position is None or position.shape[0] < 3 else position[:3, j]
-            quat = None if orientation is None or orientation.shape[0] < 4 else orientation[:4, j]
-            rot = None if rotation is None or rotation.shape[0] < 1 else float(rotation[0, j])
-            start = self.born.get(key)
-            if start is None:
-                self.born[key] = (None if pos is None else pos.copy(), None if quat is None else quat.copy(), rot)
-                continue
-            if pos is not None and start[0] is not None:
-                d = float(np.linalg.norm(pos - start[0]))
-                if d > 1.0:
-                    self.moved.add(key)
-                self.drift = max(self.drift, d)
-            if quat is not None and start[1] is not None:
-                dot = min(1.0, abs(float(np.dot(quat, start[1]))))
-                self.spin = max(self.spin, float(np.degrees(2.0 * np.arccos(dot))))
-            if rot is not None and start[2] is not None:
-                self.spin = max(self.spin, abs(rot - start[2]))
-            before = self.previous.get(key)
-            if before is not None and len(self.rates) < 20000:
-                if quat is not None and before[0] is not None:
-                    step = np.degrees(2.0 * np.arccos(min(1.0, abs(float(np.dot(quat, before[0]))))))
-                    self.rates.append(float(step) / dt)
-                elif rot is not None and before[1] is not None:
-                    self.rates.append(abs(rot - before[1]) / dt)
-            self.previous[key] = (None if quat is None else quat.copy(), rot)
-
-    def summary(self):
-        rates = [x for x in self.rates if x > 0.5]
-        typical = float(np.median(rates)) if len(rates) >= 3 else 0.0
-        return {"driftCm": r4(self.drift), "spinDeg": r4(self.spin), "spinRateDegPerSec": r4(typical), "movedParticles": len(self.moved), "tracked": len(self.born)}
-
-
 class Recorder:
     """What one emitter did over a play: when particles were born, what they were born with, and how
     colour and size run over a particle's age."""
@@ -166,19 +110,27 @@ class Recorder:
         self.sizes = []         # and its size (3, n): sprite size (x, y, 1) or mesh scale
         self.sprite = False
         self.initial = {}       # per attribute: what each particle was born with, (components, born) per birth tick
-        self.motion = Motion()
+        self.frames = []        # every tick's particles as the emitter holds them: (floats, ints), for the baked replay
+        self.frame_rows = 0     # particles over all of those ticks
+        self.layout = None      # the emitter's data layout: where each attribute sits in those frames
+        self.truncated = False  # the frames stopped at the limit and do not hold the whole replay
 
     def tick(self, e, t0):
         count = int(e.data.count)
+        if self.layout is None:
+            self.layout = e.layout
+        if BAKE_FRAMES and not self.truncated:
+            if self.frame_rows + count > BAKE_MOST_ROWS:
+                self.truncated, self.frames = True, []
+            else:
+                self.frames.append((e.data.floats[:, :count].copy(), e.data.ints[:, :count].copy()))
+                self.frame_rows += count
         self.max_alive = max(self.max_alive, count)
         born = int(getattr(e, "born", 0))
         rows = {}
         for name in ("Age", "Lifetime", "Color", "SpriteSize", "Scale") + INITIAL_ATTRIBUTES:
             a = e.attribute(name)
             rows[name] = None if a is None else np.array(a[:, :count], np.float64)
-        if count:
-            ids = e.attribute("ID")
-            self.motion.feed(None if ids is None else np.array(ids[:, :count]), rows["Position"], rows["MeshOrientation"], rows["SpriteRotation"], count)
         if born > 0:
             self.births.append((t0, born))
             self.total += born
@@ -446,17 +398,6 @@ def initial_ranges(r):
     return out
 
 
-def motion_summary(r):
-    out = r.motion.summary()
-    velocity = (initial_ranges(r).get("Velocity") or {})
-    speed = 0.0
-    if velocity:
-        speed = float(np.linalg.norm([max(abs(a), abs(b)) for a, b in zip(velocity["min"], velocity["max"])]))
-    life = max(r.lifetimes) if r.lifetimes else 0.0
-    out["explainedCm"] = r4(speed * life)
-    return out
-
-
 def short(path):
     return (path or "").rsplit("/", 1)[-1]
 
@@ -483,7 +424,6 @@ def summarize(system, e, r, required, approximate):
         "startSize": start or {"x": 1.0, "y": 1.0, "z": 1.0},
         "sizeUnit": "cm" if r.sprite else "scale",
         "initial": initial_ranges(r),
-        "motion": motion_summary(r),
         "streams": stream_curves(r),
         "renderers": renderers(system, e),
     }
@@ -499,15 +439,15 @@ def warnings_for(em):
         w.append("%s: only emits when the game sets %s to 1; its object is created switched off" % (name, ", ".join(em["requires"])))
     if em["totalBorn"] == 0:
         w.append("%s: spawned nothing in the time played" % name)
-    else:
+    elif not em.get("allBaked"):
         w.append("%s: velocity, rotation and spawn position are not carried over" % name)
     peak = max([max(c["r"], c["g"], c["b"], c["a"]) for c in em["colorCurve"]] or [0.0])
-    if peak > 1.0:
+    if peak > 1.0 and not em.get("allBaked"):
         w.append("%s: colour goes up to %.2f (above 1); Unity particle colours stop at 1" % (name, peak))
     for r in em["renderers"]:
         if r["note"]:
             w.append("%s: %s" % (name, r["note"]))
-        if r["kind"] == "Sprite" and r["facing"] not in ("", "FaceCamera"):
+        if r["kind"] == "Sprite" and r["facing"] not in ("", "FaceCamera") and not r.get("baked"):
             w.append("%s: sprite facing %s is drawn facing the camera" % (name, r["facing"]))
     return w
 
@@ -532,7 +472,18 @@ public static class PorterParticleSetup
     class Size { public float x, y, z; }
 
     [Serializable]
-    class Rend { public string kind, material, mesh, facing, note; public bool enabled; public List<string> materials; }
+    class Rend { public string kind, material, mesh, facing, note, baked; public bool enabled; public List<string> materials; }
+
+    [Serializable]
+    class Bake
+    {
+        public string file, kind, material;
+        public int srcIndex, frames, maxPerFrame, facingMode, subX = 1, subY = 1, shape, sides = 2;
+        public float radiusScale, pivotX = 0.5f, pivotY = 0.5f;
+        public bool lengthwise;
+        public List<string> fieldNames, meshes, materials;
+        public List<int> fieldOffsets, fieldWidths, dpComps;
+    }
 
     [Serializable]
     class Emitter
@@ -546,6 +497,7 @@ public static class PorterParticleSetup
         public List<Key> colorCurve, sizeCurve;
         public Size startSize;
         public List<Rend> renderers;
+        public List<Bake> baked;
     }
 
     [Serializable]
@@ -573,10 +525,15 @@ public static class PorterParticleSetup
         GameObject root = new GameObject(d.system);
         foreach (Emitter e in d.emitters)
         {
-            List<Rend> drawn = e.renderers.FindAll(r => r.enabled && (r.kind == "Sprite" || r.kind == "Mesh"));
+            if (e.baked != null)
+            {
+                foreach (Bake b in e.baked) MakeBaked(root.transform, e, b, folder);
+            }
+            List<Rend> drawn = e.renderers.FindAll(r => r.enabled && string.IsNullOrEmpty(r.baked) && (r.kind == "Sprite" || r.kind == "Mesh"));
             if (drawn.Count == 0)
             {
-                Debug.LogWarning("Porter: " + e.name + " has no sprite or mesh renderer, so it was left out");
+                if (e.baked == null || e.baked.Count == 0)
+                    Debug.LogWarning("Porter: " + e.name + " has no sprite or mesh renderer, so it was left out");
                 continue;
             }
             for (int i = 0; i < drawn.Count; i++)
@@ -686,6 +643,143 @@ public static class PorterParticleSetup
         else Debug.LogWarning("Porter: no shader named " + NameOf(r.material) + " was found in the project, so " + label + " uses the default material");
 
         go.SetActive(e.requires == null || e.requires.Count == 0);
+    }
+
+    // A renderer played from its baked replay (PRB1 file): every tick of the Niagara replay, as the Blender add-on plays it.
+    static void MakeBaked(Transform parent, Emitter e, Bake b, string folder)
+    {
+        string label = e.name + "_" + b.kind + "_" + b.srcIndex;
+        string path = folder + "/" + b.file;
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        TextAsset data = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+        if (data == null)
+        {
+            Debug.LogWarning("Porter: baked replay file " + b.file + " was not found in " + folder + ", so " + label + " is not built");
+            return;
+        }
+        GameObject go = new GameObject(label);
+        go.transform.SetParent(parent, false);
+        PorterParticlePlayer player = go.AddComponent<PorterParticlePlayer>();
+        player.data = data;
+        player.kind = b.kind;
+        player.loop = e.persistent || e.rate > 0f || e.loopPeriod > 0f;
+        player.playOnAwake = true;
+        player.fieldNames = b.fieldNames.ToArray();
+        player.fieldOffsets = b.fieldOffsets.ToArray();
+        player.fieldWidths = b.fieldWidths.ToArray();
+        player.facingMode = b.facingMode;
+        player.lengthwise = b.lengthwise;
+        player.pivotX = b.pivotX;
+        player.pivotY = b.pivotY;
+        player.subX = Mathf.Max(1, b.subX);
+        player.subY = Mathf.Max(1, b.subY);
+        player.ribbonShape = b.shape;
+        player.ribbonSides = Mathf.Max(1, b.sides);
+        int[] comps = b.dpComps != null ? b.dpComps.ToArray() : new int[0];
+        if (comps.Length > 8)
+        {
+            Debug.LogWarning("Porter: " + label + " reads " + comps.Length + " Dynamic Parameter values, the replay carries 8; the rest are not applied");
+            Array.Resize(ref comps, 8);
+        }
+        player.dpComps = comps;
+        if (b.kind == "Light")
+        {
+            player.lightScale = 1f;
+            player.radiusScale = b.radiusScale > 0f ? b.radiusScale : 1f;
+        }
+        else if (b.kind == "Mesh")
+        {
+            List<Mesh> found = new List<Mesh>();
+            foreach (string meshName in b.meshes)
+            {
+                string meshPath = FindPath(NameOf(meshName), "Mesh", folder);
+                Mesh mesh = meshPath == null ? null : AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+                ModelImporter importer = meshPath == null ? null : AssetImporter.GetAtPath(meshPath) as ModelImporter;
+                if (importer != null && !importer.isReadable)
+                {
+                    importer.isReadable = true;     // the player copies the mesh's vertices for every particle
+                    importer.SaveAndReimport();
+                    mesh = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+                }
+                if (mesh == null) Debug.LogWarning("Porter: mesh " + NameOf(meshName) + " was not found in the project (it should be the .fbx in the Meshes folder next to this prefab), so " + label + " draws nothing for it");
+                found.Add(mesh);
+            }
+            player.meshes = found.ToArray();
+            List<Material> mats = new List<Material>();
+            foreach (string matName in b.materials)
+            {
+                Material src = EnsureMaterial(matName, folder);
+                if (src == null)
+                {
+                    Debug.LogWarning("Porter: no shader named " + NameOf(matName) + " was found in the project, so " + label + " uses the default material for it");
+                    continue;
+                }
+                Material inst = StreamCopy(src, label + "_" + mats.Count);
+                ConfigureStreams(inst, comps, player);
+                mats.Add(inst);
+            }
+            if (mats.Count == 0) Debug.LogWarning("Porter: " + label + " uses its meshes' own materials, which are not converted, so it draws with the default material");
+            player.materials = mats.ToArray();
+        }
+        else
+        {
+            Material src = EnsureMaterial(b.material, folder);
+            if (src == null)
+            {
+                Debug.LogWarning("Porter: no shader named " + NameOf(b.material) + " was found in the project, so " + label + " uses the default material");
+            }
+            else
+            {
+                Material inst = StreamCopy(src, label);
+                ConfigureStreams(inst, comps, player);
+                player.material = inst;
+            }
+        }
+        go.SetActive(e.requires == null || e.requires.Count == 0);
+    }
+
+    // slot k of the replay mesh carries Dynamic Parameter component comps[k]; the shader reads _PorterDPSlot<i>.<c> as the slot of DP i component c
+    static void ConfigureStreams(Material inst, int[] comps, PorterParticlePlayer player)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            Vector4 v = new Vector4(-1f, -1f, -1f, -1f);
+            for (int k = 0; k < comps.Length; k++)
+                if (comps[k] / 4 == i) v[comps[k] % 4] = k;
+            inst.SetVector("_PorterDPSlot" + i, v);
+        }
+        // the particle's age and random number ride in the next free slots, for materials that read them
+        if (comps.Length < 8) { player.ageSlot = comps.Length; inst.SetFloat("_PorterAgeSlot", comps.Length); }
+        if (comps.Length < 7) { player.randSlot = comps.Length + 1; inst.SetFloat("_PorterRandSlot", comps.Length + 1); }
+        EditorUtility.SetDirty(inst);
+    }
+
+    static string Safe(string s)
+    {
+        foreach (char c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
+        return s;
+    }
+
+    // A copy of the material for one player, switched to the replay's vertex streams (colour in UV1, parameters in UV2/UV3).
+    static Material StreamCopy(Material src, string label)
+    {
+        string srcPath = AssetDatabase.GetAssetPath(src);
+        string dir = string.IsNullOrEmpty(srcPath) ? "Assets" : Path.GetDirectoryName(srcPath).Replace('\\', '/');
+        string path = dir + "/" + Safe(src.name) + "_" + Safe(label) + ".mat";
+        Material inst = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (inst != null)
+        {
+            EditorUtility.CopySerialized(src, inst);
+            inst.name = Path.GetFileNameWithoutExtension(path);
+        }
+        else
+        {
+            inst = new Material(src);
+            AssetDatabase.CreateAsset(inst, path);
+        }
+        inst.SetFloat("_PorterParticleStreams", 1f);
+        EditorUtility.SetDirty(inst);
+        return inst;
     }
 
     static string NameOf(string objectPath)
@@ -838,6 +932,7 @@ def replay(exports, name, source, seconds):
         kinds = sorted({e["type"] for e in exports})
         sys.exit("%s is not a Niagara system (it holds: %s)" % (source, ", ".join(kinds[:8])))
     print("playing %s for %.0f seconds" % (name, seconds))
+    LAST_TRACKS.clear()
     system, recorders = play(exports, {}, seconds)
     skipped = [{"emitter": n, "why": why} for n, why in system.skipped]
     gates = find_gates(exports, system, recorders, min(seconds, 3.0))
@@ -854,29 +949,93 @@ def replay(exports, name, source, seconds):
     for e in system.emitters:
         source_emitter = next((x for x in gsys.emitters if x.name == e.name), e) if e.name in gated else e
         emitters.append(summarize(system, source_emitter, recorders[e.name], gated.get(e.name, []), approximate))
+        LAST_TRACKS[e.name] = (recorders[e.name], source_emitter)
     return system, emitters, skipped
 
 
+BAKED_KEYS = ("file", "kind", "material", "materials", "meshes", "srcIndex", "frames", "maxPerFrame", "radiusScale", "fieldNames", "fieldOffsets",
+              "fieldWidths", "dpComps", "facingMode", "lengthwise", "pivotX", "pivotY", "subX", "subY", "shape", "sides")
+
+
+def bake_emitters(system, emitters, folder, name, bake_mode):
+    """Write each renderer's replay (what ParticleBake records tick by tick, as the Blender add-on plays it) and list it on its
+    emitter as "baked". The renderers it covers are then played from the file, not from a Particle System."""
+    import ParticleBake
+    notes = []
+    for em in emitters:
+        track = LAST_TRACKS.get(em["name"])
+        if track is None:
+            continue
+        recorder, emitter = track
+        baked = []
+        for i, (rtype, props) in enumerate(renderer_exports(system, emitter)):
+            stem = "%s_%s_%d" % (name, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
+            b = ParticleBake.bake_renderer(recorder, rtype, props, stem, notes, dt=DT, bake_mode=bake_mode, meshes=True, system=system, emitter_name=em["name"])
+            if b is None:
+                continue
+            b["meshes"], b["materials"] = [], []
+            if b["kind"] == "Mesh":
+                b["meshes"] = [p for p in (object_path((m or {}).get("Mesh")) for m in props.get("Meshes") or []) if p]
+                if props.get("bOverrideMaterials"):
+                    b["materials"] = [p for p in (object_path((o or {}).get("ExplicitMat")) for o in props.get("OverrideMaterials") or []) if p]
+                if not b["meshes"]:
+                    notes.append("%s: mesh renderer %d names no mesh of its own (the game gives it one), so it is built as a Particle System" % (em["name"], i))
+                    continue
+            with open(os.path.join(folder, b["file"]), "wb") as fh:
+                fh.write(b["blob"])
+            if b["kind"] == "Decal":
+                b["material"] = object_path(props.get("DecalMaterial") or props.get("Material")) or ""
+            elif b["kind"] in ("Sprite", "Ribbon"):
+                b["material"] = object_path(props.get("Material")) or ""
+            else:
+                b["material"] = ""
+            b["srcIndex"] = i
+            b["radiusScale"] = b["radiusScale"] or 1.0
+            baked.append({k: b[k] for k in BAKED_KEYS if b.get(k) is not None})
+            if i < len(em["renderers"]):
+                em["renderers"][i]["baked"] = b["file"]
+                em["renderers"][i]["note"] = ""
+        if baked:
+            em["baked"] = baked
+        drawn = [r for r in em["renderers"] if r["enabled"]]
+        em["allBaked"] = bool(baked) and all(r.get("baked") for r in drawn)
+    return notes
+
+
 def convert(exports, name, source, out, seconds):
-    system, emitters, skipped = replay(exports, name, source, seconds)
-    warnings = []
+    global BAKE_FRAMES
+    import ParticleBake
+    bake_mode = ParticleBake.mode("all")        # the Blender add-on plays every tick, so every renderer is baked unless PORTER_BAKE says otherwise
+    BAKE_FRAMES = bake_mode != "off"
+    try:
+        system, emitters, skipped = replay(exports, name, source, seconds)
+    finally:
+        BAKE_FRAMES = False
+    folder = os.path.join(out, name)
+    os.makedirs(folder, exist_ok=True)
+    bake_notes = bake_emitters(system, emitters, folder, name, bake_mode) if bake_mode != "off" else []
+    warnings = list(bake_notes)
     for em in emitters:
         warnings += warnings_for(em)
     for s in skipped:
         warnings.append("%s: not converted (%s)" % (s["emitter"], s["why"]))
-    for who, names in sorted(system.field_gaps.items()):
-        warnings.append("%s: samples the vector field %s, which is not in the export, so the field gives no motion here (the emitter is still converted; spawn, colour and size are unaffected, but movement that came from the field is missing)" % (who, ", ".join(sorted(names))))
     bones = sorted(system.reads)
     users = []
     for n, t, v in system.users():
         users.append({"name": n, "type": t, "default": str(v)})
     manifest = {"version": 1, "system": name, "source": source, "seconds": seconds, "bones": bones,
                 "userParameters": users, "skipped": skipped, "warnings": warnings, "emitters": emitters}
-    folder = os.path.join(out, name)
-    os.makedirs(folder, exist_ok=True)
     os.makedirs(os.path.join(out, "Editor"), exist_ok=True)
     json.dump(manifest, open(os.path.join(folder, name + ".particles.json"), "w", encoding="utf-8"), indent=2)
     open(os.path.join(out, "Editor", "PorterParticleSetup.cs"), "w", encoding="utf-8").write(PARTICLE_CS)
+    # the baked-replay player, under its own class name so it cannot clash with the Blueprint Converter's copy
+    player = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity", "PorterParticleReplay.cs")
+    if os.path.exists(player):
+        os.makedirs(os.path.join(out, "Scripts"), exist_ok=True)
+        text = open(player, encoding="utf-8").read().replace("PorterParticleReplay", "PorterParticlePlayer")
+        open(os.path.join(out, "Scripts", "PorterParticlePlayer.cs"), "w", encoding="utf-8").write(text)
+    else:
+        warnings.append("the baked-replay player script is missing from the app (unity/PorterParticleReplay.cs): baked renderers will have no player")
     report(emitters, skipped, bones)
     materials = []
     for em in emitters:
