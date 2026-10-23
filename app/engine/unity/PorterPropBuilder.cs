@@ -304,6 +304,7 @@ public static partial class PorterPropBuilder
     {
         if (!n.ContainsKey("system") || n["system"] == null) return;
         bool awake = B(n["playOnAwake"], true);
+        if (go.GetComponent<PorterBodyAnchor>() == null) go.AddComponent<PorterBodyAnchor>();
         foreach (var eo in L(D(n["system"])["emitters"]))
         {
             BuildReplayEmitter(go, D(eo));

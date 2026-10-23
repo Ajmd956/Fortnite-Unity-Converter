@@ -1,7 +1,3 @@
-// Projects a decal onto whatever is behind it (Built-in pipeline, needs the camera depth texture).
-// The replay player draws one box per decal and hands the decal's placement in the box's vertices:
-//   normal = axis X / half width, tangent.xyz = axis Y / half depth (the projection axis), uv0.xyz = axis Z / half length,
-//   uv2.xyz = centre (all in the player's object space), uv1 = the particle's colour.
 Shader "Porter/DecalProject"
 {
     Properties
@@ -78,8 +74,8 @@ Shader "Porter/DecalProject"
                 float3 d = mul(unity_WorldToObject, float4(world, 1)).xyz - i.ctr;
                 float3 l = float3(dot(i.ax, d), dot(i.ay, d), dot(i.az, d));
                 clip(1.0 - abs(l));
-                fixed4 c = tex2D(_MainTex, TRANSFORM_TEX(l.xz * 0.5 + 0.5, _MainTex)) * _Color * i.col;
-                // fade out towards the ends of the projection, so it does not end in a hard edge
+                float2 tuv = l.xz * 0.5 + 0.5;
+                fixed4 c = tex2D(_MainTex, TRANSFORM_TEX(tuv, _MainTex)) * _Color * i.col;
                 c.a *= saturate((1.0 - abs(l.y)) / max(1.0 - _EdgeFade, 1e-3));
                 if (_Additive > 0.5) c.rgb *= c.a;
                 return c;

@@ -20,6 +20,8 @@ CURVE_POINTS = 8            # a Unity gradient holds at most 8 colour keys
 BURST_WINDOW = 0.1          # births in the first 0.1 s count as a burst at time 0
 INITIAL_ATTRIBUTES = ("Position", "Velocity", "SpriteRotation", "MeshOrientation")
 STREAM_POINTS = 16
+STREAM_MIN_PARTICLES = 8    # complete particles wanted behind a colour or Dynamic Parameter curve
+STREAM_MAX_SECONDS = 30.0   # the longest replay made only to read those curves
 BAKE_FRAMES = False         # keep every tick's particles so ParticleBake can write the replay files
 BAKE_MOST_ROWS = 400000     # particles over all ticks, per emitter; past that its replay is not written
 LAST_TRACKS = {}            # emitter name: (recorder, emitter) from the last replay()
@@ -158,14 +160,18 @@ class Recorder:
         norm = age / np.where(ok, life, 1.0)
         if self.track:
             ids = e.attribute("ID")
+            if ids is None:
+                ids = e.attribute("UniqueID")
             for name in self.track:
                 a = e.attribute(name)
                 if a is None or ids is None or a.shape[0] == 0:
                     continue
                 a = np.array(a[:, :count], np.float64)
                 book = self.tracked.setdefault(name, {})
+                second = ids.shape[0] > 1
                 for j in np.nonzero(ok)[0]:
-                    book.setdefault((int(ids[0, j]), int(ids[1, j])), []).append((float(norm[j]), a[:, j]))
+                    key = (int(ids[0, j]), int(ids[1, j]) if second else 0)
+                    book.setdefault(key, []).append((float(norm[j]), a[:, j]))
         self.ages.append(norm[ok])
         self.colors.append(None if rows["Color"] is None else rows["Color"][:, ok])
         self.sizes.append(None if size is None else size[:, ok])
@@ -293,18 +299,26 @@ def stream_curves(r):
     """Each tracked attribute over normalised age on STREAM_POINTS points: the smallest, largest and mean value of
     every component across the particles, each particle's own samples interpolated onto the points."""
     out = {}
+    r.incomplete = []
     grid = np.linspace(0.0, 1.0, STREAM_POINTS)
     for name, book in r.tracked.items():
         rows = []
+        partial = []
         for samples in book.values():
             if len(samples) < 2:
                 continue
             samples = sorted(samples, key=lambda x: x[0])
-            if samples[-1][0] < 0.9:
-                continue
             ages = np.array([x[0] for x in samples])
             vals = np.array([x[1] for x in samples])
+            if samples[-1][0] < 0.9:
+                partial.append(vals)
+                continue
             rows.append(np.stack([np.interp(grid, ages, vals[:, c]) for c in range(vals.shape[1])], axis=1))
+        if not rows and partial:
+            if all(float(np.max(np.abs(v - v[0]))) < 1e-9 for v in partial):
+                rows = [np.tile(v[0], (STREAM_POINTS, 1)) for v in partial]
+            else:
+                r.incomplete.append(name)
         if not rows:
             continue
         cube = np.stack(rows)
@@ -399,10 +413,6 @@ def initial_ranges(r):
     return out
 
 
-def short(path):
-    return (path or "").rsplit("/", 1)[-1]
-
-
 def summarize(system, e, r, required, approximate):
     bursts, period, rate = split_births(r.births)
     color, size, start = curves(r)
@@ -426,503 +436,14 @@ def summarize(system, e, r, required, approximate):
         "sizeUnit": "cm" if r.sprite else "scale",
         "initial": initial_ranges(r),
         "streams": stream_curves(r),
+        "incompleteStreams": list(getattr(r, "incomplete", [])),
+        "noAge": bool(r.total and not r.ages),
         "renderers": renderers(system, e),
     }
     return out
 
 
-def warnings_for(em):
-    w = []
-    name = em["name"]
-    if em["approximate"]:
-        w.append("%s: a stateless emitter, played from its settings; the engine's random draws are not reproduced" % name)
-    if em["requires"]:
-        w.append("%s: only emits when the game sets %s to 1; its object is created switched off" % (name, ", ".join(em["requires"])))
-    if em["totalBorn"] == 0:
-        w.append("%s: spawned nothing in the time played" % name)
-    elif not em.get("allBaked"):
-        w.append("%s: velocity, rotation and spawn position are not carried over" % name)
-    peak = max([max(c["r"], c["g"], c["b"], c["a"]) for c in em["colorCurve"]] or [0.0])
-    if peak > 1.0 and not em.get("allBaked"):
-        w.append("%s: colour goes up to %.2f (above 1); Unity particle colours stop at 1" % (name, peak))
-    for r in em["renderers"]:
-        if r["note"]:
-            w.append("%s: %s" % (name, r["note"]))
-        if r["kind"] == "Sprite" and r["facing"] not in ("", "FaceCamera") and not r.get("baked"):
-            w.append("%s: sprite facing %s is drawn facing the camera" % (name, r["facing"]))
-    return w
-
-
 # ---------------------------------------------------------------- the Unity script
-
-PARTICLE_CS = r'''using System;
-using System.Collections.Generic;
-using System.IO;
-using UnityEditor;
-using UnityEngine;
-
-public static class PorterParticleSetup
-{
-    [Serializable]
-    class Burst { public float time; public int count; }
-
-    [Serializable]
-    class Key { public float t, r, g, b, a, s; }
-
-    [Serializable]
-    class Size { public float x, y, z; }
-
-    [Serializable]
-    class Rend { public string kind, material, mesh, facing, note, baked; public bool enabled; public List<string> materials; }
-
-    [Serializable]
-    class Bake
-    {
-        public string file, kind, material;
-        public int srcIndex, frames, maxPerFrame, facingMode, subX = 1, subY = 1, shape, sides = 2;
-        public float radiusScale, pivotX = 0.5f, pivotY = 0.5f;
-        public bool lengthwise;
-        public List<string> fieldNames, meshes, materials;
-        public List<int> fieldOffsets, fieldWidths, dpComps;
-    }
-
-    [Serializable]
-    class Emitter
-    {
-        public string name, sizeUnit;
-        public bool local, persistent;
-        public List<string> requires;
-        public List<Burst> bursts;
-        public float rate, loopPeriod, lifetimeMin, lifetimeMax;
-        public int maxAlive;
-        public List<Key> colorCurve, sizeCurve;
-        public Size startSize;
-        public List<Rend> renderers;
-        public List<Bake> baked;
-    }
-
-    [Serializable]
-    class Manifest { public string system; public List<Emitter> emitters; }
-
-    [Serializable]
-    class TexEntry { public string name, prop; public int srgb; public bool normal; }
-
-    [Serializable]
-    class TexManifest { public List<TexEntry> textureList; }
-
-    public static GameObject BuildPrefab(string jsonPath, bool force)
-    {
-        TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(jsonPath);
-        if (asset == null) return null;
-        Manifest d = JsonUtility.FromJson<Manifest>(asset.text);
-        if (d == null || d.emitters == null || string.IsNullOrEmpty(d.system)) return null;
-        string folder = Path.GetDirectoryName(jsonPath).Replace('\\', '/');
-        string prefabPath = folder + "/" + d.system + ".prefab";
-        if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) != null)
-        {
-            if (!force) return null;
-            prefabPath = AssetDatabase.GenerateUniqueAssetPath(prefabPath);
-        }
-        GameObject root = new GameObject(d.system);
-        foreach (Emitter e in d.emitters)
-        {
-            if (e.baked != null)
-            {
-                foreach (Bake b in e.baked) MakeBaked(root.transform, e, b, folder);
-            }
-            List<Rend> drawn = e.renderers.FindAll(r => r.enabled && string.IsNullOrEmpty(r.baked) && (r.kind == "Sprite" || r.kind == "Mesh"));
-            if (drawn.Count == 0)
-            {
-                if (e.baked == null || e.baked.Count == 0)
-                    Debug.LogWarning("Porter: " + e.name + " has no sprite or mesh renderer, so it was left out");
-                continue;
-            }
-            for (int i = 0; i < drawn.Count; i++)
-            {
-                Make(root.transform, e, drawn[i], drawn.Count > 1 ? e.name + " " + (i + 1) : e.name, folder);
-            }
-        }
-        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
-        UnityEngine.Object.DestroyImmediate(root);
-        AssetDatabase.SaveAssets();
-        Debug.Log("Porter: saved " + prefabPath);
-        return prefab;
-    }
-
-    static void Make(Transform parent, Emitter e, Rend r, string label, string folder)
-    {
-        GameObject go = new GameObject(label);
-        go.transform.SetParent(parent, false);
-        ParticleSystem ps = go.AddComponent<ParticleSystem>();
-        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-
-        ParticleSystem.MainModule main = ps.main;
-        main.loop = e.rate > 0f || e.loopPeriod > 0f;
-        main.duration = e.loopPeriod > 0f ? e.loopPeriod : 1f;
-        main.startSpeed = 0f;
-        main.maxParticles = Mathf.Max(8, e.maxAlive * 2);
-        main.simulationSpace = e.local ? ParticleSystemSimulationSpace.Local : ParticleSystemSimulationSpace.World;
-        if (e.persistent)
-        {
-            main.startLifetime = new ParticleSystem.MinMaxCurve(100000f);
-        }
-        else if (e.lifetimeMax > e.lifetimeMin)
-        {
-            main.startLifetime = new ParticleSystem.MinMaxCurve(e.lifetimeMin, e.lifetimeMax);
-        }
-        else
-        {
-            main.startLifetime = new ParticleSystem.MinMaxCurve(e.lifetimeMax);
-        }
-
-        float unit = e.sizeUnit == "cm" ? 0.01f : 1f;
-        main.startSize3D = true;
-        main.startSizeX = e.startSize.x * unit;
-        main.startSizeY = e.startSize.y * unit;
-        main.startSizeZ = e.startSize.z;
-
-        ParticleSystem.EmissionModule emission = ps.emission;
-        emission.enabled = true;
-        emission.rateOverTime = e.rate;
-        ParticleSystem.Burst[] bursts = new ParticleSystem.Burst[e.bursts.Count];
-        for (int i = 0; i < bursts.Length; i++)
-        {
-            bursts[i] = new ParticleSystem.Burst(e.bursts[i].time, (short)e.bursts[i].count);
-        }
-        emission.SetBursts(bursts);
-
-        ParticleSystem.ShapeModule shape = ps.shape;
-        shape.enabled = false;
-
-        if (e.colorCurve != null && e.colorCurve.Count > 0)
-        {
-            int n = Mathf.Max(2, e.colorCurve.Count);
-            GradientColorKey[] colors = new GradientColorKey[n];
-            GradientAlphaKey[] alphas = new GradientAlphaKey[n];
-            for (int i = 0; i < n; i++)
-            {
-                Key k = e.colorCurve[Mathf.Min(i, e.colorCurve.Count - 1)];
-                float t = e.colorCurve.Count == 1 ? i : k.t;
-                Color c = new Color(Mathf.Clamp01(k.r), Mathf.Clamp01(k.g), Mathf.Clamp01(k.b), Mathf.Clamp01(k.a)).gamma;
-                colors[i] = new GradientColorKey(new Color(c.r, c.g, c.b, 1f), t);
-                alphas[i] = new GradientAlphaKey(c.a, t);
-            }
-            Gradient gradient = new Gradient();
-            gradient.SetKeys(colors, alphas);
-            ParticleSystem.ColorOverLifetimeModule colorModule = ps.colorOverLifetime;
-            colorModule.enabled = true;
-            colorModule.color = gradient;
-        }
-
-        if (e.sizeCurve != null && e.sizeCurve.Count > 1)
-        {
-            Keyframe[] frames = new Keyframe[e.sizeCurve.Count];
-            for (int i = 0; i < frames.Length; i++)
-            {
-                frames[i] = new Keyframe(e.sizeCurve[i].t, e.sizeCurve[i].s);
-            }
-            ParticleSystem.SizeOverLifetimeModule sizeModule = ps.sizeOverLifetime;
-            sizeModule.enabled = true;
-            sizeModule.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(frames));
-        }
-
-        ParticleSystemRenderer pr = go.GetComponent<ParticleSystemRenderer>();
-        if (r.kind == "Mesh")
-        {
-            pr.renderMode = ParticleSystemRenderMode.Mesh;
-            string meshPath = FindPath(NameOf(r.mesh), "Mesh", folder);
-            Mesh mesh = meshPath == null ? null : AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
-            if (mesh != null) pr.mesh = mesh;
-            else Debug.LogWarning("Porter: mesh " + NameOf(r.mesh) + " was not found in the project (it should be the .fbx in the Meshes folder next to this prefab), so " + label + " draws nothing until you set its mesh");
-        }
-        else
-        {
-            pr.renderMode = ParticleSystemRenderMode.Billboard;
-        }
-        Material material = EnsureMaterial(r.material, folder);
-        if (material != null) pr.sharedMaterial = material;
-        else Debug.LogWarning("Porter: no shader named " + NameOf(r.material) + " was found in the project, so " + label + " uses the default material");
-
-        go.SetActive(e.requires == null || e.requires.Count == 0);
-    }
-
-    // A renderer played from its baked replay (PRB1 file): every tick of the Niagara replay, as the Blender add-on plays it.
-    static void MakeBaked(Transform parent, Emitter e, Bake b, string folder)
-    {
-        string label = e.name + "_" + b.kind + "_" + b.srcIndex;
-        string path = folder + "/" + b.file;
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-        TextAsset data = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
-        if (data == null)
-        {
-            Debug.LogWarning("Porter: baked replay file " + b.file + " was not found in " + folder + ", so " + label + " is not built");
-            return;
-        }
-        GameObject go = new GameObject(label);
-        go.transform.SetParent(parent, false);
-        PorterParticlePlayer player = go.AddComponent<PorterParticlePlayer>();
-        player.data = data;
-        player.kind = b.kind;
-        player.loop = e.persistent || e.rate > 0f || e.loopPeriod > 0f;
-        player.playOnAwake = true;
-        player.fieldNames = b.fieldNames.ToArray();
-        player.fieldOffsets = b.fieldOffsets.ToArray();
-        player.fieldWidths = b.fieldWidths.ToArray();
-        player.facingMode = b.facingMode;
-        player.lengthwise = b.lengthwise;
-        player.pivotX = b.pivotX;
-        player.pivotY = b.pivotY;
-        player.subX = Mathf.Max(1, b.subX);
-        player.subY = Mathf.Max(1, b.subY);
-        player.ribbonShape = b.shape;
-        player.ribbonSides = Mathf.Max(1, b.sides);
-        int[] comps = b.dpComps != null ? b.dpComps.ToArray() : new int[0];
-        if (comps.Length > 8)
-        {
-            Debug.LogWarning("Porter: " + label + " reads " + comps.Length + " Dynamic Parameter values, the replay carries 8; the rest are not applied");
-            Array.Resize(ref comps, 8);
-        }
-        player.dpComps = comps;
-        if (b.kind == "Light")
-        {
-            player.lightScale = 1f;
-            player.radiusScale = b.radiusScale > 0f ? b.radiusScale : 1f;
-        }
-        else if (b.kind == "Mesh")
-        {
-            List<Mesh> found = new List<Mesh>();
-            foreach (string meshName in b.meshes)
-            {
-                string meshPath = FindPath(NameOf(meshName), "Mesh", folder);
-                Mesh mesh = meshPath == null ? null : AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
-                ModelImporter importer = meshPath == null ? null : AssetImporter.GetAtPath(meshPath) as ModelImporter;
-                if (importer != null && !importer.isReadable)
-                {
-                    importer.isReadable = true;     // the player copies the mesh's vertices for every particle
-                    importer.SaveAndReimport();
-                    mesh = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
-                }
-                if (mesh == null) Debug.LogWarning("Porter: mesh " + NameOf(meshName) + " was not found in the project (it should be the .fbx in the Meshes folder next to this prefab), so " + label + " draws nothing for it");
-                found.Add(mesh);
-            }
-            player.meshes = found.ToArray();
-            List<Material> mats = new List<Material>();
-            foreach (string matName in b.materials)
-            {
-                Material src = EnsureMaterial(matName, folder);
-                if (src == null)
-                {
-                    Debug.LogWarning("Porter: no shader named " + NameOf(matName) + " was found in the project, so " + label + " uses the default material for it");
-                    continue;
-                }
-                Material inst = StreamCopy(src, label + "_" + mats.Count);
-                ConfigureStreams(inst, comps, player);
-                mats.Add(inst);
-            }
-            if (mats.Count == 0) Debug.LogWarning("Porter: " + label + " uses its meshes' own materials, which are not converted, so it draws with the default material");
-            player.materials = mats.ToArray();
-        }
-        else
-        {
-            Material src = EnsureMaterial(b.material, folder);
-            if (src == null)
-            {
-                Debug.LogWarning("Porter: no shader named " + NameOf(b.material) + " was found in the project, so " + label + " uses the default material");
-            }
-            else
-            {
-                Material inst = StreamCopy(src, label);
-                ConfigureStreams(inst, comps, player);
-                player.material = inst;
-            }
-        }
-        go.SetActive(e.requires == null || e.requires.Count == 0);
-    }
-
-    // slot k of the replay mesh carries Dynamic Parameter component comps[k]; the shader reads _PorterDPSlot<i>.<c> as the slot of DP i component c
-    static void ConfigureStreams(Material inst, int[] comps, PorterParticlePlayer player)
-    {
-        for (int i = 0; i < 4; i++)
-        {
-            Vector4 v = new Vector4(-1f, -1f, -1f, -1f);
-            for (int k = 0; k < comps.Length; k++)
-                if (comps[k] / 4 == i) v[comps[k] % 4] = k;
-            inst.SetVector("_PorterDPSlot" + i, v);
-        }
-        // the particle's age and random number ride in the next free slots, for materials that read them
-        if (comps.Length < 8) { player.ageSlot = comps.Length; inst.SetFloat("_PorterAgeSlot", comps.Length); }
-        if (comps.Length < 7) { player.randSlot = comps.Length + 1; inst.SetFloat("_PorterRandSlot", comps.Length + 1); }
-        EditorUtility.SetDirty(inst);
-    }
-
-    static string Safe(string s)
-    {
-        foreach (char c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
-        return s;
-    }
-
-    // A copy of the material for one player, switched to the replay's vertex streams (colour in UV1, parameters in UV2/UV3).
-    static Material StreamCopy(Material src, string label)
-    {
-        string srcPath = AssetDatabase.GetAssetPath(src);
-        string dir = string.IsNullOrEmpty(srcPath) ? "Assets" : Path.GetDirectoryName(srcPath).Replace('\\', '/');
-        string path = dir + "/" + Safe(src.name) + "_" + Safe(label) + ".mat";
-        Material inst = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (inst != null)
-        {
-            EditorUtility.CopySerialized(src, inst);
-            inst.name = Path.GetFileNameWithoutExtension(path);
-        }
-        else
-        {
-            inst = new Material(src);
-            AssetDatabase.CreateAsset(inst, path);
-        }
-        inst.SetFloat("_PorterParticleStreams", 1f);
-        EditorUtility.SetDirty(inst);
-        return inst;
-    }
-
-    static string NameOf(string objectPath)
-    {
-        if (string.IsNullOrEmpty(objectPath)) return "";
-        string name = objectPath.Substring(objectPath.LastIndexOf('/') + 1);
-        int dot = name.IndexOf('.');
-        return dot >= 0 ? name.Substring(0, dot) : name;
-    }
-
-    static string FindPath(string name, string type, string folder)
-    {
-        if (string.IsNullOrEmpty(name)) return null;
-        string found = null;
-        foreach (string guid in AssetDatabase.FindAssets(name + " t:" + type))
-        {
-            string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (Path.GetFileNameWithoutExtension(p) != name) continue;
-            if (p.StartsWith(folder + "/")) return p;
-            if (found == null) found = p;
-        }
-        return found;
-    }
-
-    static Material EnsureMaterial(string objectPath, string folder)
-    {
-        string name = NameOf(objectPath);
-        if (name.Length == 0) return null;
-        string materialPath = FindPath(name, "Material", folder);
-        if (materialPath != null) return AssetDatabase.LoadAssetAtPath<Material>(materialPath);
-        string shaderPath = FindPath(name, "Shader", folder);
-        if (shaderPath == null) return null;
-        Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(shaderPath);
-        if (shader == null) return null;
-        string dir = Path.GetDirectoryName(shaderPath).Replace('\\', '/');
-        Material material = new Material(shader);
-        AssetDatabase.CreateAsset(material, AssetDatabase.GenerateUniqueAssetPath(dir + "/" + name + ".mat"));
-        ApplyTextures(material, name, dir);
-        EditorUtility.SetDirty(material);
-        return material;
-    }
-
-    static void ApplyTextures(Material material, string name, string dir)
-    {
-        TextAsset list = null;
-        foreach (string guid in AssetDatabase.FindAssets(name + " t:TextAsset"))
-        {
-            string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (!p.EndsWith("/" + name + ".textures.json")) continue;
-            list = AssetDatabase.LoadAssetAtPath<TextAsset>(p);
-            if (p.StartsWith(dir + "/")) break;
-        }
-        if (list == null)
-        {
-            Debug.LogWarning("Porter: " + name + ".textures.json was not found, so " + name + " has no textures assigned");
-            return;
-        }
-        TexManifest manifest = JsonUtility.FromJson<TexManifest>(list.text);
-        if (manifest == null || manifest.textureList == null) return;
-        foreach (TexEntry e in manifest.textureList)
-        {
-            string texPath = FindPath(e.name, "Texture2D", dir);
-            if (texPath == null)
-            {
-                Debug.LogWarning("Porter: texture not found in project: " + e.name);
-                continue;
-            }
-            TextureImporter importer = AssetImporter.GetAtPath(texPath) as TextureImporter;
-            if (importer != null)
-            {
-                bool changed = false;
-                TextureImporterType want = e.normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
-                if (importer.textureType != want) { importer.textureType = want; changed = true; }
-                if (!e.normal && e.srgb >= 0 && importer.sRGBTexture != (e.srgb == 1)) { importer.sRGBTexture = e.srgb == 1; changed = true; }
-                if (importer.wrapMode != TextureWrapMode.Repeat) { importer.wrapMode = TextureWrapMode.Repeat; changed = true; }
-                if (changed) importer.SaveAndReimport();
-            }
-            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
-            if (texture != null && material.HasProperty(e.prop)) material.SetTexture(e.prop, texture);
-        }
-    }
-}
-
-public class PorterParticleAuto : AssetPostprocessor
-{
-    static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
-    {
-        foreach (string p in imported)
-        {
-            if (p.EndsWith(".particles.json"))
-            {
-                Schedule();
-                return;
-            }
-        }
-    }
-
-    [InitializeOnLoadMethod]
-    static void Schedule()
-    {
-        EditorApplication.delayCall += Scan;
-    }
-
-    [MenuItem("Tools/Porter Build Particle Prefabs")]
-    static void BuildAll()
-    {
-        int made = 0;
-        foreach (string guid in AssetDatabase.FindAssets("particles t:TextAsset"))
-        {
-            string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (!p.EndsWith(".particles.json")) continue;
-            if (PorterParticleSetup.BuildPrefab(p, false) != null) made++;
-        }
-        Debug.Log("Porter: built " + made + " new particle prefab(s)");
-    }
-
-    static void Scan()
-    {
-        if (EditorApplication.isCompiling || EditorApplication.isUpdating)
-        {
-            EditorApplication.delayCall += Scan;
-            return;
-        }
-        foreach (string guid in AssetDatabase.FindAssets("particles t:TextAsset"))
-        {
-            string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (!p.EndsWith(".particles.json")) continue;
-            string key = "PorterParticles:" + p;
-            if (SessionState.GetBool(key, false)) continue;
-            SessionState.SetBool(key, true);
-            try
-            {
-                PorterParticleSetup.BuildPrefab(p, false);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError("Porter: could not build " + p + ": " + ex.Message);
-            }
-        }
-    }
-}
-'''
 
 
 # ---------------------------------------------------------------- the run
@@ -951,181 +472,41 @@ def replay(exports, name, source, seconds):
         source_emitter = next((x for x in gsys.emitters if x.name == e.name), e) if e.name in gated else e
         emitters.append(summarize(system, source_emitter, recorders[e.name], gated.get(e.name, []), approximate))
         LAST_TRACKS[e.name] = (recorders[e.name], source_emitter)
+    extend_streams(exports, emitters, recorders, gated, seconds)
     return system, emitters, skipped
 
 
-BAKED_KEYS = ("file", "kind", "material", "materials", "meshes", "srcIndex", "frames", "maxPerFrame", "radiusScale", "fieldNames", "fieldOffsets",
-              "fieldWidths", "dpComps", "facingMode", "lengthwise", "pivotX", "pivotY", "subX", "subY", "shape", "sides")
-
-
-def bake_emitters(system, emitters, folder, name, bake_mode):
-    """Write each renderer's replay (what ParticleBake records tick by tick, as the Blender add-on plays it) and list it on its
-    emitter as "baked". The renderers it covers are then played from the file, not from a Particle System."""
-    import ParticleBake
-    notes = []
+def extend_streams(exports, emitters, recorders, gated, seconds):
+    """Colour and Dynamic Parameter curves need particles that lived out their whole life. Where too few did in the
+    replay, play the system again for longer, only to read those curves. The baked replay keeps its own length."""
+    need = []
     for em in emitters:
-        track = LAST_TRACKS.get(em["name"])
-        if track is None:
+        r = recorders.get(em["name"])
+        if r is None or not r.tracked or em["persistent"] or em["lifetimeMax"] <= 0:
             continue
-        recorder, emitter = track
-        baked = []
-        for i, (rtype, props) in enumerate(renderer_exports(system, emitter)):
-            stem = "%s_%s_%d" % (name, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
-            b = ParticleBake.bake_renderer(recorder, rtype, props, stem, notes, dt=DT, bake_mode=bake_mode, meshes=True, system=system, emitter_name=em["name"])
-            if b is None:
-                continue
-            b["meshes"], b["materials"] = [], []
-            if b["kind"] == "Mesh":
-                b["meshes"] = [p for p in (object_path((m or {}).get("Mesh")) for m in props.get("Meshes") or []) if p]
-                if props.get("bOverrideMaterials"):
-                    b["materials"] = [p for p in (object_path((o or {}).get("ExplicitMat")) for o in props.get("OverrideMaterials") or []) if p]
-                if not b["meshes"]:
-                    notes.append("%s: mesh renderer %d names no mesh of its own (the game gives it one), so it is built as a Particle System" % (em["name"], i))
-                    continue
-            with open(os.path.join(folder, b["file"]), "wb") as fh:
-                fh.write(b["blob"])
-            if b["kind"] == "Decal":
-                b["material"] = object_path(props.get("DecalMaterial") or props.get("Material")) or ""
-            elif b["kind"] in ("Sprite", "Ribbon"):
-                b["material"] = object_path(props.get("Material")) or ""
-            else:
-                b["material"] = ""
-            b["srcIndex"] = i
-            b["radiusScale"] = b["radiusScale"] or 1.0
-            baked.append({k: b[k] for k in BAKED_KEYS if b.get(k) is not None})
-            if i < len(em["renderers"]):
-                em["renderers"][i]["baked"] = b["file"]
-                em["renderers"][i]["note"] = ""
-        if baked:
-            em["baked"] = baked
-        drawn = [r for r in em["renderers"] if r["enabled"]]
-        em["allBaked"] = bool(baked) and all(r.get("baked") for r in drawn)
-    return notes
-
-
-def convert(exports, name, source, out, seconds):
+        counts = [s["particles"] for s in em["streams"].values()]
+        if em["incompleteStreams"] or not counts or min(counts) < STREAM_MIN_PARTICLES:
+            need.append(em)
+    if not need:
+        return
+    longer = min(STREAM_MAX_SECONDS, max(em["lifetimeMax"] for em in need) + 2.0)
+    if longer <= seconds + 0.25:
+        return
+    print("playing %s again for %.0f seconds to read curves over age" % (", ".join(em["name"] for em in need), longer))
     global BAKE_FRAMES
-    import ParticleBake
-    bake_mode = ParticleBake.mode("all")        # the Blender add-on plays every tick, so every renderer is baked unless PORTER_BAKE says otherwise
-    BAKE_FRAMES = bake_mode != "off"
+    saved = BAKE_FRAMES
+    BAKE_FRAMES = False
     try:
-        system, emitters, skipped = replay(exports, name, source, seconds)
+        grouped = {}
+        for em in need:
+            key = tuple(gated.get(em["name"], []))
+            if key not in grouped:
+                _, grouped[key] = play(exports, {n: [1.0] for n in key}, longer)
+            rec = grouped[key].get(em["name"])
+            if rec is None:
+                continue
+            em["streams"] = stream_curves(rec)
+            em["incompleteStreams"] = list(getattr(rec, "incomplete", []))
+            em["streamSeconds"] = r4(longer)
     finally:
-        BAKE_FRAMES = False
-    folder = os.path.join(out, name)
-    os.makedirs(folder, exist_ok=True)
-    bake_notes = bake_emitters(system, emitters, folder, name, bake_mode) if bake_mode != "off" else []
-    warnings = list(bake_notes)
-    for em in emitters:
-        warnings += warnings_for(em)
-    for s in skipped:
-        warnings.append("%s: not converted (%s)" % (s["emitter"], s["why"]))
-    bones = sorted(system.reads)
-    users = []
-    for n, t, v in system.users():
-        users.append({"name": n, "type": t, "default": str(v)})
-    manifest = {"version": 1, "system": name, "source": source, "seconds": seconds, "bones": bones,
-                "userParameters": users, "skipped": skipped, "warnings": warnings, "emitters": emitters}
-    os.makedirs(os.path.join(out, "Editor"), exist_ok=True)
-    json.dump(manifest, open(os.path.join(folder, name + ".particles.json"), "w", encoding="utf-8"), indent=2)
-    open(os.path.join(out, "Editor", "PorterParticleSetup.cs"), "w", encoding="utf-8").write(PARTICLE_CS)
-    # the baked-replay player, under its own class name so it cannot clash with the Blueprint Converter's copy
-    player = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity", "PorterParticleReplay.cs")
-    if os.path.exists(player):
-        os.makedirs(os.path.join(out, "Scripts"), exist_ok=True)
-        text = open(player, encoding="utf-8").read().replace("PorterParticleReplay", "PorterParticlePlayer")
-        open(os.path.join(out, "Scripts", "PorterParticlePlayer.cs"), "w", encoding="utf-8").write(text)
-        shader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity", "PorterDecalProject.shader")
-        if os.path.exists(shader):
-            shutil.copyfile(shader, os.path.join(out, "Scripts", "PorterDecalProject.shader"))
-    else:
-        warnings.append("the baked-replay player script is missing from the app (unity/PorterParticleReplay.cs): baked renderers will have no player")
-    report(emitters, skipped, bones)
-    materials = []
-    for em in emitters:
-        for r in em["renderers"]:
-            for m in ([r["material"]] + r["materials"]):
-                if m and m not in materials:
-                    materials.append(m)
-    for m in materials:
-        print("material: %s" % m)
-    meshes = []
-    for em in emitters:
-        for r in em["renderers"]:
-            if r["kind"] == "Mesh" and r["enabled"] and r["mesh"] and r["mesh"] not in meshes:
-                meshes.append(r["mesh"])
-    for m in meshes:
-        print("mesh: %s" % m)
-    print("wrote %s.particles.json (%d emitters, %d warnings)" % (name, len(emitters), len(warnings)))
-    print("folder: %s" % os.path.abspath(folder))
-    for w in warnings:
-        print("  warning:", w)
-    return materials
-
-
-def report(emitters, skipped, bones):
-    for em in emitters:
-        when = []
-        for b in em["bursts"]:
-            again = " every %.2fs" % em["loopPeriod"] if em["loopPeriod"] and b["time"] == 0.0 and b is em["bursts"][0] else ""
-            when.append("burst of %d at %.2fs%s" % (b["count"], b["time"], again))
-        if em["rate"]:
-            when.append("%.2f per second" % em["rate"])
-        if not when:
-            when.append("nothing spawned")
-        life = "stays alive" if em["persistent"] else "lives %.2f-%.2fs" % (em["lifetimeMin"], em["lifetimeMax"])
-        kinds = ", ".join(sorted({r["kind"] for r in em["renderers"]})) or "no renderer"
-        print("  %s: %s; %s; up to %d alive; %s" % (em["name"], " + ".join(when), life, em["maxAlive"], kinds))
-    for s in skipped:
-        print("  %s: left out (%s)" % (s["emitter"], s["why"]))
-    if bones:
-        print("  bones and sockets the effect reads: %s" % ", ".join(bones))
-
-
-def run(bridge, path, out, name, seconds):
-    source = path
-    name = name or re.sub(r"\.[^./]*$", "", re.split(r"[\\/]", source.rstrip("/\\"))[-1])
-    try:
-        dump = fetch_dump(bridge, source)
-    except RuntimeError as e:
-        sys.exit(str(e))
-    convert(to_exports(dump), name, source, out, seconds)
-
-
-def main():
-    ap = argparse.ArgumentParser(prog=APP_NAME)
-    ap.add_argument("--bridge", default=DEFAULT_BRIDGE)
-    ap.add_argument("--system", help="object path of the Niagara system, e.g. /Game/.../NS_Something")
-    ap.add_argument("--file", help="a Niagara system's exports saved as JSON, instead of asking the app")
-    ap.add_argument("--out", default=".")
-    ap.add_argument("--seconds", type=float, default=6.0)
-    a = ap.parse_args()
-    if not a.system and not a.file:
-        sys.exit("give --system or --file")
-    source = a.system or a.file
-    name = re.sub(r"\.[^./]*$", "", re.split(r"[\\/]", source.rstrip("/\\"))[-1])
-    try:
-        dump = json.loads(open(a.file, "rb").read().decode("utf-8-sig")) if a.file else fetch_dump(a.bridge, a.system)
-    except RuntimeError as e:
-        sys.exit(str(e))
-    try:
-        convert(to_exports(dump), name, source, a.out, a.seconds)
-    except SystemExit:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        sys.exit("could not play %s: %s: %s" % (name, type(e).__name__, e))
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except SystemExit as e:
-        if e.code not in (None, 0):
-            print(e.code if isinstance(e.code, str) else "failed")
-            sys.exit(1)
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        BAKE_FRAMES = saved

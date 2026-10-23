@@ -767,7 +767,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
           <button class="btn primary" id="niagaraBtn">Convert</button>
         </div>
       </div>
-      <div class="hint" style="padding:0 4px">Niagara systems are converted on their own, separate from the Shader Converter. Each one is saved in its own folder inside Blueprint Conversions with its materials and meshes, and built into a prefab the same way a Blueprint is. Copy the whole Blueprint Conversions folder into your Unity project's Assets.</div>
+      <div class="hint" style="padding:0 4px">Niagara systems are converted on their own, separate from the Shader Converter. Each one is saved in its own folder inside Particle Conversions with its materials and meshes, and built into a prefab. Copy the whole Particle Conversions folder into your Unity project's Assets.</div>
       </div>
       <div class="cv-pane" id="cv-blueprint">
       <div class="row-card col">
@@ -1702,7 +1702,7 @@ $('updCheckBtn').onclick = async () => {
   paintVersion('Checking...')
   const r = await window.api.updateCheck().catch(() => ({ status: 'error' }))
   b.disabled = false
-  const msg = { available: 'Version ' + (r.version || '') + ' is available', latest: 'You are up to date', error: 'Could not check. Try again later', unsupported: 'Updates only work in the built app' }
+  const msg = { available: 'Version ' + (r.version || '') + ' is available', latest: 'You are up to date', error: 'Could not check. Try again later', notfound: 'No release found. The GitHub repository is private, renamed or has no release yet', noasset: 'The latest release has no EXE file attached', ratelimit: 'GitHub is limiting checks. Try again in a few minutes', unsupported: 'Updates only work in the built app' }
   paintVersion(msg[r.status] || '')
 }
 
@@ -1763,7 +1763,7 @@ function showDone(data) {
     : n < data.total
     ? n + ' of ' + data.total + ' converted. The rest are explained in the output panel.'
     : bps ? (data.built ? 'The prefab is already built. Copy the Blueprint Conversions folder into your Unity project\'s Assets.' : 'Copy the Blueprint Conversions folder into your Unity project\'s Assets and Unity builds the prefab by itself.')
-    : parts ? 'Drag the Particle Conversions folder into your Unity Assets folder and the prefab is built for you.'
+    : parts ? (data.built ? 'The prefab is already built. Copy the Particle Conversions folder into your Unity project\'s Assets.' : 'Copy the Particle Conversions folder into your Unity project\'s Assets and Unity builds the prefab by itself.')
     : 'Open shader takes you to the shader file, with its Textures folder right beside it.'
   const list = $('doneList')
   list.innerHTML = ''
@@ -2032,10 +2032,14 @@ $('openFixed').onclick = () => window.api.open(info.fixed)
 $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
-const NEWS_DATE = 'Oct 19'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Installation profiles and live update checks', date: NEWS_DATE }
+const NEWS_DATE = 'Oct 23'
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Decal shader and menu fixes', date: NEWS_DATE }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'Particles', title: 'Unity console fixes', sub: 'Decals compile, no duplicate menu.', body: 'The decal projection shader failed to compile in Unity (invalid subscript xy), so decals fell back to flat quads. It compiles now. The particle scripts no longer add two menu items with the same name, and an unused field warning is gone. Convert again to get the fixed scripts.' },
+  { tag: 'Particles', title: 'Particle curves over age', sub: 'Long-lived particles keep their curves.', body: 'Emitters whose particles live longer than the replay, such as IdleCubes (5 to 7 seconds), had too few finished particles to read their colour and Dynamic Parameter curves. The converter now plays the system again for longer, only to read those curves, so the curves over age come from many particles. The baked replay keeps its length.' },
+  { tag: 'Particles', title: 'Particles play in the editor', sub: 'Baked particles animate outside play mode.', body: 'Ribbons, lights, decals and sprites that are played from a baked replay now animate in the Unity editor while the prefab sits in a scene, not only in play mode. Billboards face the Scene view camera. Nothing the player creates in the editor is saved into your scene or prefab.' },
+  { tag: 'Particles', title: 'Separate Particle Converter', sub: 'Its own engine, scripts and folder.', body: 'The Particle Converter now saves into Particle Conversions and builds its prefabs with its own Unity scripts, so it can sit in a project next to Blueprint Conversions. Colour and Dynamic Parameter curves that were coming out empty are read again, and emitters whose curves cannot be read now say so in the notes.\n\nThis needs the Unity Editor to be found (App Settings, Installation) to build the prefab for you. Without it, the prefab is built when you copy the folder into your project.' },
   { tag: 'Settings', title: 'Installation profiles', sub: 'Keep a profile for each Fortnite build.', body: 'App Settings, Installation now has profiles. Make one for the game you have installed and others for older builds, then pick the active one and press Reload. Each profile has its own archive folder, version, encryption keys, mappings file, game language and Nanite and bundle switches. Custom profiles can fetch the keys and mappings for a version for you. Right-click a profile to duplicate or delete it, and drag to reorder.\n\nLatest (On-Demand) is listed but not available yet; Reload tells you so.' },
   { tag: 'Updates', title: 'Live update checks', sub: 'New versions show up within a minute.', body: 'While the app is open it now looks for a new version every 30 seconds, so you do not have to click Check now. It only asks GitHub for the latest version number, and does the full check once a newer one exists. The Check for updates switch still turns this off.' },
   { tag: 'Settings', title: 'Cleaner pop-ups', sub: 'Confirmations now match the app.', body: 'Clearing the cache, resetting settings and restarting now ask in a pop-up that matches the app instead of a plain Windows box. The color swatches in Customizability are also easier to see. The AI Helper has been removed.' },

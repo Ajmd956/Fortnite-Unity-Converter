@@ -31,6 +31,12 @@ function wasUpdated(o) {
   return !!o.hadSettings
 }
 
+function codeError(code, text) {
+  const e = new Error(text)
+  e.code = code
+  return e
+}
+
 function createUpdater(opts) {
   const api = (opts.apiBase || 'https://api.github.com').replace(/\/$/, '')
   const web = (opts.webBase || 'https://github.com').replace(/\/$/, '')
@@ -46,13 +52,14 @@ function createUpdater(opts) {
       headers: Object.assign({ Accept: 'application/vnd.github+json', 'User-Agent': 'FortniteUnityConverter-Updater' }, auth()),
       signal: AbortSignal.timeout(15000)
     })
-    if (res.status === 404) return null
+    if (res.status === 404) throw codeError('notfound', 'No release was found (the repository is private, renamed, or has no published release).')
+    if (res.status === 403 || res.status === 429) throw codeError('ratelimit', 'GitHub is limiting update checks right now.')
     if (!res.ok) throw new Error('Update check failed (' + res.status + ').')
     const rel = await res.json()
     if (!rel || rel.draft || rel.prerelease || !rel.tag_name) return null
     if (compareVersions(rel.tag_name, opts.currentVersion) <= 0) return null
     const asset = (rel.assets || []).find(a => /\.exe$/i.test(a.name) && !/setup|installer/i.test(a.name))
-    if (!asset) return null
+    if (!asset) throw codeError('noasset', 'The latest release has no EXE file attached.')
     state.offered = {
       version: rel.tag_name,
       name: asset.name,

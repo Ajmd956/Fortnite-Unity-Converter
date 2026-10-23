@@ -654,6 +654,28 @@ function shareSharedScripts(blueprintsDir) {
   move('PorterObjectBounds.cs', 'Scripts')
 }
 
+function separateParticleHelpers(dir) {
+  const moves = [
+    ['Editor', 'PorterTextureSetup.cs', [['PorterTextureSetup', 'PorterParticleTextureSetup'], ['PorterTextureAuto', 'PorterParticleTextureAuto']]],
+    ['Scripts', 'PorterObjectBounds.cs', [['PorterObjectBounds', 'PorterParticleObjectBounds']]]
+  ]
+  for (const [sub, file, renames] of moves) {
+    try {
+      const from = path.join(dir, sub, file)
+      if (!fs.existsSync(from)) continue
+      let text = fs.readFileSync(from, 'utf8')
+      let to = file
+      for (const [a, b] of renames) {
+        text = text.split(a).join(b)
+        to = to.split(a).join(b)
+      }
+      fs.writeFileSync(path.join(dir, sub, to), text)
+      fs.rmSync(from, { force: true })
+      fs.rmSync(from + '.meta', { force: true })
+    } catch (e) {}
+  }
+}
+
 function runEngine(args) {
   return new Promise(resolve => {
     const { cmd, pre } = engineCommand()
@@ -887,7 +909,7 @@ async function runUpdateCheck(manual) {
       updateRetries++
       setTimeout(() => runUpdateCheck(false), 5 * 60 * 1000)
     }
-    return { status: 'error', current: app.getVersion() }
+    return { status: e && e.code ? e.code : 'error', current: app.getVersion() }
   }
 }
 
@@ -1507,7 +1529,7 @@ ipcMain.handle('niagara:convert', async (_e, payload) => {
     send('engine:log', '\nfinished: 0 of ' + materials.length + ' converted\n')
     return { ok: true, converted: 0, total: materials.length }
   }
-  return runPropQueue(systems, payload, '--particle-system')
+  return runPropQueue(systems, payload, '--particle-system', particlesDir, 'Particle Conversions')
 })
 
 
@@ -1563,17 +1585,19 @@ function runUnity(exe, args) {
   })
 }
 
-async function buildBlueprintPrefabs(made) {
+async function buildBlueprintPrefabs(made, outDir, rootName) {
   const built = new Set()
   const exe = findUnityNow()
   if (!exe) {
-    send('engine:log', '\nNo Unity editor was found, so the prefab was not built here. Copy the Blueprint Conversions folder into your Unity project and it builds there. To build it here, set the Unity Editor in App Settings, Installation.\n')
+    send('engine:log', '\nNo Unity editor was found, so the prefab was not built here. Copy the ' + rootName + ' folder into your Unity project and it builds there. To build it here, set the Unity Editor in App Settings, Installation.\n')
     return built
   }
   send('engine:state', { running: true, label: 'Building prefab in Unity' })
-  const proj = path.join(os.tmpdir(), 'porter_blueprint_build_project')
+  const particle = rootName === 'Particle Conversions'
+  const headless = particle ? 'PorterParticleHeadless' : 'PorterHeadlessBuild'
+  const proj = path.join(os.tmpdir(), particle ? 'porter_particle_build_project' : 'porter_blueprint_build_project')
   const log = path.join(proj, 'blueprint_build.log')
-  const projRoot = path.join(proj, 'Assets', 'Blueprint Conversions')
+  const projRoot = path.join(proj, 'Assets', rootName)
   const verdictFile = path.join(proj, 'PorterBlueprintBuild.txt')
   const unity = args => runUnity(exe, ['-batchmode', '-quit', '-logFile', log].concat(args))
   const tail = () => {
@@ -1588,13 +1612,13 @@ async function buildBlueprintPrefabs(made) {
       await unity(['-createProject', proj])
       if (stopped) return built
       if (!fs.existsSync(path.join(proj, 'ProjectSettings', 'ProjectVersion.txt'))) {
-        send('engine:log', 'Unity could not create the build project, so the prefab was not built here. Copy the Blueprint Conversions folder into your Unity project instead. Unity log: ' + log + '\n')
+        send('engine:log', 'Unity could not create the build project, so the prefab was not built here. Copy the ' + rootName + ' folder into your Unity project instead. Unity log: ' + log + '\n')
         return built
       }
     }
     const scripts = unityScriptsDir()
     fs.mkdirSync(path.join(proj, 'Assets', 'Editor'), { recursive: true })
-    fs.copyFileSync(path.join(scripts, 'PorterHeadlessBuild.cs'), path.join(proj, 'Assets', 'Editor', 'PorterHeadlessBuild.cs'))
+    fs.copyFileSync(path.join(scripts, headless + '.cs'), path.join(proj, 'Assets', 'Editor', headless + '.cs'))
     const keep = new Set(['Editor', 'Scripts'])
     for (const row of made) keep.add(path.basename(row.dir))
     let present = []
@@ -1603,11 +1627,11 @@ async function buildBlueprintPrefabs(made) {
       if (!keep.has(n.replace(/\.meta$/i, ''))) fs.rmSync(path.join(projRoot, n), { recursive: true, force: true })
     }
     for (const n of keep) {
-      syncTree(path.join(blueprintsDir, n), path.join(projRoot, n))
+      syncTree(path.join(outDir, n), path.join(projRoot, n))
     }
     fs.rmSync(verdictFile, { force: true })
     send('engine:log', '\nUnity: building the prefab in a hidden project, no window opens. This takes a minute or two...\n')
-    const res = await unity(['-projectPath', proj, '-executeMethod', 'PorterHeadlessBuild.Run'])
+    const res = await unity(['-projectPath', proj, '-executeMethod', headless + '.Run'])
     if (stopped) return built
     const lines = tail().split(/\r?\n/)
     for (const line of lines) {
@@ -1615,7 +1639,7 @@ async function buildBlueprintPrefabs(made) {
     }
     if (!fs.existsSync(verdictFile)) {
       const errors = lines.filter(l => /error CS\d+/.test(l)).slice(0, 8)
-      send('engine:log', 'Unity did not finish building the prefab' + (res.error ? ' (' + res.error + ')' : '') + '. Copy the Blueprint Conversions folder into your Unity project instead and it builds there. Unity log: ' + log + '\n' + errors.map(l => l + '\n').join(''))
+      send('engine:log', 'Unity did not finish building the prefab' + (res.error ? ' (' + res.error + ')' : '') + '. Copy the ' + rootName + ' folder into your Unity project instead and it builds there. Unity log: ' + log + '\n' + errors.map(l => l + '\n').join(''))
       return built
     }
     for (const line of fs.readFileSync(verdictFile, 'utf8').split(/\r?\n/)) {
@@ -1630,19 +1654,19 @@ async function buildBlueprintPrefabs(made) {
     // A folder's own .meta sits next to the folder, outside it. Nothing references a folder by its ID,
     // so leave those out (and remove ones an earlier build left) and keep only the .meta files inside the folders.
     for (const n of keep) {
-      try { fs.rmSync(path.join(blueprintsDir, n + '.meta'), { force: true }) } catch (e) {}
+      try { fs.rmSync(path.join(outDir, n + '.meta'), { force: true }) } catch (e) {}
     }
     for (const n of ['Editor', 'Scripts']) {
-      syncTree(path.join(projRoot, n), path.join(blueprintsDir, n), x => /\.meta$/i.test(x))
+      syncTree(path.join(projRoot, n), path.join(outDir, n), x => /\.meta$/i.test(x))
     }
-    send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The prefab and its materials are saved in the Blueprint Conversions folder with their .meta files inside the folders.\n')
+    send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The prefab and its materials are saved in the ' + rootName + ' folder with their .meta files inside the folders.\n')
   } catch (e) {
     send('engine:log', 'The Unity build stopped: ' + (e && e.message ? e.message : e) + '\n')
   }
   return built
 }
 
-async function runPropQueue(paths, payload, flag) {
+async function runPropQueue(paths, payload, flag, outDir, rootName) {
   const scripts = unityScriptsDir()
   let converted = 0
   const made = []
@@ -1652,7 +1676,7 @@ async function runPropQueue(paths, payload, flag) {
   for (let i = 0; i < queue.length; i++) {
     if (stopped) break
     send('engine:log', '\n[' + (i + 1) + '/' + queue.length + '] ' + queue[i] + (i >= paths.length ? ' (linked from another Blueprint)' : '') + '\n')
-    const args = ['--bridge', settings.bridge, flag, queue[i], '--out', blueprintsDir, '--scripts', scripts]
+    const args = ['--bridge', settings.bridge, flag, queue[i], '--out', outDir, '--scripts', scripts]
     if (payload.name && i === 0 && paths.length === 1) args.push('--name', payload.name)
     const res = await runEngine(args)
     if (i < paths.length && /^note: .* holds no meshes or materials/m.test(res.output)) {
@@ -1671,11 +1695,11 @@ async function runPropQueue(paths, payload, flag) {
       if (kind) kinds.push(kind)
       continue
     }
-    const bdir = path.join(blueprintsDir, nm[1])
+    const bdir = path.join(outDir, nm[1])
     const specFile = path.join(bdir, nm[1] + (isProp ? '.propspec.json' : '.blueprint.json'))
     if (!fs.existsSync(specFile)) continue
     converted++
-    made.push({ name: nm[1], shader: specFile, dir: bdir, kind: 'blueprint' })
+    made.push({ name: nm[1], shader: specFile, dir: bdir, kind: flag === '--particle-system' ? 'particles' : 'blueprint' })
     const refs = []
     for (const mm of res.output.matchAll(/^material: (.+)$/gm)) {
       const ref = mm[1].trim()
@@ -1702,7 +1726,8 @@ async function runPropQueue(paths, payload, flag) {
         send('engine:log', 'material not converted: ' + short + '\n')
       }
     }
-    shareSharedScripts(blueprintsDir)
+    shareSharedScripts(outDir)
+    if (flag === '--particle-system') separateParticleHelpers(outDir)
     const sounds = []
     for (const mm of res.output.matchAll(/^sound: (.+)$/gm)) {
       const ref = mm[1].trim()
@@ -1763,7 +1788,7 @@ async function runPropQueue(paths, payload, flag) {
   }
   let builtAll = false
   if (made.length && !stopped) {
-    const built = await buildBlueprintPrefabs(made)
+    const built = await buildBlueprintPrefabs(made, outDir, rootName)
     for (const row of made) {
       row.built = built.has(row.name)
       const prefab = path.join(row.dir, row.name + '.prefab')
@@ -1774,7 +1799,7 @@ async function runPropQueue(paths, payload, flag) {
   busy = false
   send('engine:state', { running: false, label: '' })
   if (made.length) send('convert:done', { shaders: made, total: queue.length, built: builtAll })
-  send('engine:log', '\nfinished: ' + converted + ' of ' + queue.length + ' converted\n' + (converted ? (builtAll ? 'The prefab is already built. Copy the Blueprint Conversions folder into your Unity project\'s Assets.\n' : 'Copy the Blueprint Conversions folder into your Unity project\'s Assets. Unity builds the prefab by itself.\n') : ''))
+  send('engine:log', '\nfinished: ' + converted + ' of ' + queue.length + ' converted\n' + (converted ? (builtAll ? 'The prefab is already built. Copy the ' + rootName + ' folder into your Unity project\'s Assets.\n' : 'Copy the ' + rootName + ' folder into your Unity project\'s Assets. Unity builds the prefab by itself.\n') : ''))
   if (!converted && !stopped) {
     const notice = noticeFor(kinds)
     if (notice) send('app:notice', notice)
@@ -1789,7 +1814,7 @@ ipcMain.handle('blueprint:convert', async (_e, payload) => {
   if (!paths.length) return { ok: false, error: 'no blueprints' }
   const fail = await beginRun('Converting Blueprint')
   if (fail) return fail
-  return runPropQueue(paths, payload, '--blueprint')
+  return runPropQueue(paths, payload, '--blueprint', blueprintsDir, 'Blueprint Conversions')
 })
 
 ipcMain.handle('engine:check', async (_e, payload) => {

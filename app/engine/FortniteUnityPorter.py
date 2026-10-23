@@ -2746,9 +2746,10 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     mat = g.material_object()
     mp = (mat or {}).get("Properties") or {}
     asset = entry.get("asset") or {}
-    bm_raw = blend or asset.get("BlendMode") or mp.get("BlendMode") or "BLEND_Opaque"
+    ov = entry.get("overrides") or {}
+    bm_raw = blend or ov.get("BlendMode") or asset.get("BlendMode") or mp.get("BlendMode") or "BLEND_Opaque"
     bm, bm_known = norm_blend(bm_raw)
-    tr.notes.append("blend mode: read %r -> %s%s" % (bm_raw, bm, "" if bm_known else " (unrecognised value, treated as Translucent)"))
+    tr.notes.append("blend mode: read %r -> %s%s%s" % (bm_raw, bm, " (set by the material instance)" if (not blend and ov.get("BlendMode")) else "", "" if bm_known else " (unrecognised value, treated as Translucent)"))
     sm_c = vals["ShadingModel"]
     unlit = False
     try:
@@ -2757,11 +2758,22 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         pass
     sm_name = str(asset.get("ShadingModel") or (mp.get("ShadingModel") or "")).split("::")[-1]
     ms = str(mp.get("ShadingModel", "")).split("::")[-1]
-    if "Unlit" in sm_name or "Unlit" in ms:
+    sm_over = str(ov.get("ShadingModel") or "").split("::")[-1]
+    if sm_over and pin_attr("ShadingModel") is None and not use_attrs:
+        unlit = "Unlit" in sm_over
+        tr.notes.append("shading model: %s (set by the material instance)" % sm_over)
+    elif "Unlit" in sm_name or "Unlit" in ms:
         unlit = True
     elif not use_attrs and not sm_name and not ms:
         unlit = False
+    if two_sided is None and "TwoSided" in ov:
+        two_sided = truthy(ov["TwoSided"])
     two = find_two_sided(entry, asset, mp) if two_sided is None else two_sided
+    clip = ov.get("OpacityMaskClipValue", asset.get("OpacityMaskClipValue", mp.get("OpacityMaskClipValue", 0.3333)))
+    try:
+        clip = float(clip)
+    except (TypeError, ValueError):
+        clip = 0.3333
     tr.notes.append("two-sided: %s" % ("yes (Cull Off, back faces lit with flipped normal)" if two else "no (back faces culled)"))
 
     f3 = lambda n: tr.fit(vals[n], 3).e
@@ -2791,6 +2803,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        [Space(6)]")
     if "pstreams" in tr.uses:
         o.append('        [HideInInspector] _PorterParticleStreams ("Particle Streams", Float) = 0')
+    if bm == "BLEND_Masked":
+        o.append('        [HideInInspector] _Cutoff ("Mask Clip", Range(0, 1)) = %s' % pf(clip))
     for i in sorted(tr.dpidx):
         o.append('        [HideInInspector] _PorterDPSlot%d ("Particle Data Slots %d", Vector) = (-1, -1, -1, -1)' % (i, i))
     for prop in sorted(tr.slotprops):
@@ -5681,8 +5695,7 @@ def main():
     ap.add_argument("--curves", default=None, help="folder holding curve JSON exports (CQ_Something.json); also looks in Curves next to the cache")
     ap.add_argument("--keep-local-position-panning", action="store_true", help="keep object-space position for time-animated texture lookups instead of using the mesh UV (object-space position changes with scale on skinned meshes in Unity)")
     ap.add_argument("--keep-local-x", action="store_true", help="do not mirror object-space X for LocalPosition in the pixel stage (the exported Unity mesh has X mirrored relative to Unreal, so mirroring is the default)")
-    ap.add_argument("--niagara", metavar="PATH", help="convert a Niagara particle system (object path) to a Unity particle manifest and setup script")
-    ap.add_argument("--seconds", type=float, default=6.0, help="with --niagara: how many seconds of the system to play")
+    ap.add_argument("--seconds", type=float, default=6.0, help="with --particle-system: how many seconds of the system to play")
     ap.add_argument("--scripts", default=None, help="with --blueprint: folder holding the Unity scripts to copy")
     ap.add_argument("--sky", action="store_true", help="the material is on a sky dome: draw it first, behind everything, without writing depth")
     ap.add_argument("--expose-globals", action="store_true", help="show the parameter-collection values (the _C_ ones) as material properties instead of fixing them in the shader, so a script can animate them")
@@ -5705,12 +5718,8 @@ def main():
         run_blueprint_export(a.bridge, a.blueprint, a.out, a.name, a.scripts)
         return
     if a.particle_system:
-        import PropBlueprint
-        PropBlueprint.run_system(Source(bridge=a.bridge, folder=None, cache=None), a.particle_system, a.out, a.name, a.scripts, a.seconds)
-        return
-    if a.niagara:
-        import NiagaraPorter
-        NiagaraPorter.run(a.bridge, a.niagara, a.out, a.name, a.seconds)
+        import ParticleConverter
+        ParticleConverter.run_system(Source(bridge=a.bridge, folder=None, cache=None), a.particle_system, a.out, a.name, a.scripts, a.seconds)
         return
     global ANIMATE_UNWIRED_TIME
     ANIMATE_UNWIRED_TIME = not a.hold_unwired_time

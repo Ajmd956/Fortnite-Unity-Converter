@@ -1,15 +1,19 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 // Plays back a baked Niagara replay (PRB1 file, see app/engine/ParticleBake.py) for the things a Unity
 // Particle System cannot draw: ribbons, per-particle lights, decals and sprites that need more than four
-// Dynamic Parameter values (and, from the Particle Converter, every mesh, sprite and ribbon, as the Blender add-on plays them). It runs in the game, there is nothing to set up: the converted prefab has it
+// Dynamic Parameter values (and, from the Particle Converter, every mesh, sprite and ribbon, as the Blender add-on plays them). It runs in play mode and in edit mode, there is nothing to set up: the converted prefab has it
 // already, with the data, material and field layout filled in.
 //
 // Mesh streams, to match the converted shaders (_PorterParticleStreams = 1):
 //   UV0 (x, y) texture coordinates, UV1 particle colour (the shader reads it as the Custom1 stream),
 //   UV2 Dynamic Parameter slots 0..3, UV3 slots 4..7.
+[ExecuteAlways]
 public class PorterParticleReplay : MonoBehaviour
 {
     public TextAsset data;
@@ -45,7 +49,8 @@ public class PorterParticleReplay : MonoBehaviour
     float[] rows;
     float startTime;
     bool playing;
-    int lastFrame = -2;
+    bool began;
+    float lastEditStep;
 
     Mesh mesh;
     MeshFilter filter;
@@ -62,15 +67,73 @@ public class PorterParticleReplay : MonoBehaviour
     readonly List<int> tris = new List<int>();
     readonly List<int> order = new List<int>();
 
+    static float Now()
+    {
+        return Application.isPlaying ? Time.time : Time.realtimeSinceStartup;
+    }
+
     void OnEnable()
     {
-        if (!Load()) { enabled = false; return; }
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            EditorApplication.delayCall += BeginEditMode;
+            return;
+        }
+#endif
+        Begin();
+    }
+
+#if UNITY_EDITOR
+    void BeginEditMode()
+    {
+        if (this == null || !isActiveAndEnabled || Application.isPlaying) return;
+        Begin();
+        EditorApplication.update -= EditorTick;
+        EditorApplication.update += EditorTick;
+    }
+
+    void EditorTick()
+    {
+        if (this == null)
+        {
+            EditorApplication.update -= EditorTick;
+            return;
+        }
+        if (Application.isPlaying || !playing) return;
+        float now = Time.realtimeSinceStartup;
+        if (now - lastEditStep < 1f / 30f) return;
+        lastEditStep = now;
+        Step();
+        SceneView.RepaintAll();
+        EditorApplication.QueuePlayerLoopUpdate();
+    }
+#endif
+
+    void Begin()
+    {
+        if (began) return;
+        if (!Load())
+        {
+            if (Application.isPlaying) enabled = false;
+            return;
+        }
+        began = true;
+        bool edit = !Application.isPlaying;
+        if (edit)
+        {
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                Transform c = transform.GetChild(i);
+                if (c.name.StartsWith("PorterReplayLight")) DestroyImmediate(c.gameObject);
+            }
+        }
         if (kind != "Light")
         {
             filter = GetComponent<MeshFilter>();
-            if (filter == null) filter = gameObject.AddComponent<MeshFilter>();
+            if (filter == null) { filter = gameObject.AddComponent<MeshFilter>(); if (edit) filter.hideFlags = HideFlags.DontSave; }
             meshRenderer = GetComponent<MeshRenderer>();
-            if (meshRenderer == null) meshRenderer = gameObject.AddComponent<MeshRenderer>();
+            if (meshRenderer == null) { meshRenderer = gameObject.AddComponent<MeshRenderer>(); if (edit) meshRenderer.hideFlags = HideFlags.DontSave; }
             if (material != null) meshRenderer.sharedMaterial = material;
             if (kind == "Decal" && projectDecals) SetUpProjection();
             if (materials != null && materials.Length > 0) meshRenderer.sharedMaterials = materials;
@@ -78,6 +141,7 @@ public class PorterParticleReplay : MonoBehaviour
             meshRenderer.receiveShadows = false;
             mesh = new Mesh();
             mesh.name = "PorterReplay_" + kind;
+            if (edit) mesh.hideFlags = HideFlags.HideAndDontSave;
             mesh.MarkDynamic();
             filter.sharedMesh = mesh;
         }
@@ -94,6 +158,7 @@ public class PorterParticleReplay : MonoBehaviour
         if (decalShader == null) { projecting = false; return; }
         projMaterial = new Material(decalShader);
         projMaterial.name = "PorterDecalProject";
+        if (!Application.isPlaying) projMaterial.hideFlags = HideFlags.HideAndDontSave;
         if (material != null)
         {
             Texture best = null;
@@ -119,17 +184,26 @@ public class PorterParticleReplay : MonoBehaviour
 
     void OnDisable()
     {
+#if UNITY_EDITOR
+        EditorApplication.update -= EditorTick;
+#endif
+        began = false;
         if (projecting) { Camera.onPreCull -= NeedDepth; projecting = false; }
         if (projMaterial != null) { if (Application.isPlaying) Destroy(projMaterial); else DestroyImmediate(projMaterial); projMaterial = null; }
         if (mesh != null) { if (Application.isPlaying) Destroy(mesh); else DestroyImmediate(mesh); mesh = null; }
-        for (int i = 0; i < lights.Count; i++) if (lights[i] != null) lights[i].enabled = false;
+        for (int i = 0; i < lights.Count; i++)
+        {
+            if (lights[i] == null) continue;
+            if (Application.isPlaying) lights[i].enabled = false;
+            else DestroyImmediate(lights[i].gameObject);
+        }
+        if (!Application.isPlaying) lights.Clear();
     }
 
     public void Play()
     {
-        startTime = Time.time;
+        startTime = Now();
         playing = true;
-        lastFrame = -2;
     }
 
     public void Stop()
@@ -140,7 +214,11 @@ public class PorterParticleReplay : MonoBehaviour
 
     bool Load()
     {
-        if (data == null) return false;
+        if (data == null)
+        {
+            Debug.LogWarning("PorterParticleReplay: " + name + " has no baked data assigned, it will not play");
+            return false;
+        }
         byte[] b = data.bytes;
         if (b == null || b.Length < 16 || b[0] != (byte)'P' || b[1] != (byte)'R' || b[2] != (byte)'B' || b[3] != (byte)'1')
         {
@@ -178,13 +256,18 @@ public class PorterParticleReplay : MonoBehaviour
     {
         if (mesh != null) mesh.Clear();
         for (int i = 0; i < lights.Count; i++) if (lights[i] != null) lights[i].enabled = false;
-        lastFrame = -2;
     }
 
     void LateUpdate()
     {
+        if (!Application.isPlaying) return;
+        Step();
+    }
+
+    void Step()
+    {
         if (!playing || rows == null) return;
-        float t = (Time.time - startTime) * speed;
+        float t = (Now() - startTime) * speed;
         int f = (int)(t / tick);
         if (f >= frames)
         {
@@ -196,6 +279,9 @@ public class PorterParticleReplay : MonoBehaviour
         // billboards follow the camera, so the mesh is rebuilt every frame
         if (mesh == null) return;
         Camera cam = Camera.main;
+#if UNITY_EDITOR
+        if (!Application.isPlaying && SceneView.lastActiveSceneView != null) cam = SceneView.lastActiveSceneView.camera;
+#endif
         Vector3 camPos = cam != null ? cam.transform.position : transform.position - Vector3.forward * 10f;
         Vector3 camRight = cam != null ? cam.transform.right : Vector3.right;
         Vector3 camUp = cam != null ? cam.transform.up : Vector3.up;
@@ -694,5 +780,49 @@ public class PorterParticleReplay : MonoBehaviour
             l.range = Mathf.Max(0.01f, Get(r, fr, 0, 1f) * radiusScale);
             l.enabled = true;
         }
+    }
+}
+
+// The converted Niagara systems were made for a character's body or skin. Drop the body (or a bone) into Body, or type its
+// name, and the whole system follows it: it is parented to it at zero, so it sits where the Unreal system sat on the rig.
+[ExecuteAlways]
+public class PorterBodyAnchor : MonoBehaviour
+{
+    public Transform body;
+    public string bodyName = "";
+    public Vector3 offset;
+    public Vector3 eulerOffset;
+    public bool keepWorldScale = true;
+
+    void OnEnable()
+    {
+        Attach();
+    }
+
+    void OnValidate()
+    {
+        Attach();
+    }
+
+    void LateUpdate()
+    {
+        if (body == null && !string.IsNullOrEmpty(bodyName)) Attach();
+    }
+
+    [ContextMenu("Attach To Body")]
+    public void Attach()
+    {
+        if (body == null && !string.IsNullOrEmpty(bodyName))
+        {
+            var found = GameObject.Find(bodyName);
+            if (found != null) body = found.transform;
+        }
+        if (body == null || transform.parent == body) return;
+        Vector3 s = transform.lossyScale;
+        transform.SetParent(body, false);
+        transform.localPosition = offset;
+        transform.localRotation = Quaternion.Euler(eulerOffset);
+        if (keepWorldScale && body.lossyScale != Vector3.zero)
+            transform.localScale = new Vector3(s.x / body.lossyScale.x, s.y / body.lossyScale.y, s.z / body.lossyScale.z);
     }
 }

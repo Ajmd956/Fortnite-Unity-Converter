@@ -395,7 +395,7 @@ public class PorterBlueprintAuto : AssetPostprocessor
         foreach (string guid in AssetDatabase.FindAssets("propspec t:TextAsset"))
         {
             string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (!p.EndsWith(".propspec.json")) continue;
+            if (!p.EndsWith(".propspec.json") || p.Contains("/Particle Conversions/")) continue;
             if (PorterPropBuilder.Build(p, false, true) != null) made++;
         }
         Debug.Log("Porter: built " + made + " new blueprint prefab(s)");
@@ -424,7 +424,7 @@ public class PorterBlueprintAuto : AssetPostprocessor
         foreach (string guid in AssetDatabase.FindAssets("propspec t:TextAsset"))
         {
             string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (!p.EndsWith(".propspec.json")) continue;
+            if (!p.EndsWith(".propspec.json") || p.Contains("/Particle Conversions/")) continue;
             try
             {
                 PorterPropBuilder.Build(p, false, false);
