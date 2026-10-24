@@ -563,6 +563,8 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 #instOverlay .btn:active{background:#1a1822;}
 #updDoneNotesBtn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
 #confirmOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;z-index:300;}
+.confirm-h{display:flex;align-items:center;gap:8px;}
+.confirm-ico{width:22px;height:22px;color:#c9a64a;flex:none;}
 #confirmNo{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
 #confirmNo:hover{background:#2a2733;}
 #confirmNo:active{background:#1a1822;}
@@ -1014,7 +1016,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 
 <div class="overlay" id="confirmOverlay">
   <div class="panel upd-panel">
-    <h2 id="confirmTitle">Confirm</h2>
+    <h2 class="confirm-h"><svg id="confirmIcon" class="confirm-ico" viewBox="0 0 24 24" fill="currentColor" hidden><path d="M13,14H11V10H13M13,18H11V16H13M1,21H23L12,2L1,21Z"/></svg><span id="confirmTitle">Confirm</span></h2>
     <div class="upd-sub" id="confirmBody"></div>
     <div class="upd-btns">
       <button class="btn" id="confirmNo">Cancel</button>
@@ -1609,8 +1611,9 @@ $('updateOverlay').addEventListener('mousedown', e => { if (e.target === $('upda
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('updateOverlay').classList.contains('open')) closeUpdate() })
 
 let confirmDone = null
-function askConfirm(title, body, okText) {
+function askConfirm(title, body, okText, warn) {
   if (confirmDone) confirmDone(false)
+  $('confirmIcon').hidden = !warn
   $('confirmTitle').textContent = title
   $('confirmBody').textContent = body
   $('confirmYes').textContent = okText || 'OK'
@@ -2846,8 +2849,18 @@ function applyExp() {
   if (!on && $('sub-experimental').classList.contains('active')) showSub('application')
 }
 $('setExperimental').onchange = () => { applyExp(); saveSetting({ showExperimental: $('setExperimental').checked }).then(applyBuildLocks); syncToggleLabels() }
-$('setExpParticle').onchange = () => saveSetting({ expParticle: $('setExpParticle').checked }).then(applyBuildLocks)
-$('setExpBlueprint').onchange = () => saveSetting({ expBlueprint: $('setExpBlueprint').checked }).then(applyBuildLocks)
+async function confirmExperimental(id, key, name) {
+  const box = $(id)
+  if (box.checked && !(await askConfirm('Warning', 'Are you sure you wish to enable the ' + name + '? It is very experimental and we cannot ensure it will work well.', 'Enable', true))) {
+    box.checked = false
+    syncToggleLabels()
+    return
+  }
+  syncToggleLabels()
+  saveSetting({ [key]: box.checked }).then(applyBuildLocks)
+}
+$('setExpParticle').onchange = () => confirmExperimental('setExpParticle', 'expParticle', 'Particle Converter')
+$('setExpBlueprint').onchange = () => confirmExperimental('setExpBlueprint', 'expBlueprint', 'Blueprint Converter')
 $('setDev').onchange = () => { applyDev(); saveSetting({ showDev: $('setDev').checked }); syncToggleLabels() }
 
 function fillExport() {
