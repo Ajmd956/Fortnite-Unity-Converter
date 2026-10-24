@@ -1800,6 +1800,17 @@ function showDone(data) {
     list.appendChild(row)
   })
   $('doneOverlay').classList.add('open')
+  playDoneSound()
+}
+
+const doneSound = new Audio('../assets/sounds/conversion-done.wav')
+doneSound.preload = 'auto'
+function playDoneSound() {
+  try {
+    doneSound.currentTime = 0
+    const p = doneSound.play()
+    if (p && p.catch) p.catch(() => {})
+  } catch (e) {}
 }
 
 let switching = 0
