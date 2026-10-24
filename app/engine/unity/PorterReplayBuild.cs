@@ -169,6 +169,10 @@ public static partial class PorterPropBuilder
             player.ribbonShape = (int)N(b.ContainsKey("shape") ? b["shape"] : null, 0);
             player.ribbonSides = Mathf.Max(1, (int)N(b.ContainsKey("sides") ? b["sides"] : null, 2));
             player.sortMode = (int)N(b.ContainsKey("sortMode") ? b["sortMode"] : null, 0);
+            player.inverseSquared = B(b.ContainsKey("inverseSquared") ? b["inverseSquared"] : null, false);
+            player.cullMin = (float)N(b.ContainsKey("cullMin") ? b["cullMin"] : null, 0.0);
+            player.cullMax = (float)N(b.ContainsKey("cullMax") ? b["cullMax"] : null, 0.0);
+            if (B(b.ContainsKey("castShadows") ? b["castShadows"] : null, false)) player.shadowCasting = 1;
             if (kind == "Light")
             {
                 player.lightScale = ReplayLightScale;

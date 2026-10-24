@@ -41,6 +41,8 @@ public class PorterBakedParticleSystem : MonoBehaviour
     public bool lengthwise;                     // sprite: its length runs along its velocity (or its own vector)
     public float pivotX = 0.5f, pivotY = 0.5f;  // sprite: where the particle sits on its quad (UV space, V down)
     public int subX = 1, subY = 1;              // sprite: the flipbook's columns and rows
+    public bool inverseSquared;                 // light: the renderer uses inverse-squared falloff, so the exponent does not change its range
+    public float cullMin, cullMax;              // sprites and meshes: metres from the camera inside which they are drawn (cullMax 0 for no far limit)
     public int ribbonShape;                     // ribbon: 0 a plane, 1 several planes turned about it, 2 a tube (facingMode: 0 width across the view, 1 across the particles' facing, 2 along their side vector)
     public bool projectDecals = true;           // decal: project onto the scene (needs the Porter/DecalProject shader in the project and a depth texture), else a flat quad
     public Shader decalShader;                  // set by the builder; found by name when empty
@@ -1160,14 +1162,20 @@ public class PorterBakedParticleSystem : MonoBehaviour
     void BuildSprites(int f, Vector3 right, Vector3 up, Vector3 localCam)
     {
         int fp = Field("pos"), fs = Field("size"), fr = Field("rotation"), ffac = Field("facing"), fal = Field("align"), fsub = Field("subimage");
-        int fco = Field("camOff");
+        int fco = Field("camOff"), fpo = Field("pivotOff");
         int first = frameStart[f];
         int sx = Mathf.Max(1, subX), sy = Mathf.Max(1, subY);
         int total = sx * sy;
+        float worldScale = Mathf.Max(transform.lossyScale.x, 1e-6f);
         for (int i = 0; i < counts[f]; i++)
         {
             int r = RowAt(first, i);
             Vector3 p = new Vector3(Get(r, fp, 0, 0f), Get(r, fp, 1, 0f), Get(r, fp, 2, 0f));
+            if (cullMax > cullMin || cullMin > 0f)
+            {
+                float camDist = (localCam - p).magnitude * worldScale;
+                if (camDist < cullMin || (cullMax > cullMin && camDist > cullMax)) continue;
+            }
             float w = Get(r, fs, 0, 0.1f) * 0.5f * sizeScale, h = Get(r, fs, 1, 0.1f) * 0.5f * sizeScale;
             float ang = Get(r, fr, 0, 0f);
             float cs = Mathf.Cos(ang), sn = Mathf.Sin(ang);
@@ -1226,7 +1234,8 @@ public class PorterBakedParticleSystem : MonoBehaviour
                 ay = up * cs - right * sn;
                 nrm = toCam.sqrMagnitude > 1e-12f ? toCam.normalized : Vector3.forward;
             }
-            Vector3 center = p + ax * ((0.5f - pivotX) * 2f * w) + ay * ((pivotY - 0.5f) * 2f * h);
+            float pvx = pivotX + (fpo >= 0 ? Get(r, fpo, 0, 0f) : 0f), pvy = pivotY + (fpo >= 0 ? Get(r, fpo, 1, 0f) : 0f);
+            Vector3 center = p + ax * ((0.5f - pvx) * 2f * w) + ay * ((pvy - 0.5f) * 2f * h);
             Vector3 rx = ax * w, ry = ay * h;
             Vector4 tan = new Vector4(ax.x, ax.y, ax.z, 1f);
             Vector2 uvMin = Vector2.zero, uvSize = Vector2.one;
@@ -1352,6 +1361,7 @@ public class PorterBakedParticleSystem : MonoBehaviour
         if (sources.Length == 0) return;
         int fp = Field("pos"), fq = Field("rotation"), fs = Field("scale"), fv = Field("velocity"), fi = Field("meshIndex"), fco = Field("camOff");
         int first = frameStart[f];
+        float worldScale = Mathf.Max(transform.lossyScale.x, 1e-6f);
         for (int i = 0; i < counts[f]; i++)
         {
             int r = RowAt(first, i);
@@ -1359,6 +1369,11 @@ public class PorterBakedParticleSystem : MonoBehaviour
             MeshSource src = sources[mi];
             if (src == null) continue;
             Vector3 p = new Vector3(Get(r, fp, 0, 0f), Get(r, fp, 1, 0f), Get(r, fp, 2, 0f));
+            if (cullMax > cullMin || cullMin > 0f)
+            {
+                float camDist = (localCam - p).magnitude * worldScale;
+                if (camDist < cullMin || (cullMax > cullMin && camDist > cullMax)) continue;
+            }
             float camOff = Get(r, fco, 0, 0f);
             if (camOff != 0f && (localCam - p).sqrMagnitude > 1e-12f) p += (localCam - p).normalized * camOff;
             Quaternion own = new Quaternion(Get(r, fq, 0, 0f), Get(r, fq, 1, 0f), Get(r, fq, 2, 0f), Get(r, fq, 3, 1f));
@@ -1496,7 +1511,7 @@ public class PorterBakedParticleSystem : MonoBehaviour
             l.shadows = (LightShadows)Mathf.Clamp(lightShadows, 0, 2);
             l.shadowStrength = lightShadowStrength;
             l.renderMode = (LightRenderMode)Mathf.Clamp(lightRenderMode, 0, 2);
-            float ex = fe >= 0 ? Get(r, fe, 0, 1f) : 1f;
+            float ex = fe >= 0 && !inverseSquared ? Get(r, fe, 0, 1f) : 1f;
             float reach = ex > 0.01f ? Mathf.Sqrt(1f - Mathf.Pow(0.1f, 1f / ex)) / 0.9486833f : 1f;
             l.range = Mathf.Max(0.01f, Get(r, fr, 0, 1f) * radiusScale * Mathf.Lerp(1f, Mathf.Clamp(reach, 0.25f, 1.1f), exponentToRange));
             l.enabled = true;
@@ -1946,6 +1961,7 @@ public class PorterBakedParticleSystemInspector : Editor
                     }
                 }
                 if (kind == "Sprite" || kind == "Mesh") Popup("sortMode", "Sort Mode", SortModes);
+                if (kind == "Sprite" || kind == "Mesh") Pair("cullMin", "cullMax", "Camera Distance Cull", "Metres from the camera inside which particles are drawn. Max 0 has no far limit.");
                 Popup("shadowCasting", "Cast Shadows", CastModes);
                 Field("receiveShadows", "Receive Shadows", "");
                 Field("sortingOrder", "Sorting Order", "");

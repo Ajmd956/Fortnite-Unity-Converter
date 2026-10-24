@@ -203,9 +203,13 @@ def sort_mode(props):
 
 def spec_extras(kind, props):
     """What the player needs to know about a renderer that is not in its rows."""
-    out = {}
+    out = {"castShadows": bool(props.get("bCastShadows", False))}
     if kind in ("Sprite", "Mesh"):
         out["sortMode"] = sort_mode(props)
+        cull = props.get("DistanceCullRange") or {}
+        if props.get("bEnableDistanceCulling") and isinstance(cull, dict):
+            lo, hi = float(cull.get("X", 0.0) or 0.0) / 100.0, float(cull.get("Y", 0.0) or 0.0) / 100.0
+            out["cullMin"], out["cullMax"] = lo, hi if hi > lo else 0.0
     if kind == "Sprite":
         facing = str(props.get("FacingMode") or "")
         out["facingMode"] = 1 if "CustomFacing" in facing else 2 if "FaceCameraPosition" in facing else 0
@@ -336,6 +340,13 @@ def row_fields(kind, fr, props, floats, ints, count):
         out += [("subimage", fr.get(bound(props, "SubImageIndexBinding", "SubImageIndex"), floats, ints, count)[:1]),
                 ("facing", swap(fr.get(bound(props, "SpriteFacingBinding", "SpriteFacing"), floats, ints, count, 3)[:3])),
                 ("align", swap(fr.get(along, floats, ints, count, 3)[:3]))]
+    if kind == "Sprite":
+        pivot_binding = bound(props, "PivotOffsetBinding", "PivotOffset")
+        if fr.has(pivot_binding):
+            po = fr.get(pivot_binding, floats, ints, count, 2)
+            if po.shape[0] < 2:
+                po = np.vstack([po, np.zeros((2 - po.shape[0], count))])
+            out.append(("pivotOff", po[:2]))
     if kind in ("Sprite", "Mesh"):
         # how far it is drawn towards the camera from where it is (a glow out in front of what it sits in)
         out.append(("camOff", fr.get(bound(props, "CameraOffsetBinding", "CameraOffset"), floats, ints, count)[:1] / 100.0))
