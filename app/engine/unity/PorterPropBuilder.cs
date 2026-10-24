@@ -879,13 +879,35 @@ public static partial class PorterPropBuilder
             tsa.animation = ParticleSystemAnimationType.WholeSheet;
             tsa.cycleCount = 1;
             bool animated = mod.ContainsKey("subUV") && mod["subUV"] != null;
-            tsa.frameOverTime = animated ? new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0f, 1f, 1f)) : new ParticleSystem.MinMaxCurve(0f);
-            tsa.startFrame = new ParticleSystem.MinMaxCurve(0f);
-            log.Add("UNVERIFIED " + name + ": sub-image grid " + tilesX + "x" + tilesY + " mapped to Texture Sheet Animation, " + (animated ? "frames play once over the lifetime" : "frame 0 only") + "; the converted material must use the particle UVs for this to show");
+            float sheet = tilesX * tilesY;
+            float used = sheet;
+            bool randomFrame = false;
+            if (animated)
+            {
+                var su = D(mod["subUV"]);
+                used = Mathf.Clamp((float)N(su.ContainsKey("frames") ? su["frames"] : null, sheet), 1f, sheet);
+                randomFrame = su.ContainsKey("mode") && S(su["mode"]).IndexOf("Random", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            float span = used / sheet;
+            if (animated && randomFrame)
+            {
+                tsa.frameOverTime = new ParticleSystem.MinMaxCurve(0f);
+                tsa.startFrame = new ParticleSystem.MinMaxCurve(0f, Mathf.Max(0f, span - 1f / sheet));
+            }
+            else
+            {
+                tsa.frameOverTime = animated ? new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0f, 1f, span)) : new ParticleSystem.MinMaxCurve(0f);
+                tsa.startFrame = new ParticleSystem.MinMaxCurve(0f);
+            }
+            log.Add("UNVERIFIED " + name + ": sub-image grid " + tilesX + "x" + tilesY + " mapped to Texture Sheet Animation, " + (!animated ? "frame 0 only" : randomFrame ? "a random frame of the first " + used + " each particle" : "the first " + used + " frames play once over the lifetime") + "; the converted material must use the particle UVs for this to show");
         }
         var pv = L(r["pivot"]);
-        if (Mathf.Abs((float)N(pv[0], 0.5) - 0.5f) > 0.001f || Mathf.Abs((float)N(pv[1], 0.5) - 0.5f) > 0.001f)
-            log.Add("NOT APPLIED " + name + ": sprite pivot (" + N(pv[0], 0.5) + ", " + N(pv[1], 0.5) + ") (Niagara/Unity pivot sign convention not verified)");
+        float pvx = (float)N(pv[0], 0.5), pvy = (float)N(pv[1], 0.5);
+        if (Mathf.Abs(pvx - 0.5f) > 0.001f || Mathf.Abs(pvy - 0.5f) > 0.001f)
+        {
+            pr.pivot = new Vector3(pvx - 0.5f, 0.5f - pvy, 0f);
+            log.Add("UNVERIFIED " + name + ": sprite pivot (" + pvx + ", " + pvy + ") set as the renderer's Pivot " + pr.pivot + "; if the sprite sits on the wrong side of its position, flip the sign of the Pivot");
+        }
     }
 
     static void BuildMeshParticle(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, Dictionary<string, object> r, string name)

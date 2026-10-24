@@ -682,7 +682,7 @@ function bakeEnv(payload) {
   if (!payload || typeof payload.bake !== 'boolean') return null
   return payload.bake
     ? { PORTER_BAKE: 'all', PORTER_BAKE_SCRIPTED: '1', PORTER_BAKE_MESHES: '1' }
-    : { PORTER_BAKE: 'auto', PORTER_BAKE_SCRIPTED: '0' }
+    : { PORTER_BAKE: 'off', PORTER_BAKE_SCRIPTED: '0', PORTER_BAKE_MESHES: '0' }
 }
 
 function runEngine(args, extraEnv) {
