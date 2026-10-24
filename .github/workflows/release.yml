@@ -80,13 +80,18 @@ jobs:
         working-directory: app
         shell: cmd
         run: |
-          python -m pip install -q pyinstaller
+          python -m pip install -q numpy pyinstaller
           python -m PyInstaller --noconfirm --clean --log-level WARN --onedir --console --name FortniteUnityPorter --distpath engine\bin --workpath build_py --specpath build_py --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --exclude-module doctest --exclude-module sqlite3 --exclude-module xmlrpc --exclude-module lib2to3 --exclude-module curses --exclude-module turtle --exclude-module idlelib engine\FortniteUnityPorter.py
 
       - name: Check the engine exists
         working-directory: app
         shell: cmd
         run: if not exist engine\bin\FortniteUnityPorter\FortniteUnityPorter.exe (echo FortniteUnityPorter.exe was not built & exit /b 1)
+
+      - name: Check numpy is bundled in the engine
+        working-directory: app
+        shell: cmd
+        run: if not exist engine\bin\FortniteUnityPorter\_internal\numpy (echo numpy was not bundled in the engine & exit /b 1)
 
       - name: Build the file helper
         working-directory: app
