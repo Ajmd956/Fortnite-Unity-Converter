@@ -323,7 +323,17 @@ public static partial class PorterPropBuilder
         var all = L(e["renderers"]);
         var rl = new List<object>();
         for (int i = 0; i < all.Count; i++)
-            if (!D(all[i]).ContainsKey("baked")) rl.Add(all[i]);
+        {
+            var ri = D(all[i]);
+            if (ri.ContainsKey("baked")) continue;
+            string rkind = ri.ContainsKey("type") ? S(ri["type"]) : "";
+            if (rkind != "Sprite" && rkind != "Mesh" && rkind != "Light" && rkind != "Ribbon")
+            {
+                log.Add("NOT APPLIED " + S(e["name"]) + ": " + rkind + " renderer has no Particle System equivalent");
+                continue;
+            }
+            rl.Add(all[i]);
+        }
         if (all.Count > 0 && rl.Count == 0) return;
         if (rl.Count != all.Count)
         {
@@ -334,7 +344,7 @@ public static partial class PorterPropBuilder
         for (int i = 0; i < rl.Count; i++)
         {
             string t = S(D(rl[i])["type"]);
-            if (t == "Mesh" || t == "Sprite") picks.Add(i);
+            if (t == "Mesh" || t == "Sprite" || t == "Ribbon") picks.Add(i);
         }
         if (picks.Count < 2)
         {
@@ -437,11 +447,17 @@ public static partial class PorterPropBuilder
         BuildShape(ps, mod, name, hasPos, posMin, posMax, e);
         BuildVelocity(ps, mod, lmin, lmax, name);
         BuildForces(ps, mod, name);
+        BuildMotionFit(ps, mod, name);
 
         bool isMesh = rtype == "Mesh";
+        bool isRibbon = rtype == "Ribbon";
         if (isMesh) BuildMeshParticle(ps, pr, mod, D(rends[0]), name);
+        else if (isRibbon) BuildRibbonParticle(ps, pr, mod, D(rends[0]), name);
         else BuildSpriteParticle(ps, pr, mod, rends.Count > 0 ? D(rends[0]) : null, name);
-        BuildRotation(ps, mod, isMesh, name);
+        if (!isRibbon) BuildRotation(ps, mod, isMesh, name);
+        if (!isRibbon) BuildRotationFit(ps, mod, name);
+        if (rends.Count > 0 && D(rends[0]).ContainsKey("castShadows") && B(D(rends[0])["castShadows"], false))
+            pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         if (e.ContainsKey("unhandledModules") && L(e["unhandledModules"]).Count > 0)
         {
             var names = new List<string>();
@@ -454,7 +470,7 @@ public static partial class PorterPropBuilder
             log.Add("NOT APPLIED " + name + ": SubUV animation (" + S(su["frames"]) + " frames, mode " + S(su["mode"]) + "); only sprite emitters get sheet animation");
         }
 
-        bool streamed = BuildColorStreams(ps, pr, mod, name, rends.Count > 0 ? D(rends[0]) : null);
+        bool streamed = !isRibbon && BuildColorStreams(ps, pr, mod, name, rends.Count > 0 ? D(rends[0]) : null);
         if (!streamed && mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
         {
             var values = L(D(mod["scaleColor"])["values"]);
@@ -807,6 +823,119 @@ public static partial class PorterPropBuilder
         }
     }
 
+    static Vector3 Triple(object o)
+    {
+        var t = L(o);
+        return new Vector3((float)N(t[0], 0), (float)N(t[1], 0), (float)N(t[2], 0));
+    }
+
+    static void BuildMotionFit(ParticleSystem ps, Dictionary<string, object> mod, string name)
+    {
+        if (!mod.ContainsKey("velocityFit") || mod["velocityFit"] == null) return;
+        var vf = D(mod["velocityFit"]);
+        float life = Mathf.Max(0.05f, (float)N(vf.ContainsKey("life") ? vf["life"] : null, 1.0));
+        if (vf.ContainsKey("speed") && vf["speed"] != null)
+        {
+            var sp = L(vf["speed"]);
+            var c = new AnimationCurve();
+            for (int i = 0; i < sp.Count; i++) c.AddKey(sp.Count > 1 ? i / (float)(sp.Count - 1) : 0f, (float)N(sp[i], 1));
+            for (int i = 0; i < c.length; i++) c.SmoothTangents(i, 0f);
+            var vol = ps.velocityOverLifetime;
+            vol.enabled = true;
+            vol.space = ParticleSystemSimulationSpace.Local;
+            vol.speedModifier = new ParticleSystem.MinMaxCurve(1f, c);
+            log.Add("FIT " + name + ": speed over lifetime from the replay (x" + ((float)N(sp[sp.Count - 1], 1)).ToString("0.##") + " by the end of life) as Velocity over Lifetime's Speed Modifier");
+        }
+        if (vf.ContainsKey("added") && vf["added"] != null)
+        {
+            var ad = L(vf["added"]);
+            int n = ad.Count;
+            if (n >= 3)
+            {
+                var vel = new Vector3[n];
+                for (int i = 0; i < n; i++) vel[i] = P(Triple(ad[i])) * CmToM;
+                var cx = new AnimationCurve();
+                var cy = new AnimationCurve();
+                var cz = new AnimationCurve();
+                float step = 1f / (n - 1);
+                for (int i = 0; i < n; i++)
+                {
+                    int lo = Mathf.Max(i - 1, 0), hi = Mathf.Min(i + 1, n - 1);
+                    Vector3 acc = (vel[hi] - vel[lo]) / ((hi - lo) * step * life);
+                    cx.AddKey(i * step, acc.x);
+                    cy.AddKey(i * step, acc.y);
+                    cz.AddKey(i * step, acc.z);
+                }
+                for (int i = 0; i < n; i++) { cx.SmoothTangents(i, 0f); cy.SmoothTangents(i, 0f); cz.SmoothTangents(i, 0f); }
+                var f = ps.forceOverLifetime;
+                f.enabled = true;
+                f.space = ParticleSystemSimulationSpace.Local;
+                f.x = new ParticleSystem.MinMaxCurve(1f, cx);
+                f.y = new ParticleSystem.MinMaxCurve(1f, cy);
+                f.z = new ParticleSystem.MinMaxCurve(1f, cz);
+                log.Add("FIT " + name + ": gravity and other forces from the replay (the velocity every particle gains, " + vel[n - 1].ToString("0.##") + " m/s by the end of life) as Force over Lifetime");
+            }
+        }
+    }
+
+    static void BuildRotationFit(ParticleSystem ps, Dictionary<string, object> mod, string name)
+    {
+        if (!mod.ContainsKey("rotationFit") || mod["rotationFit"] == null) return;
+        var rf = D(mod["rotationFit"]);
+        var delta = L(rf["delta"]);
+        int n = delta.Count;
+        if (n < 3) return;
+        float life = Mathf.Max(0.05f, (float)N(rf.ContainsKey("life") ? rf["life"] : null, 1.0));
+        var c = new AnimationCurve();
+        float step = 1f / (n - 1);
+        for (int i = 0; i < n; i++)
+        {
+            int lo = Mathf.Max(i - 1, 0), hi = Mathf.Min(i + 1, n - 1);
+            float w = ((float)N(delta[hi], 0) - (float)N(delta[lo], 0)) / ((hi - lo) * step * life);
+            c.AddKey(i * step, w * Mathf.Deg2Rad);
+        }
+        for (int i = 0; i < n; i++) c.SmoothTangents(i, 0f);
+        var rol = ps.rotationOverLifetime;
+        rol.enabled = true;
+        rol.separateAxes = false;
+        rol.z = new ParticleSystem.MinMaxCurve(1f, c);
+        log.Add("FIT " + name + ": sprite rotation over its life from the replay (" + ((float)N(delta[n - 1], 0)).ToString("0.#") + " degrees turned by the end) as Rotation over Lifetime; the spin direction against Unreal's is not confirmed");
+    }
+
+    static void BuildRibbonParticle(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, Dictionary<string, object> r, string name)
+    {
+        var main = ps.main;
+        main.startSize = 1f;
+        pr.renderMode = ParticleSystemRenderMode.None;
+        var tr = ps.trails;
+        tr.enabled = true;
+        tr.mode = ParticleSystemTrailMode.Ribbon;
+        tr.ribbonCount = 1;
+        tr.ratio = 1f;
+        tr.lifetime = 1f;
+        tr.minVertexDistance = 0.02f;
+        tr.worldSpace = false;
+        tr.dieWithParticles = true;
+        tr.textureMode = ParticleSystemTrailTextureMode.Stretch;
+        tr.sizeAffectsWidth = false;
+        tr.sizeAffectsLifetime = false;
+        tr.inheritParticleColor = true;
+        if (mod.ContainsKey("ribbonWidth") && mod["ribbonWidth"] != null)
+        {
+            var w = L(mod["ribbonWidth"]);
+            var c = new AnimationCurve();
+            for (int i = 0; i < w.Count; i++) c.AddKey(w.Count > 1 ? i / (float)(w.Count - 1) : 0f, Mathf.Max(0f, (float)N(w[i], 10)) * CmToM);
+            for (int i = 0; i < c.length; i++) c.SmoothTangents(i, 0f);
+            tr.widthOverTrail = new ParticleSystem.MinMaxCurve(1f, c);
+        }
+        else tr.widthOverTrail = new ParticleSystem.MinMaxCurve(0.1f);
+        string matName = r.ContainsKey("material") ? S(r["material"]) : "";
+        var mat = FindMaterial(matName);
+        if (mat == null && !string.IsNullOrEmpty(matName)) Miss("material", matName, "its converted shader");
+        pr.trailMaterial = mat;
+        log.Add("APPROX " + name + ": ribbon renderer built as the Trails module in Ribbon mode (one ribbon joining the particles in birth order, width over the trail from the replay, stretched UVs); Niagara's ribbon IDs, UV tiling and twist are not carried");
+    }
+
     static ParticleSystem.MinMaxCurve DragCurve(float v0a, float v0b, float drag, float life)
     {
         var ca = new AnimationCurve();
@@ -995,8 +1124,25 @@ public static partial class PorterPropBuilder
             var values = L(D(mod["scaleMeshSize"])["values"]);
             var sol = ps.sizeOverLifetime;
             sol.enabled = true;
-            sol.separateAxes = false;
-            sol.size = new ParticleSystem.MinMaxCurve(1f, CurveFrom(values, "X"));
+            bool perAxis = false;
+            for (int vi = 0; vi < values.Count && !perAxis; vi++)
+            {
+                var vd = D(values[vi]);
+                if (vd.ContainsKey("Y") && vd.ContainsKey("Z") && (Math.Abs(N(vd["Y"], 1) - N(vd["X"], 1)) > 0.02 || Math.Abs(N(vd["Z"], 1) - N(vd["X"], 1)) > 0.02)) perAxis = true;
+            }
+            if (perAxis)
+            {
+                sol.separateAxes = true;
+                sol.x = new ParticleSystem.MinMaxCurve(1f, CurveFrom(values, "X"));
+                sol.y = new ParticleSystem.MinMaxCurve(1f, CurveFrom(values, "Z"));
+                sol.z = new ParticleSystem.MinMaxCurve(1f, CurveFrom(values, "Y"));
+                log.Add("UNVERIFIED " + name + ": mesh scale changes differently on each axis over its life, applied as Unity's separate-axis size over lifetime with Unreal's Y and Z swapped like the other axes");
+            }
+            else
+            {
+                sol.separateAxes = false;
+                sol.size = new ParticleSystem.MinMaxCurve(1f, CurveFrom(values, "X"));
+            }
         }
         if (r.ContainsKey("lockedAxis") && r["lockedAxis"] != null)
             log.Add("NOT APPLIED " + name + ": mesh locked axis " + V3(r["lockedAxis"]).ToString() + " (Unity has no locked axis for mesh particles)");

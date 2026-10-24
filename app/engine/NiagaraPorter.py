@@ -23,6 +23,7 @@ STREAM_POINTS = 16
 STREAM_MIN_PARTICLES = 8    # complete particles wanted behind a colour or Dynamic Parameter curve
 STREAM_MAX_SECONDS = 30.0   # the longest replay made only to read those curves
 BAKE_FRAMES = False         # keep every tick's particles so ParticleBake can write the replay files
+MOTION_FIT = False          # also follow each particle's velocity, rotation and ribbon width over its age, for the Particle System fit
 BAKE_TAIL = float(os.environ.get("PORTER_BAKE_TAIL", "4.0"))    # seconds recorded past the replay, so particles born near its end live out their life
 BAKE_MOST_ROWS = 400000     # particles over all ticks, per emitter; past that its replay is not written
 LAST_TRACKS = {}            # emitter name: (recorder, emitter) from the last replay()
@@ -40,15 +41,30 @@ def renderer_bindings(props):
     return names[0], names[1:]
 
 
+def binding_name(props, key, default):
+    b = props.get(key)
+    return (b.get("RootName") if isinstance(b, dict) else None) or default
+
+
 def tracked_names(system, emitter):
     found = []
+
+    def add(n):
+        if n not in found:
+            found.append(n)
+
     for rtype, props in renderer_exports(system, emitter):
-        if "Mesh" not in rtype and "Sprite" not in rtype:
+        if "Mesh" not in rtype and "Sprite" not in rtype and not (MOTION_FIT and "Ribbon" in rtype):
             continue
         color, dps = renderer_bindings(props)
         for n in [color] + dps:
-            if n not in found:
-                found.append(n)
+            add(n)
+        if MOTION_FIT:
+            add(binding_name(props, "VelocityBinding", "Velocity"))
+            if "Sprite" in rtype:
+                add(binding_name(props, "SpriteRotationBinding", "SpriteRotation"))
+            if "Ribbon" in rtype:
+                add(binding_name(props, "RibbonWidthBinding", "RibbonWidth"))
     return found
 
 
@@ -299,7 +315,8 @@ def curves(r):
         top = np.max([s for _, s in size_pts], axis=0)
         start = {"x": r4(top[0]), "y": r4(top[1]), "z": r4(top[2])}
         drive = top[0] if top[0] > 0 else 1.0
-        size_out = [{"t": r4(c), "s": r4(s[0] / drive)} for c, s in size_pts]
+        axis = [t if t > 0 else 1.0 for t in top]
+        size_out = [{"t": r4(c), "s": r4(s[0] / drive), "x": r4(s[0] / axis[0]), "y": r4(s[1] / axis[1]), "z": r4(s[2] / axis[2])} for c, s in size_pts]
     return color_out, size_out, start
 
 
@@ -333,6 +350,77 @@ def stream_curves(r):
         out[name] = {"width": int(cube.shape[2]), "particles": int(cube.shape[0]),
                      "min": cube.min(axis=0).tolist(), "max": cube.max(axis=0).tolist(), "mean": cube.mean(axis=0).tolist()}
     return out
+
+
+MOTION_MIN_PARTICLES = 4
+MOTION_VELOCITY = ("Velocity",)
+
+
+def grid_samples(book, grid, width):
+    """(particles, STREAM_POINTS, width) of each particle that lived out its life, its samples put on the age grid."""
+    rows = []
+    for samples in book.values():
+        if len(samples) < 2:
+            continue
+        samples = sorted(samples, key=lambda x: x[0])
+        if samples[-1][0] < 0.9:
+            continue
+        ages = np.array([x[0] for x in samples])
+        vals = np.array([np.atleast_1d(x[1])[:width] for x in samples])
+        rows.append(np.stack([np.interp(grid, ages, vals[:, c]) for c in range(vals.shape[1])], axis=1))
+    return np.stack(rows) if rows else None
+
+
+def motion_fit(r):
+    """How the particles moved and turned over their age, from what the replay recorded, as things a Unity Particle System has
+    modules for. Each particle's velocity is v(a) = k(a) * v0 + A(a): k the speed factor (drag slows it), A a velocity added to every
+    particle alike (gravity and other forces), both found by least squares across the particles at each point of the age grid.
+    Velocity in cm/s, rotation in degrees, ribbon width in cm; any part that does not change is left out."""
+    if not r.tracked:
+        return None
+    grid = np.linspace(0.0, 1.0, STREAM_POINTS)
+    life = float(np.mean(r.lifetimes)) if r.lifetimes else 0.0
+    out = {"life": r4(life)}
+    for name in MOTION_VELOCITY:
+        book = next((b for n, b in r.tracked.items() if n == name or n.endswith("Velocity")), None)
+        if book is None:
+            continue
+        cube = grid_samples(book, grid, 3)
+        if cube is None or cube.shape[0] < MOTION_MIN_PARTICLES or cube.shape[2] < 3:
+            continue
+        v0 = cube[:, 0, :]
+        m0 = v0.mean(axis=0)
+        d0 = v0 - m0
+        denom = float((d0 * d0).sum())
+        factor, added = [], []
+        for k in range(STREAM_POINTS):
+            vk = cube[:, k, :]
+            mk = vk.mean(axis=0)
+            f = float((d0 * (vk - mk)).sum() / denom) if denom > 1e-6 else 1.0
+            f = max(-1.0, min(4.0, f))
+            factor.append(f)
+            added.append(mk - f * m0)
+        added = np.array(added)
+        if denom > 1e-6 and max(abs(f - 1.0) for f in factor) > 0.03:
+            out["speed"] = [r4(f) for f in factor]
+        if float(np.abs(added).max()) > 1.0:
+            out["added"] = [[r4(c) for c in a] for a in added]
+        break
+    for n, book in r.tracked.items():
+        if "Rotation" in n:
+            cube = grid_samples(book, grid, 1)
+            if cube is not None and cube.shape[0] >= MOTION_MIN_PARTICLES:
+                delta = (cube[:, :, 0] - cube[:, :1, 0]).mean(axis=0)
+                if float(np.abs(delta).max()) > 0.5:
+                    out["rotation"] = [r4(d) for d in delta]
+            break
+    for n, book in r.tracked.items():
+        if "Width" in n:
+            cube = grid_samples(book, grid, 1)
+            if cube is not None and cube.shape[0] >= 1:
+                out["width"] = [r4(w) for w in cube[:, :, 0].mean(axis=0)]
+            break
+    return out if len(out) > 1 else None
 
 
 def strip(path):
@@ -444,6 +532,7 @@ def summarize(system, e, r, required, approximate):
         "sizeUnit": "cm" if r.sprite else "scale",
         "initial": initial_ranges(r),
         "streams": stream_curves(r),
+        "motion": motion_fit(r) if MOTION_FIT else None,
         "incompleteStreams": list(getattr(r, "incomplete", [])),
         "noAge": bool(r.total and not r.ages),
         "renderers": renderers(system, e),
@@ -524,6 +613,8 @@ def extend_streams(exports, emitters, recorders, gated, seconds):
             if rec is None:
                 continue
             em["streams"] = stream_curves(rec)
+            if MOTION_FIT:
+                em["motion"] = motion_fit(rec)
             em["incompleteStreams"] = list(getattr(rec, "incomplete", []))
             em["streamSeconds"] = r4(longer)
     finally:

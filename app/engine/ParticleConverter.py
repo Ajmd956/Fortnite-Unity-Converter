@@ -27,6 +27,9 @@ def renderer_spec(folder, emname, rtype_name, rp):
     rs = {"type": rtype_name.replace("Niagara", "").replace("RendererProperties", "")}
     rs["colorAttr"], rs["dpAttrs"] = NiagaraPorter.renderer_bindings(rp)
     rs["sortMode"] = str(rp.get("SortMode", "")).split("::")[-1]
+    rs["castShadows"] = bool(rp.get("bCastShadows", False))
+    if rp.get("bEnableDistanceCulling"):
+        note("UNSUPPORTED", emname + ": renderer camera distance culling (a Unity Particle System has no per-renderer distance cull)")
     if rs["type"] == "Sprite":
         rs.update({
             "material": asset_name(rp.get("Material")),
@@ -62,6 +65,9 @@ def renderer_spec(folder, emname, rtype_name, rp):
             "pivotOffset": vec(rp.get("PivotOffset")),
             "meshPivot": vec(mesh.get("PivotOffset")),
         })
+    elif rs["type"] == "Ribbon":
+        rs["material"] = asset_name(rp.get("Material"))
+        rs["facing"] = str(rp.get("FacingMode") or "").split("::")[-1]
     elif rs["type"] == "Light":
         rs.update({
             "radiusScale": rp.get("RadiusScale", 1.0),
@@ -69,7 +75,7 @@ def renderer_spec(folder, emname, rtype_name, rp):
         })
         note("DEFAULT", emname + ": light renderer radius not exported (per-particle LightRadius), Unity range uses 100 cm x RadiusScale")
     else:
-        note("UNSUPPORTED", emname + ": renderer " + rs["type"])
+        note("UNSUPPORTED", emname + ": renderer " + rs["type"] + " (a Unity Particle System has no equivalent)")
     return rs
 
 
@@ -329,8 +335,8 @@ def scripted_emitter_spec(loader, system, em, seconds):
     else:
         mods["meshScale"] = {"min": xyz([start["x"], start["y"], start["z"]]), "max": xyz([start["x"], start["y"], start["z"]])}
     curve = em["sizeCurve"]
-    if curve and max(abs(p["s"] - 1.0) for p in curve) > 1e-3:
-        values = [{"X": v["s"], "Y": v["s"]} for v in resample(curve, ("s",), len(curve))]
+    if curve and max(abs(p[a] - 1.0) for p in curve for a in ("x", "y", "z") if a in p) > 1e-3:
+        values = [{"X": v["x"], "Y": v["y"], "Z": v["z"]} for v in resample(curve, ("x", "y", "z"), len(curve))]
         mods["scaleSpriteSize" if sprite else "scaleMeshSize"] = {"values": values}
     if em["colorCurve"]:
         mods["scaleColor"] = {"values": [{"R": v["r"], "G": v["g"], "B": v["b"], "A": v["a"]} for v in resample(em["colorCurve"], ("r", "g", "b", "a"), len(em["colorCurve"]))]}
@@ -345,6 +351,13 @@ def scripted_emitter_spec(loader, system, em, seconds):
         mods["rotation"] = span1(init["SpriteRotation"])
     if "MeshOrientation" in init and not sprite:
         mods["meshOrientation"] = span3(init["MeshOrientation"])
+    motion = em.get("motion") or {}
+    if motion.get("speed") or motion.get("added"):
+        mods["velocityFit"] = {"speed": motion.get("speed"), "added": motion.get("added"), "life": motion.get("life") or life_max}
+    if motion.get("rotation") and sprite:
+        mods["rotationFit"] = {"delta": motion["rotation"], "life": motion.get("life") or life_max}
+    if motion.get("width"):
+        mods["ribbonWidth"] = motion["width"]
     emitter = next((e for e in system.emitters if e.name == name), None)
     renderers = []
     for src_index, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter) if emitter is not None else []):
@@ -440,10 +453,12 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
         sys.exit(str(ex))
     import ParticleBake
     NiagaraPorter.BAKE_FRAMES = ParticleBake.mode() != "off"
+    NiagaraPorter.MOTION_FIT = ParticleBake.mode() == "off"
     try:
         system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
     finally:
         NiagaraPorter.BAKE_FRAMES = False
+        NiagaraPorter.MOTION_FIT = False
     emitters = []
     for em in summaries:
         if em["name"] in stateless:
