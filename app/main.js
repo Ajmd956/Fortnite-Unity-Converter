@@ -1510,6 +1510,8 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
   }
   busy = false
   send('engine:state', { running: false, label: '' })
+  const lost = made.filter(r => r.missing && r.missing.length)
+  for (const r of lost) send('engine:log', '\n' + r.name + ': ' + r.missing.length + ' material' + (r.missing.length === 1 ? '' : 's') + ' not converted (' + r.missing.join(', ') + '). Those parts draw with the fallback shader in Unity.\n')
   send('engine:log', '\nfinished: ' + converted + ' of ' + attempted + ' converted\n')
   if (made.length) send('convert:done', { shaders: made, total: attempted })
   if (!made.length && !stopped) {
@@ -1709,7 +1711,12 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
     const specFile = path.join(bdir, nm[1] + (isProp ? '.propspec.json' : '.blueprint.json'))
     if (!fs.existsSync(specFile)) continue
     converted++
-    made.push({ name: nm[1], shader: specFile, dir: bdir, kind: flag === '--particle-system' ? 'particles' : 'blueprint' })
+    const row = { name: nm[1], shader: specFile, dir: bdir, kind: flag === '--particle-system' ? 'particles' : 'blueprint', missing: [] }
+    made.push(row)
+    for (const mm of res.output.matchAll(/^note: no path for material (\S+),/gm)) {
+      if (!row.missing.includes(mm[1])) row.missing.push(mm[1])
+      send('engine:log', 'material not converted: ' + mm[1] + ' (the export has no path for it, so its shader could not be fetched)\n')
+    }
     const refs = []
     for (const mm of res.output.matchAll(/^material: (.+)$/gm)) {
       const ref = mm[1].trim()
@@ -1731,6 +1738,7 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
       if (skyRefs.includes(ref)) margs.push('--sky')
       const mres = await runEngine(margs)
       if (!/wrote (.+?)\.shader/.test(mres.output)) {
+        if (!row.missing.includes(short)) row.missing.push(short)
         const kind = classifyFailure(mres.output)
         if (kind) kinds.push(kind)
         const why = mres.output.split(/\r?\n/).filter(l => /^[A-Za-z]*(Error|Exception)\b|Error: /.test(l)).pop()

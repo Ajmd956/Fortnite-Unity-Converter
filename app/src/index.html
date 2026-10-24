@@ -1771,6 +1771,8 @@ function showDone(data) {
     : bps ? (data.built ? 'The prefab is already built. Copy the Blueprint Conversions folder into your Unity project\'s Assets.' : 'Copy the Blueprint Conversions folder into your Unity project\'s Assets and Unity builds the prefab by itself.')
     : parts ? (data.built ? 'The prefab is already built. Copy the Particle Conversions folder into your Unity project\'s Assets.' : 'Copy the Particle Conversions folder into your Unity project\'s Assets and Unity builds the prefab by itself.')
     : 'Open shader takes you to the shader file, with its Textures folder right beside it.'
+  const miss = data.shaders.reduce((a, r) => a.concat(r.missing || []), [])
+  if (miss.length) $('doneSub').textContent += ' ' + miss.length + ' material' + (miss.length === 1 ? '' : 's') + ' could not be converted (' + miss.slice(0, 4).join(', ') + (miss.length > 4 ? '...' : '') + '). Details are in the output panel.'
   const list = $('doneList')
   list.innerHTML = ''
   data.shaders.forEach(s => {
@@ -2042,9 +2044,10 @@ $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
 const NEWS_DATE = 'Oct 24'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Converter Options and shorter text', date: NEWS_DATE }
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Blueprints bake, cleaner particle inspector', date: NEWS_DATE }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'Particles', title: 'Baked particle fixes', sub: 'Blueprints bake, cleaner inspector.', body: 'The Blueprint Converter now follows Bake Scripts in Converter Options, so its particles are played from baked replays. The Baked Particle System inspector follows the Unity Particle System layout: Main, then the modules in Unity\'s order, then Renderer and Data, and it hides controls that do nothing for that kind (lights have no size or rotation, ribbons no rotation). Light falloff now uses the baked exponent. A baked mesh with a missing material no longer shifts the other materials, and materials the export has no path for are listed when the conversion finishes.' },
   { tag: 'Converter', title: 'Converter Options', sub: 'Export Options is now Converter Options.', body: 'Export Options is now Converter Options. Bake Scripts moved there from the Particle Converter tab, next to Fix Problems and Compile in Unity. The new gear at the right of the Converter tab opens it. The text in the Converter tab is shorter too.' },
   { tag: 'Particles', title: 'Edit baked particles', sub: 'The particle player now looks like Unity\'s.', body: 'The baked particle player has a Unity Particle System style inspector: a Main module (start lifetime, speed, size, rotation, colour, gravity modifier, simulation space, seed) and modules with on/off boxes for Shape, Velocity, Force, Color, Size, Opacity, Rotation, Noise and Simulation. GPU emitters are now baked from their CPU scripts when the game files keep them. The Particle tab switch is now a small Bake Scripts toggle.' },
   { tag: 'Particles', title: 'Missing meshes and long paths', sub: 'Every mesh exports; deep paths no longer crash.', body: 'A mesh renderer that lists several meshes only had its first one exported, so the others showed as missing in Unity (SM_CubeGrowth_Particle_02, SM_LightningBolt_X1000_Simple and similar). Every listed mesh is exported now. A shader whose file path passed Windows 260 characters crashed the conversion and left its baked sprites on the default material; it is written now, with a warning if the path is long enough that Unity may refuse it. Emitters whose particles were all born too late to finish their life now trigger the longer replay for curves over age, and base materials no longer warn about missing instance data.' },
@@ -2921,7 +2924,7 @@ $('blueprintBtn').onclick = async () => {
     addLine('paste at least one Blueprint path first')
     return
   }
-  const res = await window.api.convertBlueprint({ paths, name: $('blueprintName').value.trim() })
+  const res = await window.api.convertBlueprint({ paths, name: $('blueprintName').value.trim(), bake: $('particleBake').checked })
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }

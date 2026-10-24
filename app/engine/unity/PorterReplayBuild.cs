@@ -222,7 +222,7 @@ public static partial class PorterPropBuilder
                         mat = FallbackStandIn(mn);
                         log.Add("MISSING " + emName + ": material " + mn + " for the baked Mesh renderer was not found, it draws with " + (mat != null ? "Porter/ParticleFallback" : "the default material"));
                         missing++;
-                        if (mat == null) continue;
+                        if (mat == null) { mats.Add(null); continue; }
                     }
                     var inst = StreamCopy(mat, emName + "_" + kind);
                     for (int i = 0; i < 4; i++)

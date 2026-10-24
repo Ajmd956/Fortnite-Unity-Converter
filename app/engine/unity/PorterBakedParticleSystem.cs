@@ -30,7 +30,7 @@ public class PorterBakedParticleSystem : MonoBehaviour
     public float speed = 1f;
     public float lightScale = 1f;               // calibration: Unity light intensity per unit of Unreal light colour brightness (unverified against Unreal)
     public float radiusScale = 1f;
-    public float exponentToRange = 1f;
+    [Range(0f, 1f)] public float exponentToRange = 1f;     // how far the baked light exponent changes the range (0 ignores it)
     public Material material;
     public Material[] materials;                // a mesh renderer's materials, one a submesh
     public Mesh[] meshes;                       // a mesh renderer's meshes (Read/Write on), picked by each particle's mesh index
@@ -1465,7 +1465,7 @@ public class PorterBakedParticleSystem : MonoBehaviour
     void DrawLights(int f)
     {
         int n = counts[f];
-        int fp = Field("pos"), fc = Field("color"), fr = Field("radius");
+        int fp = Field("pos"), fc = Field("color"), fr = Field("radius"), fe = Field("exponent");
         int first = frameStart[f];
         while (lights.Count < n)
         {
@@ -1496,7 +1496,9 @@ public class PorterBakedParticleSystem : MonoBehaviour
             l.shadows = (LightShadows)Mathf.Clamp(lightShadows, 0, 2);
             l.shadowStrength = lightShadowStrength;
             l.renderMode = (LightRenderMode)Mathf.Clamp(lightRenderMode, 0, 2);
-            l.range = Mathf.Max(0.01f, Get(r, fr, 0, 1f) * radiusScale);
+            float ex = fe >= 0 ? Get(r, fe, 0, 1f) : 1f;
+            float reach = ex > 0.01f ? Mathf.Sqrt(1f - Mathf.Pow(0.1f, 1f / ex)) / 0.9486833f : 1f;
+            l.range = Mathf.Max(0.01f, Get(r, fr, 0, 1f) * radiusScale * Mathf.Lerp(1f, Mathf.Clamp(reach, 0.25f, 1.1f), exponentToRange));
             l.enabled = true;
         }
     }
@@ -1657,15 +1659,12 @@ public class PorterBakedParticleSystemInspector : Editor
         serializedObject.Update();
         string kind = t.kind;
         bool tr = t.Tracked;
+        bool hasSize = kind != "Light";
+        bool hasRot = kind == "Sprite" || kind == "Mesh" || kind == "Decal";
 
         EditorGUILayout.BeginHorizontal();
         string playLabel = !t.IsPlaying ? "Play" : (t.IsPaused ? "Resume" : "Pause");
-        if (GUILayout.Button(playLabel))
-        {
-            if (!t.IsPlaying) t.Play();
-            else if (t.IsPaused) t.Resume();
-            else t.Pause();
-        }
+        if (GUILayout.Button(playLabel)) { if (!t.IsPlaying) t.Play(); else if (t.IsPaused) t.Resume(); else t.Pause(); }
         if (GUILayout.Button("Restart")) t.Restart();
         if (GUILayout.Button("Stop")) t.Stop();
         EditorGUILayout.EndHorizontal();
@@ -1678,7 +1677,7 @@ public class PorterBakedParticleSystemInspector : Editor
         }
         else
         {
-            EditorGUILayout.HelpBox("The baked data is not loaded. Assign it under Data, then press Play.", MessageType.Info);
+            EditorGUILayout.HelpBox("No baked data. Assign it under Data, then press Play.", MessageType.Info);
         }
         var root = t.GetComponentInParent<PorterParticleController>();
         if (root != null && (root.masterSpeed != 1f || root.masterRate != 1f || root.masterSize != 1f || root.masterIntensity != 1f || root.masterOpacity != 1f || root.masterTint != Color.white))
@@ -1691,27 +1690,30 @@ public class PorterBakedParticleSystemInspector : Editor
             BeginBody(null);
             if (tr && t.TotalTicks > 0) EditorGUILayout.LabelField("Duration", t.Duration.ToString("0.00") + " s");
             Field("loop", "Looping", "");
-            if (tr) Field("prewarm", "Prewarm", "Looping only: start as if the effect had already been running.");
+            if (tr) Field("prewarm", "Prewarm", "Looping only.");
             NonNegative("startDelay", "Start Delay", "");
             if (tr)
             {
-                NonNegative("lifetimeScale", "Start Lifetime (x baked)", "1 is as baked.");
+                NonNegative("lifetimeScale", "Start Lifetime", "Multiplier. 1 is as baked.");
                 var lr = P("lifetimeRandom");
                 lr.floatValue = EditorGUILayout.Slider(new GUIContent("Lifetime Random", "Each particle's life varies by up to this fraction."), lr.floatValue, 0f, 0.9f);
-                Field("speedMultiplier", "Start Speed (x baked)", "1 is as baked.");
-                Field("start3DSize", "3D Start Size", "");
-                if (P("start3DSize").boolValue) Field("startSize3D", "Start Size", "");
-                else Pair("startSizeMin", "startSizeMax", "Start Size (x baked)", "Each particle gets a random multiplier between the two.");
-                Pair("startRotationMin", "startRotationMax", "Start Rotation (deg)", "Each particle is turned by a random angle between the two.");
-                if (kind == "Sprite") Field("flipRotation", "Flip Rotation", "The share of sprites turned the other way.");
-                Field("directionRotation", "Direction Rotation (deg)", "Turns every particle's path about its birth point.");
-                NonNegative("directionSpread", "Direction Spread (deg)", "Tips each particle's path by up to this much.");
+                Field("speedMultiplier", "Start Speed", "Multiplier. 1 is as baked.");
+                if (hasSize)
+                {
+                    Field("start3DSize", "3D Start Size", "");
+                    if (P("start3DSize").boolValue) Field("startSize3D", "Start Size", "");
+                    else Pair("startSizeMin", "startSizeMax", "Start Size", "Random multiplier between the two. 1 is as baked.");
+                }
+                if (hasRot) Pair("startRotationMin", "startRotationMax", "Start Rotation", "Random angle (deg) between the two.");
+                if (kind == "Sprite") Field("flipRotation", "Flip Rotation", "Share of sprites turned the other way.");
+                Field("directionRotation", "Direction Rotation", "Degrees. Turns every path about its birth point.");
+                NonNegative("directionSpread", "Direction Spread", "Degrees.");
             }
             EditorGUILayout.PropertyField(P("colorTint"), new GUIContent("Start Color"));
-            NonNegative("colorIntensity", "Color Intensity", "Brightness multiplier. Unreal emissive colours go above 1.");
+            NonNegative("colorIntensity", "Color Intensity", "Brightness multiplier. Unreal emissive goes above 1.");
             var op = P("opacity");
             op.floatValue = EditorGUILayout.Slider("Opacity", op.floatValue, 0f, 1f);
-            NonNegative("sizeScale", "Size Scale", "");
+            if (hasSize) NonNegative("sizeScale", "Size Scale", "");
             if (tr)
             {
                 Field("gravityModifier", "Gravity Modifier", "Multiplies Physics.gravity.");
@@ -1738,7 +1740,7 @@ public class PorterBakedParticleSystemInspector : Editor
             if (fEmission)
             {
                 BeginBody(null);
-                NonNegative("rateMultiplier", "Rate over Time (x baked)", "Under 1 thins the particles out, over 1 adds copies.");
+                NonNegative("rateMultiplier", "Rate over Time", "Multiplier. Under 1 thins the particles, over 1 adds copies.");
                 if (P("rateMultiplier").floatValue > 1f) NonNegative("copyJitter", "Copy Jitter (m)", "");
                 EndBody();
             }
@@ -1756,30 +1758,19 @@ public class PorterBakedParticleSystemInspector : Editor
 
             var useVel = P("useVelocity");
             fVel = Header(fVel, "Velocity over Lifetime", useVel);
-            if (fVel)
-            {
-                BeginBody(useVel);
-                Field("extraVelocity", "Linear (m/s)", "");
-                EndBody();
-            }
+            if (fVel) { BeginBody(useVel); Field("extraVelocity", "Linear (m/s)", ""); EndBody(); }
 
             var useForce = P("useForce");
             fForce = Header(fForce, "Force over Lifetime", useForce);
-            if (fForce)
-            {
-                BeginBody(useForce);
-                Field("extraAcceleration", "Force (m/s\u00b2)", "");
-                EndBody();
-            }
+            if (fForce) { BeginBody(useForce); Field("extraAcceleration", "Force (m/s\u00b2)", ""); EndBody(); }
 
             var useColor = P("useColorOverLifetime");
             fColorLife = Header(fColorLife, "Color over Lifetime", useColor);
-            if (fColorLife)
-            {
-                BeginBody(useColor);
-                Field("colorOverLifetime", "Color", "");
-                EndBody();
-            }
+            if (fColorLife) { BeginBody(useColor); Field("colorOverLifetime", "Color", ""); EndBody(); }
+
+            var useOpacity = P("useOpacityOverLifetime");
+            fOpacityLife = Header(fOpacityLife, "Opacity over Lifetime", useOpacity);
+            if (fOpacityLife) { BeginBody(useOpacity); Field("opacityOverLifetime", "Opacity", ""); EndBody(); }
 
             var useColorSpeed = P("useColorBySpeed");
             fSpeedColor = Header(fSpeedColor, "Color by Speed", useColorSpeed);
@@ -1791,33 +1782,34 @@ public class PorterBakedParticleSystemInspector : Editor
                 EndBody();
             }
 
-            var useSize = P("useSizeOverLifetime");
-            fSizeLife = Header(fSizeLife, "Size over Lifetime", useSize);
-            if (fSizeLife)
+            if (hasSize)
             {
-                BeginBody(useSize);
-                Field("sizeOverLifetime", "Size", "");
-                EndBody();
+                var useSize = P("useSizeOverLifetime");
+                fSizeLife = Header(fSizeLife, "Size over Lifetime", useSize);
+                if (fSizeLife) { BeginBody(useSize); Field("sizeOverLifetime", "Size", ""); EndBody(); }
+
+                var useSizeSpeed = P("useSizeBySpeed");
+                fSpeedSize = Header(fSpeedSize, "Size by Speed", useSizeSpeed);
+                if (fSpeedSize)
+                {
+                    BeginBody(useSizeSpeed);
+                    Field("sizeBySpeed", "Size", "");
+                    Field("sizeSpeedRange", "Speed Range (m/s)", "");
+                    EndBody();
+                }
             }
 
-            var useSizeSpeed = P("useSizeBySpeed");
-            fSpeedSize = Header(fSpeedSize, "Size by Speed", useSizeSpeed);
-            if (fSpeedSize)
+            if (hasRot)
             {
-                BeginBody(useSizeSpeed);
-                Field("sizeBySpeed", "Size", "");
-                Field("sizeSpeedRange", "Speed Range (m/s)", "");
-                EndBody();
-            }
-
-            var useRot = P("useRotation");
-            fRotLife = Header(fRotLife, "Rotation over Lifetime", useRot);
-            if (fRotLife)
-            {
-                BeginBody(useRot);
-                Field("spinRate", "Angular Velocity (deg/s)", "");
-                if (kind == "Mesh") Field("spinAxis", "Axis", "");
-                EndBody();
+                var useRot = P("useRotation");
+                fRotLife = Header(fRotLife, "Rotation over Lifetime", useRot);
+                if (fRotLife)
+                {
+                    BeginBody(useRot);
+                    Field("spinRate", "Angular Velocity (deg/s)", "");
+                    if (kind == "Mesh") Field("spinAxis", "Axis", "");
+                    EndBody();
+                }
             }
 
             var useNoise = P("useNoise");
@@ -1827,6 +1819,17 @@ public class PorterBakedParticleSystemInspector : Editor
                 BeginBody(useNoise);
                 NonNegative("noiseStrength", "Strength (m)", "");
                 NonNegative("noiseFrequency", "Frequency", "");
+                EndBody();
+            }
+
+            var useSim = P("useSimulation");
+            fSim = Header(fSim, "Simulation", useSim);
+            if (fSim)
+            {
+                BeginBody(useSim);
+                Field("simulate", "Blend", "0 follows the recording. 1 moves each particle from its baked birth under the gravity and drag below. Scripted motion is lost at 1.");
+                Field("simGravity", "Gravity (m/s\u00b2)", "");
+                NonNegative("simDrag", "Drag (per second)", "");
                 EndBody();
             }
         }
@@ -1853,14 +1856,61 @@ public class PorterBakedParticleSystemInspector : Editor
             }
         }
 
+        if (t.dpComps != null && t.dpComps.Length > 0)
+        {
+            var useCustom = P("useCustomData");
+            fCustom = Header(fCustom, "Custom Data", useCustom);
+            if (fCustom)
+            {
+                BeginBody(useCustom);
+                var mul = P("customDataMultiply");
+                var add = P("customDataAdd");
+                if (mul.arraySize != 8) { int o = mul.arraySize; mul.arraySize = 8; for (int i = o; i < 8; i++) mul.GetArrayElementAtIndex(i).floatValue = 1f; }
+                if (add.arraySize != 8) add.arraySize = 8;
+                EditorGUILayout.LabelField("Dynamic Parameters. Value = baked x Multiply + Add.", EditorStyles.miniLabel);
+                for (int k = 0; k < t.dpComps.Length && k < 8; k++)
+                {
+                    Rect r = EditorGUILayout.GetControlRect();
+                    r = EditorGUI.PrefixLabel(r, new GUIContent("Parameter " + t.dpComps[k], "Left: Multiply. Right: Add."));
+                    float half = (r.width - 4f) * 0.5f;
+                    int indent = EditorGUI.indentLevel;
+                    EditorGUI.indentLevel = 0;
+                    EditorGUI.PropertyField(new Rect(r.x, r.y, half, r.height), mul.GetArrayElementAtIndex(k), GUIContent.none);
+                    EditorGUI.PropertyField(new Rect(r.x + half + 4f, r.y, half, r.height), add.GetArrayElementAtIndex(k), GUIContent.none);
+                    EditorGUI.indentLevel = indent;
+                }
+                EndBody();
+            }
+        }
+
+        if (kind == "Mesh" && t.meshes != null && t.meshes.Length > 0)
+        {
+            var useMeshEdit = P("useMeshEdits");
+            fMeshEdit = Header(fMeshEdit, "Mesh Overrides", useMeshEdit);
+            if (fMeshEdit)
+            {
+                BeginBody(useMeshEdit);
+                SizeArray("meshScaleMultiply", t.meshes.Length, Vector3.one);
+                SizeArray("meshRotationOffset", t.meshes.Length, Vector3.zero);
+                for (int i = 0; i < t.meshes.Length; i++)
+                {
+                    EditorGUILayout.LabelField(t.meshes[i] != null ? t.meshes[i].name : "Mesh " + i, EditorStyles.miniBoldLabel);
+                    EditorGUILayout.PropertyField(P("meshScaleMultiply").GetArrayElementAtIndex(i), new GUIContent("Scale"));
+                    EditorGUILayout.PropertyField(P("meshRotationOffset").GetArrayElementAtIndex(i), new GUIContent("Rotation (deg)"));
+                }
+                EndBody();
+            }
+        }
+
         fRenderer = Header(fRenderer, "Renderer (" + kind + ")", null);
         if (fRenderer)
         {
             BeginBody(null);
             if (kind == "Light")
             {
-                Field("lightScale", "Intensity", "Unity light intensity per unit of Unreal colour brightness. Not measured against Unreal.");
+                Field("lightScale", "Intensity", "Unity intensity per unit of Unreal brightness.");
                 Field("radiusScale", "Range Scale", "");
+                Field("exponentToRange", "Falloff Effect", "How much the baked light exponent changes the range. 0 ignores it.");
                 Popup("lightShadows", "Shadows", ShadowModes);
                 if (P("lightShadows").intValue > 0) Field("lightShadowStrength", "Shadow Strength", "");
                 Popup("lightRenderMode", "Render Mode", LightRenderModes);
@@ -1903,83 +1953,6 @@ public class PorterBakedParticleSystemInspector : Editor
                 Popup("motionVectors", "Motion Vectors", MotionModes);
             }
             EndBody();
-        }
-
-        var useSim = P("useSimulation");
-        var useOpacity = P("useOpacityOverLifetime");
-        bool hasCustom = t.dpComps != null && t.dpComps.Length > 0;
-        bool hasMeshEdit = kind == "Mesh" && t.meshes != null && t.meshes.Length > 0;
-        if (tr || hasCustom || hasMeshEdit)
-        {
-            GUILayout.Space(4f);
-            EditorGUILayout.LabelField("Baked extras", EditorStyles.miniBoldLabel);
-        }
-
-        if (tr)
-        {
-            fOpacityLife = Header(fOpacityLife, "Opacity over Lifetime", useOpacity);
-            if (fOpacityLife)
-            {
-                BeginBody(useOpacity);
-                Field("opacityOverLifetime", "Opacity", "");
-                EndBody();
-            }
-
-            fSim = Header(fSim, "Simulation", useSim);
-            if (fSim)
-            {
-                BeginBody(useSim);
-                Field("simulate", "Blend", "0 follows the recording. 1 moves each particle from its baked birth position and velocity under the gravity and drag below. Scripted Niagara motion is lost at 1.");
-                Field("simGravity", "Gravity (m/s\u00b2)", "");
-                NonNegative("simDrag", "Drag (per second)", "");
-                EndBody();
-            }
-        }
-
-        if (hasCustom)
-        {
-            var useCustom = P("useCustomData");
-            fCustom = Header(fCustom, "Custom Data (Dynamic Parameters)", useCustom);
-            if (fCustom)
-            {
-                BeginBody(useCustom);
-                var mul = P("customDataMultiply");
-                var add = P("customDataAdd");
-                if (mul.arraySize != 8) { int o = mul.arraySize; mul.arraySize = 8; for (int i = o; i < 8; i++) mul.GetArrayElementAtIndex(i).floatValue = 1f; }
-                if (add.arraySize != 8) add.arraySize = 8;
-                for (int k = 0; k < t.dpComps.Length && k < 8; k++)
-                {
-                    Rect r = EditorGUILayout.GetControlRect();
-                    r = EditorGUI.PrefixLabel(r, new GUIContent("Slot " + k + " (Parameter " + t.dpComps[k] + ")", "Value = baked value x Multiply + Add."));
-                    float half = (r.width - 4f) * 0.5f;
-                    int indent = EditorGUI.indentLevel;
-                    EditorGUI.indentLevel = 0;
-                    EditorGUI.PropertyField(new Rect(r.x, r.y, half, r.height), mul.GetArrayElementAtIndex(k), GUIContent.none);
-                    EditorGUI.PropertyField(new Rect(r.x + half + 4f, r.y, half, r.height), add.GetArrayElementAtIndex(k), GUIContent.none);
-                    EditorGUI.indentLevel = indent;
-                }
-                EditorGUILayout.LabelField("Left: Multiply. Right: Add.", EditorStyles.miniLabel);
-                EndBody();
-            }
-        }
-
-        if (hasMeshEdit)
-        {
-            var useMeshEdit = P("useMeshEdits");
-            fMeshEdit = Header(fMeshEdit, "Meshes", useMeshEdit);
-            if (fMeshEdit)
-            {
-                BeginBody(useMeshEdit);
-                SizeArray("meshScaleMultiply", t.meshes.Length, Vector3.one);
-                SizeArray("meshRotationOffset", t.meshes.Length, Vector3.zero);
-                for (int i = 0; i < t.meshes.Length; i++)
-                {
-                    EditorGUILayout.LabelField(t.meshes[i] != null ? t.meshes[i].name : "Mesh " + i, EditorStyles.miniBoldLabel);
-                    EditorGUILayout.PropertyField(P("meshScaleMultiply").GetArrayElementAtIndex(i), new GUIContent("Scale"));
-                    EditorGUILayout.PropertyField(P("meshRotationOffset").GetArrayElementAtIndex(i), new GUIContent("Rotation (deg)"));
-                }
-                EndBody();
-            }
         }
 
         fData = Header(fData, "Data", null);

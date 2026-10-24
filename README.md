@@ -141,7 +141,7 @@ the .propreport.txt next to each system):
 
 Scripted emitters stay Particle Systems by default. Set PORTER_BAKE_SCRIPTED=1 to play their sprites and meshes from the baked replay instead (PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems, PORTER_BAKE=off bakes nothing). Baked meshes are made readable automatically. The baked mesh path has not been run in Unity.
 
-Converter Options (the gear at the right of the Converter tab, or Converter Options in the sidebar) has a Bake Scripts switch (on by default), next to Fix Problems and Compile in Unity. On sets PORTER_BAKE=all and PORTER_BAKE_SCRIPTED=1 for that conversion; off sets PORTER_BAKE=auto and PORTER_BAKE_SCRIPTED=0, so only what a Particle System cannot draw is baked. Baked replays show a Particle System style inspector (playback bar, Main, Color, Size, Renderer, Data).
+Converter Options (the gear at the right of the Converter tab, or Converter Options in the sidebar) has a Bake Scripts switch (on by default), next to Fix Problems and Compile in Unity. The Blueprint Converter follows it too. On sets PORTER_BAKE=all and PORTER_BAKE_SCRIPTED=1 for that conversion; off sets PORTER_BAKE=auto and PORTER_BAKE_SCRIPTED=0, so only what a Particle System cannot draw is baked. Baked replays show a Particle System style inspector (playback bar, Main, Color, Size, Renderer, Data).
 
 Every Particle System renderer gets Max Particle Size 555 (Unity's default of 0.5 made particles shrink when the camera came close).
 
