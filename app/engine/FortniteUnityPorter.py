@@ -4,6 +4,19 @@ from decimal import Decimal
 
 sys.setrecursionlimit(20000)
 
+
+WINDOWS_PATH_LIMIT = 259
+
+
+def long_path(p):
+    p = os.path.abspath(p)
+    if os.name != "nt" or p.startswith("\\\\?\\"):
+        return p
+    if p.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + p[2:]
+    return "\\\\?\\" + p
+
+
 UE_DEFAULTS = {
     ("Add", "ConstA"): 0.0, ("Add", "ConstB"): 1.0,
     ("Subtract", "ConstA"): 1.0, ("Subtract", "ConstB"): 1.0,
@@ -3214,7 +3227,9 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
             print("  %d textures: shared samplers used (Unity's 16-sampler limit)" % len(tr.textures))
     for w in lint_shader(text):
         tr.warn(w)
-    if not (entry.get("scalars") or entry.get("vectors") or entry.get("textures")):
+    if not (entry.get("scalars") or entry.get("vectors") or entry.get("textures")) and not re.match(r"^MI_|_Inst(_?\d+)?$", shader_name):
+        tr.notes.append("%s is a base material, so every parameter is the graph's own default, which is what the game uses" % shader_name)
+    elif not (entry.get("scalars") or entry.get("vectors") or entry.get("textures")):
         tr.warn("no material-instance data was loaded (entry has no scalars, vectors or textures): every parameter is the parent graph's default, so an MI_ / _Inst material will look different. Convert with --material while the app is running, or pass --entry")
     elif tr.override_hits == 0:
         tr.warn("the material-instance data matched none of the graph's parameters (names differ?)")
@@ -3229,9 +3244,14 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
         if lost_tex:
             tr.warn("%d instance texture(s) matched no texture node that the converted graph reaches and were not used: %s (the node sits in a branch a static switch turned off, or the parameter name differs)" % (len(lost_tex), ", ".join(lost_tex[:25]) + (" ..." if len(lost_tex) > 25 else "")))
             print("instance values not used by any parameter: " + ", ".join(unused[:25]))
-    folder = os.path.join(out, shader_name)
+    folder_shown = os.path.abspath(os.path.join(out, shader_name))
+    folder = long_path(folder_shown)
+    deepest = len(folder_shown) + len(os.sep) + len(shader_name) + len(".textures.json")
+    if deepest > WINDOWS_PATH_LIMIT:
+        tr.warn("the shader's file path is %d characters, over Windows' %d-character limit: it was written anyway, but Unity may refuse to import it. Convert into a shorter output folder to avoid this" % (deepest, WINDOWS_PATH_LIMIT))
     os.makedirs(folder, exist_ok=True)
-    open(os.path.join(folder, shader_name + ".shader"), "w", encoding="utf-8").write(text)
+    with open(os.path.join(folder, shader_name + ".shader"), "w", encoding="utf-8") as fh:
+        fh.write(text)
     if "objradius" in tr.uses:
         bounds_path = os.path.join(out, "PorterObjectBounds.cs")
         bounds_cs = BOUNDS_CS.replace("__FLIP__", str(bool(LOCAL_X_FLIP))).replace("__XMIN__", "-mb.max.x" if LOCAL_X_FLIP else "mb.min.x").replace("__XMAX__", "-mb.min.x" if LOCAL_X_FLIP else "mb.max.x")
@@ -3287,9 +3307,10 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
         print(l)
     manifest = {"shader": shader_name, "textureSources": tr.tex_trace, "textures": {v["prop"]: v["path"] for v in tr.textures.values()},
                 "textureInfo": tex_info, "textureList": tex_list, "params": tr.props, "warnings": tr.warnings, "notes": tr.notes}
-    json.dump(manifest, open(os.path.join(folder, shader_name + ".textures.json"), "w", encoding="utf-8"), indent=2)
+    with open(os.path.join(folder, shader_name + ".textures.json"), "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
     print("wrote %s.shader (%d textures, %d warnings)" % (shader_name, len(tr.textures), len(tr.warnings)))
-    print("folder: %s" % os.path.abspath(folder))
+    print("folder: %s" % folder_shown)
     print("textures copied to Textures: %d of %d" % (len(copied), len(tr.textures)))
     for w in tr.warnings:
         print("  warning:", w)
@@ -3746,7 +3767,8 @@ def lint_shader(text):
             out.append("lint: texture %s is exported but the shader never samples it" % n)
     declared = set(re.findall(r"^\s*(?:float\d?|sampler2D|Texture2D)\s+(_\w+)\s*;", code, re.M)) | set(re.findall(r"^\s*UNITY_DECLARE_TEX2D(?:_NOSAMPLER)?\(\s*(_\w+)\s*\)\s*;", code, re.M))
     for n in sorted(set(re.findall(r"^\s*(?:\[[^\]]*\]\s*)*(_\w+)\s*\(", props, re.M)) - declared):
-        out.append("lint: property %s is not declared in the CG block" % n)
+        if n != "_Cutoff":
+            out.append("lint: property %s is not declared in the CG block" % n)
     return list(dict.fromkeys(out))[:25]
 
 SAMPLER_BUDGET = 8

@@ -23,6 +23,7 @@ STREAM_POINTS = 16
 STREAM_MIN_PARTICLES = 8    # complete particles wanted behind a colour or Dynamic Parameter curve
 STREAM_MAX_SECONDS = 30.0   # the longest replay made only to read those curves
 BAKE_FRAMES = False         # keep every tick's particles so ParticleBake can write the replay files
+BAKE_TAIL = float(os.environ.get("PORTER_BAKE_TAIL", "4.0"))    # seconds recorded past the replay, so particles born near its end live out their life
 BAKE_MOST_ROWS = 400000     # particles over all ticks, per emitter; past that its replay is not written
 LAST_TRACKS = {}            # emitter name: (recorder, emitter) from the last replay()
 BINDINGS = (("ColorBinding", "Color"), ("DynamicMaterialBinding", "DynamicMaterialParameter"),
@@ -116,18 +117,25 @@ class Recorder:
         self.frames = []        # every tick's particles as the emitter holds them: (floats, ints), for the baked replay
         self.frame_rows = 0     # particles over all of those ticks
         self.layout = None      # the emitter's data layout: where each attribute sits in those frames
-        self.truncated = False  # the frames stopped at the limit and do not hold the whole replay
+        self.truncated = False  # the frames stopped at the limit and do not hold the whole replay (no longer set: see step)
+        self.step = 1           # one stored tick in every `step` ticks; doubles instead of dropping the replay when it grows too long
+        self.tickno = 0
+        self.window = None      # seconds of the replay that count as spawning time; what comes after is only the tail
 
     def tick(self, e, t0):
         count = int(e.data.count)
         if self.layout is None:
             self.layout = e.layout
         if BAKE_FRAMES and not self.truncated:
-            if self.frame_rows + count > BAKE_MOST_ROWS:
-                self.truncated, self.frames = True, []
-            else:
+            if self.tickno % self.step == 0:
                 self.frames.append((e.data.floats[:, :count].copy(), e.data.ints[:, :count].copy()))
                 self.frame_rows += count
+                # too many particle-ticks: keep every second stored tick (the replay's tick length doubles) rather than lose the renderer
+                while self.frame_rows > BAKE_MOST_ROWS and len(self.frames) > 4:
+                    self.frames = self.frames[::2]
+                    self.step *= 2
+                    self.frame_rows = sum(int(f[0].shape[1] if f[0].shape[0] else f[1].shape[1]) for f in self.frames)
+            self.tickno += 1
         self.max_alive = max(self.max_alive, count)
         born = int(getattr(e, "born", 0))
         rows = {}
@@ -453,16 +461,21 @@ def replay(exports, name, source, seconds):
     if asset is None:
         kinds = sorted({e["type"] for e in exports})
         sys.exit("%s is not a Niagara system (it holds: %s)" % (source, ", ".join(kinds[:8])))
-    print("playing %s for %.0f seconds" % (name, seconds))
+    total = seconds + (BAKE_TAIL if BAKE_FRAMES else 0.0)
+    print("playing %s for %.0f seconds%s" % (name, seconds, (" (+%.0f s tail for the baked replay)" % BAKE_TAIL) if total > seconds else ""))
     LAST_TRACKS.clear()
-    system, recorders = play(exports, {}, seconds)
+    system, recorders = play(exports, {}, total)
+    for r in recorders.values():
+        r.window = seconds
     skipped = [{"emitter": n, "why": why} for n, why in system.skipped]
     gates = find_gates(exports, system, recorders, min(seconds, 3.0))
     gated = {}
     if gates:
         params, woke = gates
         print("emitters that needed user parameters: %s need %s" % (", ".join(woke), ", ".join(params)))
-        gsys, grec = play(exports, {n: [1.0] for n in params}, seconds)
+        gsys, grec = play(exports, {n: [1.0] for n in params}, total)
+        for r in grec.values():
+            r.window = seconds
         for n in woke:
             recorders[n] = grec[n]
             gated[n] = params
@@ -472,6 +485,8 @@ def replay(exports, name, source, seconds):
         source_emitter = next((x for x in gsys.emitters if x.name == e.name), e) if e.name in gated else e
         emitters.append(summarize(system, source_emitter, recorders[e.name], gated.get(e.name, []), approximate))
         LAST_TRACKS[e.name] = (recorders[e.name], source_emitter)
+    for em in emitters:
+        em["streamSeconds"] = r4(seconds)
     extend_streams(exports, emitters, recorders, gated, seconds)
     return system, emitters, skipped
 
@@ -489,7 +504,10 @@ def extend_streams(exports, emitters, recorders, gated, seconds):
             need.append(em)
     if not need:
         return
-    longer = min(STREAM_MAX_SECONDS, max(em["lifetimeMax"] for em in need) + 2.0)
+    longest = max(em["lifetimeMax"] for em in need)
+    longer = min(STREAM_MAX_SECONDS, longest + 2.0)
+    if any(em["incompleteStreams"] for em in need):
+        longer = min(STREAM_MAX_SECONDS, max(longer, seconds + longest + 1.0))
     if longer <= seconds + 0.25:
         return
     print("playing %s again for %.0f seconds to read curves over age" % (", ".join(em["name"] for em in need), longer))

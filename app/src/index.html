@@ -508,6 +508,10 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .wrap[data-tab="converter"] .logbox,.wrap[data-tab="check"] .logbox{display:flex;}
 .cv-tabs{display:flex;gap:4px;padding:0 0 12px;}
 .cv-tab.nav{width:auto;margin-bottom:0;padding:0 14px 0 10px;}
+.cv-gear{margin-left:auto;width:36px;height:36px;border:none;border-radius:18px;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color var(--fade);}
+.cv-gear:hover{background:var(--btn-hover);}
+.cv-gear:active{background:var(--btn-pressed);}
+.cv-gear svg{width:20px;height:20px;}
 .cv-tab.locked{opacity:.4;filter:grayscale(1);cursor:not-allowed;}
 .cv-tab.locked:hover{background:transparent;}
 .cv-pane{display:none;}
@@ -714,7 +718,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <button class="tab nav" data-tab="shaders"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L6.04,7.5L12,10.85L17.96,7.5L12,4.15Z"/></svg><span>My Shaders</span></button>
     <button class="tab nav" data-tab="check"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/></svg><span>Check Shaders</span></button>
     <div class="sec">Settings</div>
-    <button class="tab nav" data-tab="export"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 18.6V17.6L22.8 16.8C22.9 16.7 23 16.6 22.9 16.5L21.9 14.8C21.9 14.7 21.7 14.7 21.6 14.7L20.4 15.2C20.1 15 19.8 14.8 19.5 14.7L19.3 13.4C19.3 13.3 19.2 13.2 19.1 13.2H17.1C16.9 13.2 16.8 13.3 16.8 13.4L16.6 14.7C16.3 14.9 16.1 15 15.8 15.2L14.6 14.7C14.5 14.7 14.4 14.7 14.3 14.8L13.3 16.5C13.3 16.6 13.3 16.7 13.4 16.8L14.5 17.6V18.6L13.4 19.4C13.3 19.5 13.2 19.6 13.3 19.7L14.3 21.4C14.4 21.5 14.5 21.5 14.6 21.5L15.8 21C16 21.2 16.3 21.4 16.6 21.5L16.8 22.8C16.9 22.9 17 23 17.1 23H19.1C19.2 23 19.3 22.9 19.3 22.8L19.5 21.5C19.8 21.3 20 21.2 20.3 21L21.5 21.4C21.6 21.4 21.7 21.4 21.8 21.3L22.8 19.6C22.9 19.5 22.9 19.4 22.8 19.4L21.7 18.6M18 19.5C17.2 19.5 16.5 18.8 16.5 18S17.2 16.5 18 16.5 19.5 17.2 19.5 18 18.8 19.5 18 19.5M11 18C11 14.1 14.1 11 18 11C20 11 21.7 11.8 23 13.1V4C23 2.9 22.1 2 21 2H3C1.9 2 1 2.9 1 4V20C1 21.1 1.9 22 3 22H12.3C11.5 20.9 11 19.5 11 18M3 4H21V7H3V4Z"/></svg><span>Export Options</span></button>
+    <button class="tab nav" data-tab="export"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 18.6V17.6L22.8 16.8C22.9 16.7 23 16.6 22.9 16.5L21.9 14.8C21.9 14.7 21.7 14.7 21.6 14.7L20.4 15.2C20.1 15 19.8 14.8 19.5 14.7L19.3 13.4C19.3 13.3 19.2 13.2 19.1 13.2H17.1C16.9 13.2 16.8 13.3 16.8 13.4L16.6 14.7C16.3 14.9 16.1 15 15.8 15.2L14.6 14.7C14.5 14.7 14.4 14.7 14.3 14.8L13.3 16.5C13.3 16.6 13.3 16.7 13.4 16.8L14.5 17.6V18.6L13.4 19.4C13.3 19.5 13.2 19.6 13.3 19.7L14.3 21.4C14.4 21.5 14.5 21.5 14.6 21.5L15.8 21C16 21.2 16.3 21.4 16.6 21.5L16.8 22.8C16.9 22.9 17 23 17.1 23H19.1C19.2 23 19.3 22.9 19.3 22.8L19.5 21.5C19.8 21.3 20 21.2 20.3 21L21.5 21.4C21.6 21.4 21.7 21.4 21.8 21.3L22.8 19.6C22.9 19.5 22.9 19.4 22.8 19.4L21.7 18.6M18 19.5C17.2 19.5 16.5 18.8 16.5 18S17.2 16.5 18 16.5 19.5 17.2 19.5 18 18.8 19.5 18 19.5M11 18C11 14.1 14.1 11 18 11C20 11 21.7 11.8 23 13.1V4C23 2.9 22.1 2 21 2H3C1.9 2 1 2.9 1 4V20C1 21.1 1.9 22 3 22H12.3C11.5 20.9 11 19.5 11 18M3 4H21V7H3V4Z"/></svg><span>Converter Options</span></button>
     <button class="tab nav" data-tab="settings"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg><span>App Settings</span></button>
     <div class="spacer"></div>
     <div class="side-foot"><button class="signin" id="signInBtn"><img src="../assets/icons/Discord.png" alt="" draggable="false"><span>Sign In</span></button></div>
@@ -744,53 +748,55 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <button class="cv-tab nav active" data-cv="shader"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8M14 18V16H10V18L7 15L10 12V14H14V12L17 15M13 9V3.5L18.5 9Z"/></svg><span>Shader Converter</span></button>
         <button class="cv-tab nav" data-cv="particle"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M7.5,5.6L5,7L6.4,4.5L5,2L7.5,3.4L10,2L8.6,4.5L10,7L7.5,5.6M19.5,15.4L22,14L20.6,16.5L22,19L19.5,17.6L17,19L18.4,16.5L17,14L19.5,15.4M22,2L20.6,4.5L22,7L19.5,5.6L17,7L18.4,4.5L17,2L19.5,3.4L22,2M13.34,12.78L15.78,10.34L13.66,8.22L11.22,10.66L13.34,12.78M14.37,7.29L16.71,9.63C17.1,10 17.1,10.65 16.71,11.04L5.04,22.71C4.65,23.1 4,23.1 3.63,22.71L1.29,20.37C0.9,20 0.9,19.35 1.29,18.96L12.96,7.29C13.35,6.9 14,6.9 14.37,7.29Z"/></svg><span>Particle Converter</span></button>
         <button class="cv-tab nav" data-cv="blueprint"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/></svg><span>Blueprint Converter</span></button>
+        <button class="cv-gear" id="cvGear" title="Converter Options"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
       </div>
       <div class="cv-pane active" id="cv-shader">
       <div class="row-card col">
-        <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any material path. Niagara systems go in the Particle Converter button above.</div></div>
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Material Paths</div><div class="rc-desc">One path per line. Copy them from the Files tab.</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteMaterials">Paste</button><button class="btn sm" id="clearMaterials">Clear</button><button class="btn sm" id="openShaderConv">Open folder</button></div></div>
         <textarea id="materials" spellcheck="false" placeholder="/Game/.../MI_Example.MI_Example"></textarea>
         <div class="row">
-          <input type="text" id="shaderName" class="grow" spellcheck="false" placeholder="Shader name (optional, only used when converting one material)">
+          <input type="text" id="shaderName" class="grow" spellcheck="false" placeholder="Name (optional, single material only)">
           <button class="btn primary" id="convertBtn">Convert</button>
         </div>
       </div>
-      <div class="hint" style="padding:0 4px">The converter starts its own API in the background. The first start reads the game files and can take a minute. Each converted shader is saved in its own folder inside Shader Conversions, and everything it pulled in is filed under Cache with the same name.</div>
+      <div class="hint" style="padding:0 4px">Saved to Shader Conversions. The first run can take a minute.</div>
       </div>
       <div class="cv-pane" id="cv-particle">
       <div class="row-card col">
-        <div class="rc-head"><div class="rc-text"><div class="rc-title">Niagara System Paths</div><div class="rc-desc">One per line. Copy them from the Files tab, or paste any Niagara system path (NS_...).</div></div>
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Niagara System Paths</div><div class="rc-desc">One path per line. Copy them from the Files tab.</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteNiagara">Paste</button><button class="btn sm" id="clearNiagara">Clear</button><button class="btn sm" id="openParticleConv">Open folder</button></div></div>
         <textarea id="niagaraPaths" spellcheck="false" placeholder="/Game/.../NS_Example.NS_Example"></textarea>
         <div class="row">
-          <input type="text" id="niagaraName" class="grow" spellcheck="false" placeholder="Name (optional, only used when converting one system)">
+          <input type="text" id="niagaraName" class="grow" spellcheck="false" placeholder="Name (optional, single system only)">
           <button class="btn primary" id="niagaraBtn">Convert</button>
         </div>
       </div>
-      <div class="hint" style="padding:0 4px">Niagara systems are converted on their own, separate from the Shader Converter. Each one is saved in its own folder inside Particle Conversions with its materials and meshes, and built into a prefab. Copy the whole Particle Conversions folder into your Unity project's Assets.</div>
+      <div class="hint" style="padding:0 4px">Saved to Particle Conversions. Bake Scripts is in Converter Options.</div>
       </div>
       <div class="cv-pane" id="cv-blueprint">
       <div class="row-card col">
-        <div class="rc-head"><div class="rc-text"><div class="rc-title">Blueprint Paths</div><div class="rc-desc">Sky domes and props with lights, sounds and particle systems. One per line. Copy them from the Files tab, or paste any Blueprint path (BP_...).</div></div>
+        <div class="rc-head"><div class="rc-text"><div class="rc-title">Blueprint Paths</div><div class="rc-desc">One path per line. Copy them from the Files tab.</div></div>
           <div class="rc-ctl"><button class="btn sm" id="pasteBlueprint">Paste</button><button class="btn sm" id="clearBlueprint">Clear</button><button class="btn sm" id="openBlueprints">Open folder</button></div></div>
         <textarea id="blueprintPaths" spellcheck="false" placeholder="/Game/.../BP_Example.BP_Example"></textarea>
         <div class="row">
-          <input type="text" id="blueprintName" class="grow" spellcheck="false" placeholder="Name (optional, only used when converting one Blueprint)">
+          <input type="text" id="blueprintName" class="grow" spellcheck="false" placeholder="Name (optional, single Blueprint only)">
           <button class="btn primary" id="blueprintBtn">Convert</button>
         </div>
       </div>
-      <div class="hint" style="padding:0 4px">Each Blueprint is saved in its own folder inside Blueprint Conversions, with its shaders, textures, meshes and day cycle. Copy the whole Blueprint Conversions folder into your Unity project's Assets and Unity builds the prefab by itself.</div>
+      <div class="hint" style="padding:0 4px">Saved to Blueprint Conversions.</div>
       </div>
     </div>
 
     <div class="page split" id="page-export">
-      <div class="sub subcol" style="flex:0 0 220px"><div class="sec">Export Options</div>
+      <div class="sub subcol" style="flex:0 0 220px"><div class="sec">Converter Options</div>
         <button class="nav active"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10.11,17H7.5L2.59,12L7.5,7H10.11L11.42,4.74L18.21,3L20.08,9.74L18.77,12L20.08,14.26L18.21,21L11.42,19.26L10.11,17M10.25,16.75L15.38,18.13L12.42,13H6.5L10.25,16.75M17.12,17.13L18.5,12L17.12,6.87L14.15,12L17.12,17.13M10.25,7.25L6.5,11H12.42L15.38,5.87L10.25,7.25Z"/></svg><span>Unity</span></button>
       </div>
       <div class="sub subcol" style="flex:0 0 200px"><div class="sec">Unity</div>
         <button class="nav active"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z"/></svg><span>General</span></button>
       </div>
       <div class="exppane">
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Bake Scripts</div><div class="rc-desc">Plays particles from a baked replay. Off makes plain Unity Particle Systems.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="particleBake" checked><span class="trk"></span><span class="lbl" data-for="particleBake">On</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Fix Problems</div><div class="rc-desc">Fixes problems it finds in a converted shader automatically.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="xFix"><span class="trk"></span><span class="lbl" data-for="xFix">Off</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Compile in Unity</div><div class="rc-desc">Checks each converted shader by compiling it in the Unity Editor.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="xUnity"><span class="trk"></span><span class="lbl" data-for="xUnity">Off</span></label></div></div>
       </div>
@@ -842,7 +848,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="fb-b2" id="fileUnityWrap"><button class="btn fb-b" id="fileUnity" disabled><svg class="ic" viewBox="0 0 24 24" fill="currentColor"><path id="fileUnityIcP" d="M10.11,17H7.5L2.59,12L7.5,7H10.11L11.42,4.74L18.21,3L20.08,9.74L18.77,12L20.08,14.26L18.21,21L11.42,19.26L10.11,17M10.25,16.75L15.38,18.13L12.42,13H6.5L10.25,16.75M17.12,17.13L18.5,12L17.12,6.87L14.15,12L17.12,17.13M10.25,7.25L6.5,11H12.42L15.38,5.87L10.25,7.25Z"/></svg><span id="fileUnityLbl">Export to Unity</span></button><button class="btn fb-b fb-cv" id="fileUnityChev" title="More"><svg class="ch" viewBox="0 0 12 7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l5 5 5-5"/></svg></button><div class="dd-menu" id="fileUnityMenu"></div></div>
         <button class="btn fb-b fb-b2 fb-cancel" id="fileCancel" hidden><svg class="ic" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2C17.5,2 22,6.5 22,12S17.5,22 12,22 2,17.5 2,12 6.5,2 12,2M12,4C10.1,4 8.4,4.6 7.1,5.7L18.3,16.9C19.3,15.5 20,13.8 20,12C20,7.6 16.4,4 12,4M16.9,18.3L5.7,7.1C4.6,8.4 4,10.1 4,12C4,16.4 7.6,20 12,20C13.9,20 15.6,19.4 16.9,18.3Z"/></svg><span>Cancel</span></button>
         <div class="fb-export fb-b2" id="fileExpWrap"><button class="btn fb-b" id="fileExpBtn"><svg class="ic" viewBox="0 0 24 24" fill="currentColor"><path id="fileExpIcP" d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z"/></svg><span id="fileExpLbl">Export as Asset</span><svg class="ch" viewBox="0 0 12 7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l5 5 5-5"/></svg></button><div class="dd-menu" id="fileExpMenu"></div></div>
-        <button class="btn fb-sq" id="fileGear" title="Export Options"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
+        <button class="btn fb-sq" id="fileGear" title="Converter Options"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
       </div>
       <div class="fb-ctx" id="fileMenu">
         <div id="fileMenuPrev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4H8V6H6V8H4V4M20,4V8H18V6H16V4H20M4,20V16H6V18H8V20H4M20,20H16V18H18V16H20V20M12,7L16,9.2V13.8L12,16L8,13.8V9.2L12,7Z"/></svg>Preview</div>
@@ -1922,7 +1928,10 @@ function syncToggleLabels() {
   document.querySelectorAll('.tgl .lbl').forEach(l => { l.textContent = $(l.dataset.for).checked ? 'On' : 'Off' })
 }
 
+$('particleBake').onchange = () => { saveSetting({ particleBake: $('particleBake').checked }); syncToggleLabels() }
+
 function fillSettings() {
+  $('particleBake').checked = settings.particleBake !== false
   $('setBridge').value = settings.bridge || ''
   $('setUnity').value = settings.unity || ''
   $('setFnp').value = settings.fnpPath || ''
@@ -2032,10 +2041,13 @@ $('openFixed').onclick = () => window.api.open(info.fixed)
 $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
-const NEWS_DATE = 'Oct 23'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Decal shader and menu fixes', date: NEWS_DATE }
+const NEWS_DATE = 'Oct 24'
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Converter Options and shorter text', date: NEWS_DATE }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'Converter', title: 'Converter Options', sub: 'Export Options is now Converter Options.', body: 'Export Options is now Converter Options. Bake Scripts moved there from the Particle Converter tab, next to Fix Problems and Compile in Unity. The new gear at the right of the Converter tab opens it. The text in the Converter tab is shorter too.' },
+  { tag: 'Particles', title: 'Edit baked particles', sub: 'The particle player now looks like Unity\'s.', body: 'The baked particle player has a Unity Particle System style inspector: a Main module (start lifetime, speed, size, rotation, colour, gravity modifier, simulation space, seed) and modules with on/off boxes for Shape, Velocity, Force, Color, Size, Opacity, Rotation, Noise and Simulation. GPU emitters are now baked from their CPU scripts when the game files keep them. The Particle tab switch is now a small Bake Scripts toggle.' },
+  { tag: 'Particles', title: 'Missing meshes and long paths', sub: 'Every mesh exports; deep paths no longer crash.', body: 'A mesh renderer that lists several meshes only had its first one exported, so the others showed as missing in Unity (SM_CubeGrowth_Particle_02, SM_LightningBolt_X1000_Simple and similar). Every listed mesh is exported now. A shader whose file path passed Windows 260 characters crashed the conversion and left its baked sprites on the default material; it is written now, with a warning if the path is long enough that Unity may refuse it. Emitters whose particles were all born too late to finish their life now trigger the longer replay for curves over age, and base materials no longer warn about missing instance data.' },
   { tag: 'Particles', title: 'Unity console fixes', sub: 'Decals compile, no duplicate menu.', body: 'The decal projection shader failed to compile in Unity (invalid subscript xy), so decals fell back to flat quads. It compiles now. The particle scripts no longer add two menu items with the same name, and an unused field warning is gone. Convert again to get the fixed scripts.' },
   { tag: 'Particles', title: 'Particle curves over age', sub: 'Long-lived particles keep their curves.', body: 'Emitters whose particles live longer than the replay, such as IdleCubes (5 to 7 seconds), had too few finished particles to read their colour and Dynamic Parameter curves. The converter now plays the system again for longer, only to read those curves, so the curves over age come from many particles. The baked replay keeps its length.' },
   { tag: 'Particles', title: 'Particles play in the editor', sub: 'Baked particles animate outside play mode.', body: 'Ribbons, lights, decals and sprites that are played from a baked replay now animate in the Unity editor while the prefab sits in a scene, not only in play mode. Billboards face the Scene view camera. Nothing the player creates in the editor is saved into your scene or prefab.' },
@@ -2889,7 +2901,7 @@ $('niagaraBtn').onclick = async () => {
     addLine('paste at least one Niagara system path first')
     return
   }
-  const res = await window.api.convertNiagara({ materials, name: $('niagaraName').value.trim() })
+  const res = await window.api.convertNiagara({ materials, name: $('niagaraName').value.trim(), bake: $('particleBake').checked })
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }
@@ -4214,6 +4226,7 @@ $('fileUnityChev').onclick = e => {
   $('fileUnityMenu').classList.toggle('open')
 }
 $('fileGear').onclick = () => showTab('export')
+$('cvGear').onclick = () => showTab('export')
 
 const tipCard = document.createElement('div')
 tipCard.id = 'tipCard'

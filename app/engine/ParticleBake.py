@@ -1,14 +1,19 @@
 """Baked particle replay: what the Niagara replay did, tick by tick, written as a binary file per renderer
-for the Unity player (unity/PorterParticleReplay.cs) to draw. Format PRB1, little endian:
+for the Unity player (unity/PorterParticleReplay.cs) to draw. Format PRB2 (PRB1 is the same without the track fields), little endian:
 
-    magic 'PRB1' | int32 frames | int32 stride (floats per particle row) | float32 tick seconds
+    magic 'PRB2' | int32 frames | int32 stride (floats per particle row) | float32 tick seconds | int32 tracks | float32 cycle seconds
     int32 count[frames]                      particles in each tick
     float32 rows[sum(count)][stride]         tick after tick
+    int32 track[sum(count)]                  the track (one particle's whole life) each row belongs to
+
+A track's rows are in consecutive ticks, its first tick being when the particle was born. The player spawns tracks at their birth
+times, again every `cycle` seconds when it loops, so an effect can play forever, be prewarmed, thinned or thickened.
 
 Field order, per kind, is in the spec the bake returns ("fieldNames" with "fieldWidths"). Mesh rows carry rotation, scale and velocity;
 sprite rows facing, alignment and sub-image; ribbon rows their ribbon, rank and UVs. Positions are
 Unity metres (UE x, y, z in cm becomes x, z, y / 100), sizes and radii in metres, rotations Unity quaternions.
 """
+import math
 import os
 import struct
 
@@ -166,11 +171,44 @@ def ribbon_extra(props, fr, floats, ints, count):
     return out
 
 
+SORT_MODES = {"None": 0, "ViewDepth": 1, "ViewDistance": 2, "CustomAscending": 3, "CustomDecending": 4, "CustomDescending": 4}
+
+
+def rotator_to_quat(pitch, yaw, roll):
+    """An Unreal FRotator (degrees) as the quaternion (x, y, z, w) the engine builds from it."""
+    sp, sy, sr = (math.sin(math.radians(a) / 2.0) for a in (pitch, yaw, roll))
+    cp, cy, cr = (math.cos(math.radians(a) / 2.0) for a in (pitch, yaw, roll))
+    return (cr * sp * sy - sr * cp * cy, -cr * sp * cy - sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy)
+
+
+def mesh_entries(props):
+    """Each mesh of a mesh renderer with its own rotation and scale (the engine applies both to the mesh before the particle's own
+    orientation and scale), as a Unity quaternion and Unity-axis scale."""
+    out = []
+    for m in props.get("Meshes") or []:
+        if not m or not m.get("Mesh"):
+            continue
+        r = m.get("Rotation") or {}
+        q = quat_to_unity(np.array(rotator_to_quat(float(r.get("Pitch", 0.0)), float(r.get("Yaw", 0.0)), float(r.get("Roll", 0.0))), np.float64)[:, None])[:, 0]
+        s = m.get("Scale") or {}
+        p = m.get("PivotOffset") or {}
+        out.append({"rotation": [float(v) for v in q], "scale": [float(s.get("X", 1.0)), float(s.get("Z", 1.0)), float(s.get("Y", 1.0))],
+                    "pivot": [float(p.get("X", 0.0)) / 100.0, float(p.get("Z", 0.0)) / 100.0, float(p.get("Y", 0.0)) / 100.0]})
+    return out
+
+
+def sort_mode(props):
+    return SORT_MODES.get(str(props.get("SortMode") or "None").split("::")[-1], 0)
+
+
 def spec_extras(kind, props):
     """What the player needs to know about a renderer that is not in its rows."""
     out = {}
+    if kind in ("Sprite", "Mesh"):
+        out["sortMode"] = sort_mode(props)
     if kind == "Sprite":
-        out["facingMode"] = 1 if "CustomFacing" in str(props.get("FacingMode") or "") else 0
+        facing = str(props.get("FacingMode") or "")
+        out["facingMode"] = 1 if "CustomFacing" in facing else 2 if "FaceCameraPosition" in facing else 0
         align = str(props.get("Alignment") or "")
         out["lengthwise"] = "VelocityAligned" in align or "CustomAlignment" in align
         pivot = props.get("PivotInUVSpace") or {}
@@ -180,6 +218,7 @@ def spec_extras(kind, props):
     elif kind == "Mesh":
         facing = str(props.get("FacingMode") or "")
         out["facingMode"] = 1 if "Velocity" in facing else 2 if "Camera" in facing else 0
+        out["meshEntries"] = mesh_entries(props)
     elif kind == "Ribbon":
         # what the ribbon's width runs across: 0 the view, 1 the particles' own facing, 2 their side vector (a trail between two sockets)
         facing = str(props.get("FacingMode") or "")
@@ -300,6 +339,8 @@ def row_fields(kind, fr, props, floats, ints, count):
     if kind in ("Sprite", "Mesh"):
         # how far it is drawn towards the camera from where it is (a glow out in front of what it sits in)
         out.append(("camOff", fr.get(bound(props, "CameraOffsetBinding", "CameraOffset"), floats, ints, count)[:1] / 100.0))
+    if kind in ("Sprite", "Mesh") and sort_mode(props) >= 3:
+        out.append(("sortKey", fr.get(bound(props, "CustomSortingBinding", "CustomSorting"), floats, ints, count)[:1]))
     if kind in ("Ribbon", "Sprite", "Mesh"):
         out.append(("random", fr.get(bound(props, "MaterialRandomBinding", "MaterialRandom"), floats, ints, count)[:1]))
     dps = dp_components(props) if kind in ("Ribbon", "Sprite", "Mesh") else []
@@ -309,7 +350,52 @@ def row_fields(kind, fr, props, floats, ints, count):
     return out
 
 
-def bake_renderer(recorder, rtype, props, stem, notes, dt=1.0 / 60.0, bake_mode=None, meshes=False, system=None, emitter_name=""):
+def particle_keys(fr, floats, ints, count):
+    """One int64 per particle that is its identity for as long as it lives (the engine's ID is an index plus an acquire tag), or None."""
+    for name in ("UniqueID", "ID"):
+        if fr.has(name):
+            a = fr.get(name, floats, ints, count)
+            if a.shape[0] == 0:
+                continue
+            a = a.astype(np.int64)
+            return a[0] * 1000003 + (a[1] if a.shape[0] > 1 else 0)
+    return None
+
+
+def build_tracks(frame_keys, dt, window, cycle):
+    """Give every particle's life one track number. Returns (track per row per frame, tracks, cycle seconds), the tracks born at or
+    after the cycle (or the replay's spawn window) left out; or None when particles cannot be told apart."""
+    last, spawn, per_frame = {}, [], []
+    for fi, keys in enumerate(frame_keys):
+        t = np.empty(len(keys), np.int64)
+        seen = set()
+        for j, k in enumerate(keys.tolist()):
+            if k in seen:
+                return None
+            seen.add(k)
+            e = last.get(k)
+            if e is not None and e[1] == fi - 1:
+                tr = e[0]
+            else:
+                tr = len(spawn)
+                spawn.append(fi)
+            last[k] = (tr, fi)
+            t[j] = tr
+        per_frame.append(t)
+    if not spawn:
+        return None
+    total = len(frame_keys) * dt
+    window = float(window) if window else total
+    cycle = float(cycle) if cycle and 0.0 < cycle <= window else window
+    born = np.array(spawn, np.float64) * dt
+    keep = born < cycle - 1e-9
+    remap = np.full(len(spawn), -1, np.int64)
+    remap[keep] = np.arange(int(keep.sum()))
+    out = [remap[t] if len(t) else t for t in per_frame]
+    return out, int(keep.sum()), cycle
+
+
+def bake_renderer(recorder, rtype, props, stem, notes, dt=1.0 / 60.0, bake_mode=None, meshes=False, system=None, emitter_name="", cycle=0.0):
     """Write one renderer's replay. Returns the spec dict ({file, blob, ...}) or None when it is not baked."""
     kind = rtype.replace("Niagara", "").replace("RendererProperties", "")
     if kind not in KINDS or not props.get("bIsEnabled", True) or (kind == "Mesh" and not meshes):
@@ -325,14 +411,18 @@ def bake_renderer(recorder, rtype, props, stem, notes, dt=1.0 / 60.0, bake_mode=
         notes.append("%s: %s renderer not baked, the replay was cut off at %d particles" % (stem, kind, 400000) if recorder.truncated
                      else "%s: %s renderer not baked, the replay kept no particles" % (stem, kind))
         return None
+    dt = dt * int(getattr(recorder, "step", 1) or 1)       # a long replay is stored every few ticks
     fr = Frames(recorder)
-    counts, rows, fields, widths = [], [], None, None
+    counts, rows, fields, widths, keys = [], [], None, None, []
     for floats, ints in recorder.frames:
         n = floats.shape[1] if floats.shape[0] else ints.shape[1]
         if n == 0:
             counts.append(0)
+            keys.append(np.zeros(0, np.int64))
             continue
         keep = keep_mask(fr, props, floats, ints, n)
+        k_all = particle_keys(fr, floats, ints, n)
+        keys.append(k_all[keep] if k_all is not None else None)
         fields_now = row_fields(kind, fr, props, floats, ints, n)
         if fields is None:
             fields = [f for f, _ in fields_now]
@@ -345,16 +435,46 @@ def bake_renderer(recorder, rtype, props, stem, notes, dt=1.0 / 60.0, bake_mode=
         notes.append("%s: %s renderer drew no particles in the replay, not baked" % (stem, kind))
         return None
     stride = int(sum(widths))
-    blob = bytearray(MAGIC + struct.pack("<iif", len(counts), stride, dt))
-    blob += np.array(counts, "<i4").tobytes()
-    blob += np.vstack(rows).astype("<f4").tobytes()
+    tracks, cyc, window = 0, 0.0, getattr(recorder, "window", None)
+    built = build_tracks(keys, dt, window, cycle) if all(k is not None for k in keys) else None
+    if built is None:
+        if not all(k is not None for k in keys):
+            notes.append("%s: %s renderer's particles have no ID, played as one recording that cannot loop seamlessly" % (stem, kind))
+        blob = bytearray(MAGIC + struct.pack("<iif", len(counts), stride, dt))
+        blob += np.array(counts, "<i4").tobytes()
+        blob += np.vstack(rows).astype("<f4").tobytes()
+    else:
+        per_frame, tracks, cyc = built
+        # rows of the tracks that are left, frame by frame
+        new_counts, new_rows, new_tracks, ri = [], [], [], 0
+        for fi, c in enumerate(counts):
+            if c == 0:
+                new_counts.append(0)
+                continue
+            block, tr = rows[ri], per_frame[fi]
+            ri += 1
+            ok = tr >= 0
+            new_counts.append(int(ok.sum()))
+            if ok.any():
+                new_rows.append(block[ok])
+                new_tracks.append(tr[ok].astype("<i4"))
+        while new_counts and new_counts[-1] == 0:
+            new_counts.pop()
+        if not new_rows:
+            notes.append("%s: %s renderer drew no particles inside the replay's spawn window, not baked" % (stem, kind))
+            return None
+        counts, rows = new_counts, new_rows
+        blob = bytearray(b"PRB2" + struct.pack("<iifif", len(counts), stride, dt, tracks, cyc))
+        blob += np.array(counts, "<i4").tobytes()
+        blob += np.vstack(rows).astype("<f4").tobytes()
+        blob += np.concatenate(new_tracks).astype("<i4").tobytes()
     offsets, o = [], 0
     for w in widths:
         offsets.append(o)
         o += w
     extras = spec_extras(kind, props)
     return {**extras, "file": stem + ".bytes", "blob": bytes(blob), "kind": kind, "frames": len(counts), "rows": int(sum(counts)),
-            "stride": stride, "required": True, "why": why, "tickSeconds": dt, "fieldNames": fields,
+            "stride": stride, "tracks": tracks, "cycle": cyc, "format": 2 if built is not None else 1, "required": True, "why": why, "tickSeconds": dt, "fieldNames": fields,
             "fieldOffsets": offsets, "fieldWidths": widths,
             "dpComps": [b for _, _, b in dp_components(props)] if kind in ("Ribbon", "Sprite", "Mesh") else [],
             "dpUnavailable": [], "maxPerFrame": int(max(counts)),
@@ -364,9 +484,16 @@ def bake_renderer(recorder, rtype, props, stem, notes, dt=1.0 / 60.0, bake_mode=
 
 
 def read_blob(blob):
-    """The reverse of the writer, for tests: (tick seconds, counts, rows (n, stride))."""
-    assert blob[:4] == MAGIC
-    frames, stride, dt = struct.unpack_from("<iif", blob, 4)
-    counts = np.frombuffer(blob, "<i4", frames, 16)
-    rows = np.frombuffer(blob, "<f4", int(counts.sum()) * stride, 16 + 4 * frames).reshape(-1, stride)
-    return dt, counts, rows
+    """The reverse of the writer, for tests: (tick seconds, counts, rows (n, stride), track per row or None, cycle seconds or 0)."""
+    if blob[:4] == b"PRB2":
+        frames, stride, dt, tracks, cycle = struct.unpack_from("<iifif", blob, 4)
+        head = 24
+    else:
+        assert blob[:4] == MAGIC
+        frames, stride, dt = struct.unpack_from("<iif", blob, 4)
+        tracks, cycle, head = 0, 0.0, 16
+    counts = np.frombuffer(blob, "<i4", frames, head)
+    n = int(counts.sum())
+    rows = np.frombuffer(blob, "<f4", n * stride, head + 4 * frames).reshape(-1, stride)
+    track = np.frombuffer(blob, "<i4", n, head + 4 * frames + 4 * n * stride) if blob[:4] == b"PRB2" else None
+    return dt, counts, rows, track, cycle

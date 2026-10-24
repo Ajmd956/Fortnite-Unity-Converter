@@ -11,7 +11,7 @@ each script, and their curves from data interfaces.
 The asset comes as the app exports it: the package's exports, each {name, type, outer, props},
 in the package's order (a reference's ObjectPath ends in the export's index).
 
-GPU emitters keep no script to run (a compiled shader only) and are left out. Stateless emitters
+A GPU emitter is run from its CPU spawn and update scripts when the cook kept them, and reported as skipped, with what is still stored, when it kept only the compiled shader. Stateless emitters
 have no script either, only settings: niagara_stateless works their particles out.
 """
 import base64
@@ -684,7 +684,7 @@ class Script:
         data = props.get("CachedScriptVM") or {}
         code = (data.get("ByteCode") or {}).get("Data")
         if not code:
-            raise Unsupported("no compiled script")
+            raise Unsupported("no compiled script" + (" (the cook kept only its GPU shader, which can't be read)" if emitter and lenient else ""))
         self.interpolated = "Interpolated" in str(props.get("Usage"))
         self.literals = bytes(data.get("ScriptLiterals") or [])
         self.registers = int(data.get("NumTempRegisters") or 0)
@@ -758,13 +758,14 @@ class Handler:
 class Emitter:
     """A CPU emitter of a system: its particles, and the scripts that make and move them."""
 
-    def __init__(self, system, index, handle, export, version):
+    def __init__(self, system, index, handle, export, version, gpu=False):
         self.system, self.index, self.name, self.id = system, index, handle["Name"], handle["Id"]
         self.export, self.version = export, version
+        self.gpu = gpu
         self.local = bool(version.get("bLocalSpace", False))
         self.seed = int(version.get("RandomSeed", 0))
-        self.spawn = system.script(version["SpawnScriptProps"]["Script"], handle["Id"])
-        self.update = system.script(version["UpdateScriptProps"]["Script"], handle["Id"])
+        self.spawn = system.script(version["SpawnScriptProps"]["Script"], handle["Id"], gpu)
+        self.update = system.script(version["UpdateScriptProps"]["Script"], handle["Id"], gpu)
         self.layout = Layout(self.update.attributes + self.spawn.attributes)
         self.data, self.next = self.layout.buffer(), self.layout.buffer()
         self.spawned, self.born, self.age, self.state = 0, 0, 0.0, ACTIVE
@@ -958,6 +959,7 @@ class System:
         self.update_inputs = Layout(compiled["UpdateInstanceParamsDataSetCompiledData"]["Variables"])
         self.handles = props.get("EmitterHandles") or []
         self.emitters, self.skipped = [], []        # skipped: (emitter name, why)
+        self.gpu = []                               # (GPU emitter name, what its scripts ask that answers zeros): run on their CPU scripts
         self.approximate = []                       # the stateless emitters: played from their settings, the engine's random draws apart
         for index, handle in enumerate(self.handles):
             if not handle.get("bIsEnabled", True):
@@ -982,16 +984,32 @@ class System:
                 continue
             wanted = handle["VersionedInstance"].get("Version")
             version = next((v for v in versions if (v.get("Version") or {}).get("VersionGuid") == wanted), versions[0])
-            if "GPU" in str(version.get("SimTarget")):
-                self.skipped.append((handle["Name"], "GPU"))
-                continue
+            gpu = "GPU" in str(version.get("SimTarget"))
+            before = set(self.unanswered)
             try:
-                self.emitters.append(Emitter(self, index, handle, export, version))
+                self.emitters.append(Emitter(self, index, handle, export, version, gpu))
             except Unsupported as e:
-                self.skipped.append((handle["Name"], str(e)))
+                why = ("GPU: " if gpu else "") + str(e)
+                if gpu and "no compiled script" in why:
+                    why += self.stored(version, handle)
+                self.skipped.append((handle["Name"], why))
+                continue
+            if gpu:
+                self.gpu.append((handle["Name"], sorted(self.unanswered - before)))
         for e in self.emitters:
             for h in e.handlers:
                 h.source = next((o for o in self.emitters if o.id == h.source_id), None)
+
+    def stored(self, version, handle):
+        """What a GPU emitter's update script still holds in the cook: how many parameters it stores, and the first few names."""
+        try:
+            export = self.export(version["UpdateScriptProps"]["Script"])
+            usage = str(export["props"].get("Usage")).split("::")[-1]
+            cooked = self.cooked.get((handle["Id"], usage, export["props"].get("UsageId") or NO_ID)) or {}
+            names = [p["Name"] for p in cooked.get("CookedExecutionParameterStore", {}).get("SortedParameterOffsets") or []]
+            return "; %d parameters are still stored with it%s" % (len(names), (", e.g. " + ", ".join(names[:5])) if names else "")
+        except Exception:
+            return ""
 
     def unresolved(self):
         """The bones and sockets its scripts read that the character's pose doesn't have."""
@@ -1099,7 +1117,7 @@ class System:
             self.interfaces[index] = INTERFACES[export["type"]](self, export["type"], export["props"])
         return self.interfaces[index]
 
-    def script(self, ref, handle):
+    def script(self, ref, handle, gpu=False):
         export = self.export(ref)
         if export is None:
             raise Unsupported("script not in the package")
@@ -1111,7 +1129,7 @@ class System:
             cooked = {"CookedExecutionParameterStore": export["props"].get("ScriptExecutionParamStore") or {},
                       "CookedScriptRuntimeCompiledData": {"ResolvedDataInterfaces": export["props"].get("ResolvedDataInterfaces") or []}}
         return Script(self, export["props"], cooked, next((h["Name"] for h in self.props.get("EmitterHandles") or [] if handle and h.get("Id") == handle), None),
-                      lenient=handle is None)
+                      lenient=handle is None or gpu)
 
     def read(self, name):
         """A system data set variable's values (its floats, else its ints), or None."""

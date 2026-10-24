@@ -676,10 +676,19 @@ function separateParticleHelpers(dir) {
   }
 }
 
-function runEngine(args) {
+// The Particle tab's Baked Conversion switch. On bakes every particle from a replay; off keeps sprites and meshes as Unity
+// Particle Systems (ribbons, lights and decals are still baked, a Particle System cannot draw them). No switch, no change.
+function bakeEnv(payload) {
+  if (!payload || typeof payload.bake !== 'boolean') return null
+  return payload.bake
+    ? { PORTER_BAKE: 'all', PORTER_BAKE_SCRIPTED: '1', PORTER_BAKE_MESHES: '1' }
+    : { PORTER_BAKE: 'auto', PORTER_BAKE_SCRIPTED: '0' }
+}
+
+function runEngine(args, extraEnv) {
   return new Promise(resolve => {
     const { cmd, pre } = engineCommand()
-    const env = Object.assign({}, process.env, { PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' })
+    const env = Object.assign({}, process.env, { PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }, extraEnv || {})
     if (settings.unity) env.UNITY_EDITOR = settings.unity
     let output = ''
     let child
@@ -1635,7 +1644,7 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
     if (stopped) return built
     const lines = tail().split(/\r?\n/)
     for (const line of lines) {
-      if (/^Porter:|^\[extractor\]|^(STREAMS|UNVERIFIED|LIGHT|DECAL|SPARK|SPIN|CHECK|NOT APPLIED|APPROX|DEFAULT|FACING|MISSING|SHAPE|STATE|UNSUPPORTED) /.test(line)) send('engine:log', line + '\n')
+      if (/^Porter:|^\[extractor\]|^Shader error in |^(STREAMS|UNVERIFIED|LIGHT|DECAL|SPARK|SPIN|CHECK|NOT APPLIED|APPROX|DEFAULT|FACING|MISSING|SHAPE|STATE|UNSUPPORTED) /.test(line)) send('engine:log', line + '\n')
     }
     if (!fs.existsSync(verdictFile)) {
       const errors = lines.filter(l => /error CS\d+/.test(l)).slice(0, 8)
@@ -1668,6 +1677,7 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
 
 async function runPropQueue(paths, payload, flag, outDir, rootName) {
   const scripts = unityScriptsDir()
+  if (typeof payload.bake === 'boolean') send('engine:log', 'Bake Scripts: ' + (payload.bake ? 'on, every particle is played from a baked replay' : 'off, sprites and meshes stay Unity Particle Systems (ribbons, lights and decals are still baked)') + '\n')
   let converted = 0
   const made = []
   const kinds = []
@@ -1678,7 +1688,7 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
     send('engine:log', '\n[' + (i + 1) + '/' + queue.length + '] ' + queue[i] + (i >= paths.length ? ' (linked from another Blueprint)' : '') + '\n')
     const args = ['--bridge', settings.bridge, flag, queue[i], '--out', outDir, '--scripts', scripts]
     if (payload.name && i === 0 && paths.length === 1) args.push('--name', payload.name)
-    const res = await runEngine(args)
+    const res = await runEngine(args, bakeEnv(payload))
     if (i < paths.length && /^note: .* holds no meshes or materials/m.test(res.output)) {
       for (const lm of res.output.matchAll(/^linked: (.+)$/gm)) {
         const ref = lm[1].trim()
@@ -1723,7 +1733,8 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
       if (!/wrote (.+?)\.shader/.test(mres.output)) {
         const kind = classifyFailure(mres.output)
         if (kind) kinds.push(kind)
-        send('engine:log', 'material not converted: ' + short + '\n')
+        const why = mres.output.split(/\r?\n/).filter(l => /^[A-Za-z]*(Error|Exception)\b|Error: /.test(l)).pop()
+        send('engine:log', 'material not converted: ' + short + (why ? ' (' + why.trim().slice(0, 300) + ')' : '') + '\n')
       }
     }
     shareSharedScripts(outDir)

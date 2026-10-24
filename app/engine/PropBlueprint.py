@@ -503,7 +503,15 @@ def collect_assets(spec):
                 for r in e.get("renderers", []):
                     add(materials, r.get("material"))
                     add(meshes, r.get("mesh"))
+                    for m in r.get("meshes", []) or []:
+                        add(meshes, m)
                     for m in r.get("materials", []) or []:
+                        add(materials, m)
+                for b in e.get("baked", []) or []:
+                    for m in b.get("meshes", []) or []:
+                        add(meshes, m)
+                    add(materials, b.get("material"))
+                    for m in b.get("materials", []) or []:
                         add(materials, m)
     return meshes, materials, waves
 
@@ -542,7 +550,8 @@ def finish(spec, out, bp_name, scripts=None, ship=None):
         fh.write("\n".join(spec["report"]) + "\n")
     here = scripts or os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity")
     files = ship["files"] if ship else (("PorterBlueprintSetup.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterReplayBuild.cs", "Editor"),
-                                        ("PorterParticleReplay.cs", "Scripts"), ("PorterDecalProject.shader", "Scripts"))
+                                        ("PorterParticleReplay.cs", "Scripts"), ("PorterBakedParticleSystem.cs", "Scripts"), ("PorterParticleController.cs", "Scripts"),
+                                        ("PorterDecalProject.shader", "Scripts"), ("PorterParticleFallback.shader", "Scripts"))
     rename = ship["rename"] if ship else ()
     for fname, sub in files:
         srcf = os.path.join(here, fname)

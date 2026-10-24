@@ -310,6 +310,11 @@ public static partial class PorterPropBuilder
             BuildReplayEmitter(go, D(eo));
             BuildEmitter(go, D(eo), awake);
         }
+        // one control for the whole effect; added last so the starting values it remembers are the finished ones
+        var controller = go.GetComponent<PorterParticleController>();
+        if (controller == null) controller = go.AddComponent<PorterParticleController>();
+        controller.Collect();
+        controller.Rebase();
     }
 
     static void BuildEmitter(GameObject parent, Dictionary<string, object> e, bool awake)

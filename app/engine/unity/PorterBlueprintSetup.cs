@@ -291,7 +291,7 @@ public static class PorterBlueprintSetup
         foreach (string guid in AssetDatabase.FindAssets(name + " t:" + type))
         {
             string p = AssetDatabase.GUIDToAssetPath(guid);
-            if (Path.GetFileNameWithoutExtension(p) != name) continue;
+            if (!string.Equals(Path.GetFileNameWithoutExtension(p), name, StringComparison.OrdinalIgnoreCase)) continue;
             if (p.StartsWith(folder + "/")) return p;
             if (found == null) found = p;
         }

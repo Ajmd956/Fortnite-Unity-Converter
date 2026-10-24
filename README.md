@@ -52,7 +52,7 @@ equivalent, so the app uses a stand-in and tells you when it does.
 
 The Particle Converter has its own engine (ParticleConverter.py) and its own
 Unity scripts. Its scripts use their own class names (PorterParticleBuilder,
-PorterParticlePlayer, PorterParticleReplayBuild, PorterParticleSupport,
+PorterBakedParticleSystem, PorterParticleReplayBuild, PorterParticleSupport,
 PorterParticleDecalProject, and renamed copies of the shader helper scripts), so
 Particle Conversions and Blueprint Conversions can sit in one Unity project.
 
@@ -67,11 +67,30 @@ How a system is converted:
   streams (_PorterParticleStreams = 1).
 - Everything else is recorded tick by tick (the baked replay, files
   <system>_<emitter>_<n>.bytes, format PRB1) and played back in Unity by
-  PorterParticlePlayer. The Particle Converter bakes every sprite, ribbon, light,
+  PorterBakedParticleSystem (Baked Particle System in the Add Component menu). The Particle Converter bakes every sprite, ribbon, light,
   decal and mesh renderer it can. PORTER_BAKE=all (the default here), auto
   (only what a Particle System cannot draw) and off (nothing) are supported. The
   Blueprint Converter bakes in auto and leaves mesh renderers to the Particle
   System.
+
+Baked Particle System modules (every one has an on/off box and does nothing
+while off; defaults leave the baked look unchanged):
+
+- Main, Emission, Shape, Velocity over Lifetime, Force over Lifetime, Color over
+  Lifetime, Size over Lifetime, Opacity over Lifetime, Rotation over Lifetime,
+  Noise, Simulation.
+- Size by Speed and Color by Speed: a curve or gradient read from each
+  particle's baked speed over a speed range.
+- Custom Data: a multiply and an add for each Dynamic Parameter slot.
+- Texture Sheet Animation (sprites): tiles, and the frame as baked, over
+  lifetime, fixed or random, with a start frame.
+- Meshes: a scale and a rotation for each mesh of a mesh renderer.
+- Renderer: material, facing, sort mode, cast and receive shadows, sorting
+  order, light probes, motion vectors. Lights get intensity, range scale,
+  shadows and render mode.
+- Only controls that act on the baked data are shown.
+- Prefabs built before this version use a thin PorterParticlePlayer class that
+  inherits all of it, so their saved settings carry over.
 
 What the player does:
 
@@ -121,6 +140,8 @@ the .propreport.txt next to each system):
 - Meshes or materials that are missing from the export are named.
 
 Scripted emitters stay Particle Systems by default. Set PORTER_BAKE_SCRIPTED=1 to play their sprites and meshes from the baked replay instead (PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems, PORTER_BAKE=off bakes nothing). Baked meshes are made readable automatically. The baked mesh path has not been run in Unity.
+
+Converter Options (the gear at the right of the Converter tab, or Converter Options in the sidebar) has a Bake Scripts switch (on by default), next to Fix Problems and Compile in Unity. On sets PORTER_BAKE=all and PORTER_BAKE_SCRIPTED=1 for that conversion; off sets PORTER_BAKE=auto and PORTER_BAKE_SCRIPTED=0, so only what a Particle System cannot draw is baked. Baked replays show a Particle System style inspector (playback bar, Main, Color, Size, Renderer, Data).
 
 Every Particle System renderer gets Max Particle Size 555 (Unity's default of 0.5 made particles shrink when the camera came close).
 

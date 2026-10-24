@@ -5,9 +5,12 @@ from PropBlueprint import report, BAKED, PATHS, note, load, short, asset_name, v
 
 SHIP = {
     "files": (("PorterParticleSupport.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterReplayBuild.cs", "Editor"),
-              ("PorterParticleReplay.cs", "Scripts"), ("PorterDecalProject.shader", "Scripts")),
+              ("PorterParticleReplay.cs", "Scripts"), ("PorterBakedParticleSystem.cs", "Scripts"), ("PorterParticleController.cs", "Scripts"), ("PorterDecalProject.shader", "Scripts"),
+              ("PorterParticleFallback.shader", "Scripts")),
     "rename": (("PorterBodyAnchor", "PorterParticleBodyAnchor"), ("PorterParticleReplay", "PorterParticlePlayer"), ("Porter/DecalProject", "Porter/ParticleDecalProject"),
-               ("PorterDecalProject", "PorterParticleDecalProject"), ("PorterBlueprintSetup", "PorterParticleSupport"),
+               ("PorterDecalProject", "PorterParticleDecalProject"),
+               ("Porter/ParticleFallback", "Porter/ParticleConvFallback"), ("PorterParticleFallback", "PorterParticleConvFallback"),
+               ("PorterParticleController", "PorterParticleRoot"), ("PorterBlueprintSetup", "PorterParticleSupport"),
                ("PorterPropBuilder", "PorterParticleBuilder"), ("PorterPropWait", "PorterParticleWait"),
                ("PorterMiniJson", "PorterParticleMiniJson"), ("PorterReplayBuild", "PorterParticleReplayBuild"),
                ("Tools/Porter Build Prop Blueprint Prefabs", "Tools/Porter Rebuild Particle Prefabs")),
@@ -35,6 +38,7 @@ def renderer_spec(folder, emname, rtype_name, rp):
     elif rs["type"] == "Mesh":
         mesh = rp["Meshes"][0]
         mesh_name = asset_name(mesh.get("Mesh"))
+        all_meshes = [asset_name(m.get("Mesh")) for m in rp["Meshes"] if m and m.get("Mesh")]
         ov = rp.get("OverrideMaterials", [])
         mats = [asset_name(x.get("ExplicitMat")) for x in ov if x] if rp.get("bOverrideMaterials") is not False else []
         slots = []
@@ -47,6 +51,7 @@ def renderer_spec(folder, emname, rtype_name, rp):
                 note("MISSING", emname + ": mesh renderer has no override material and the mesh data lists none, the particle will have no material")
         rs.update({
             "mesh": mesh_name,
+            "meshes": all_meshes,
             "meshRotation": rot(mesh.get("Rotation")),
             "meshScale": vec(mesh.get("Scale"), (1, 1, 1)),
             "materials": mats,
@@ -384,7 +389,7 @@ def bake_emitter(system, em, spec, stem, scripted=False):
     for i, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter)):
         fname = "%s_%s_%d" % (stem, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
         b = ParticleBake.bake_renderer(recorder, rtype, props, fname, notes, dt=NiagaraPorter.DT, bake_mode=bake_mode, meshes=with_meshes,
-                                       system=system, emitter_name=em["name"])
+                                       system=system, emitter_name=em["name"], cycle=float(em.get("loopPeriod") or 0.0))
         if b is None:
             continue
         BAKED[b["file"]] = b.pop("blob")
@@ -456,6 +461,9 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
     emitters += list(stateless.values())
     for s in skipped:
         note("UNSUPPORTED", s["emitter"] + ": not converted (" + str(s["why"]) + ")")
+    for gname, zeros in getattr(system, "gpu", []):
+        note("INFERRED", gname + ": a GPU emitter, baked from its CPU scripts (Unreal runs it on the GPU)" +
+             ((", these GPU-only calls answered zero: " + ", ".join(zeros[:6])) if zeros else ""))
     report[:] = [r for r in report if "enabled non-stateless emitter" not in r]
     bp_name = name or sysname
     node = {"name": "Particles", "parent": 0, "kind": "particles", "loc": [0, 0, 0], "rot": [0, 0, 0], "scale": [1, 1, 1],

@@ -5,12 +5,120 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-// Builds the baked-replay players of a converted particle system (see PorterParticleReplay.cs).
+// Builds the baked-replay players of a converted particle system (see PorterBakedParticleSystem.cs).
 public static partial class PorterPropBuilder
 {
     // Unity light intensity per unit of Unreal light colour brightness. Unreal and Unity light units differ:
     // this is a starting value to match by eye against Unreal, not a measured one.
     const float ReplayLightScale = 1f;
+
+    // ---- pink fallback ------------------------------------------------------------------------------------------------
+    // A material whose shader is missing or does not compile draws pink. It is moved to Porter/ParticleFallback (unlit, the base
+    // texture times the tint) so the effect still shows. The old material's texture and colour are read from the saved asset,
+    // which still holds them when the shader is gone.
+
+    static Shader fallbackShader;
+
+    public static Shader FallbackShader()
+    {
+        if (fallbackShader != null) return fallbackShader;
+        fallbackShader = Shader.Find("Porter/ParticleFallback");
+        if (fallbackShader != null) return fallbackShader;
+        foreach (string guid in AssetDatabase.FindAssets("PorterParticleFallback t:Shader"))
+        {
+            var sh = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(guid));
+            if (sh != null && sh.name == "Porter/ParticleFallback") { fallbackShader = sh; break; }
+        }
+        return fallbackShader;
+    }
+
+    static readonly string[] FallbackTextures = { "_MainTex", "_BaseMap", "_BaseColorMap", "_BaseTexture", "_Texture", "_DiffuseTexture", "_Diffuse", "_Albedo", "_Tex", "_ParticleTexture" };
+    static readonly string[] FallbackColors = { "_Color", "_BaseColor", "_TintColor", "_Tint", "_ColorTint", "_EmissiveColor", "_Emissive", "_EmissionColor" };
+
+    static bool Contains(string text, string part)
+    {
+        return text.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    // Moves one material to the fallback shader and carries over its main texture, colour and blend. Returns the log line, or null when
+    // the fallback shader is not in the project (nothing was changed).
+    public static string RepairMaterial(Material mat, string why)
+    {
+        Shader fb = FallbackShader();
+        if (mat == null || fb == null || mat.shader == fb) return null;
+        var names = new List<string>();
+        var texes = new List<Texture>();
+        var colorNames = new List<string>();
+        var colors = new List<Color>();
+        float dst = -1f;
+        var so = new SerializedObject(mat);
+        var envs = so.FindProperty("m_SavedProperties.m_TexEnvs");
+        for (int i = 0; envs != null && i < envs.arraySize; i++)
+        {
+            var e = envs.GetArrayElementAtIndex(i);
+            names.Add(e.FindPropertyRelative("first").stringValue);
+            texes.Add(e.FindPropertyRelative("second.m_Texture").objectReferenceValue as Texture);
+        }
+        var cols = so.FindProperty("m_SavedProperties.m_Colors");
+        for (int i = 0; cols != null && i < cols.arraySize; i++)
+        {
+            var e = cols.GetArrayElementAtIndex(i);
+            colorNames.Add(e.FindPropertyRelative("first").stringValue);
+            colors.Add(e.FindPropertyRelative("second").colorValue);
+        }
+        var floats = so.FindProperty("m_SavedProperties.m_Floats");
+        for (int i = 0; floats != null && i < floats.arraySize; i++)
+        {
+            var e = floats.GetArrayElementAtIndex(i);
+            if (e.FindPropertyRelative("first").stringValue == "_DstBlend") dst = e.FindPropertyRelative("second").floatValue;
+        }
+        Texture tex = null;
+        string texName = "";
+        foreach (string want in FallbackTextures)
+        {
+            int k = names.IndexOf(want);
+            if (k >= 0 && texes[k] != null) { tex = texes[k]; texName = want; break; }
+        }
+        for (int k = 0; tex == null && k < names.Count; k++)
+            if (texes[k] != null && !Contains(names[k], "normal") && !Contains(names[k], "mask") && !Contains(names[k], "noise")) { tex = texes[k]; texName = names[k]; }
+        Color tint = Color.white;
+        string tintName = "";
+        foreach (string want in FallbackColors)
+        {
+            int k = colorNames.IndexOf(want);
+            if (k >= 0) { tint = colors[k]; tintName = want; break; }
+        }
+        bool additive = Math.Abs(dst - 1f) < 0.01f || (dst < 0f && (Contains(mat.name, "add") || Contains(mat.name, "glow")));
+        string oldName = mat.shader != null ? mat.shader.name : "none";
+        mat.shader = fb;
+        if (tex != null) mat.SetTexture("_MainTex", tex);
+        mat.SetColor("_Color", tint);
+        mat.SetFloat("_DstBlend", additive ? 1f : 10f);
+        mat.renderQueue = 3000;
+        EditorUtility.SetDirty(mat);
+        return "FALLBACK " + AssetDatabase.GetAssetPath(mat) + ": " + why + " (was " + oldName + "); now Porter/ParticleFallback with "
+            + (tex != null ? "texture " + tex.name + " from " + texName : "no texture") + ", "
+            + (tintName.Length > 0 ? "colour from " + tintName : "white tint") + ", " + (additive ? "additive" : "alpha") + " blend";
+    }
+
+    // The material FindMaterial could not find: a stand-in that shows the effect, not the default material
+    static Material FallbackStandIn(string name)
+    {
+        Shader fb = FallbackShader();
+        if (fb == null) return null;
+        string dir = string.IsNullOrEmpty(specFolder) ? "Assets" : specFolder;
+        string path = dir + "/" + Safe(string.IsNullOrEmpty(name) ? "Missing" : name) + "_Fallback.mat";
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(fb);
+            mat.SetFloat("_DstBlend", 1f);
+            mat.renderQueue = 3000;
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        return mat;
+    }
+
 
     static void BuildReplayEmitter(GameObject parent, Dictionary<string, object> e)
     {
@@ -34,7 +142,7 @@ public static partial class PorterPropBuilder
             }
             var go = new GameObject(emName + "_" + kind + (b.ContainsKey("srcIndex") ? "_" + (int)N(b["srcIndex"], 0) : ""));
             go.transform.SetParent(parent.transform, false);
-            var player = go.AddComponent<PorterParticleReplay>();
+            var player = go.AddComponent<PorterBakedParticleSystem>();
             player.data = data;
             player.kind = kind;
             player.loop = loops;
@@ -60,11 +168,12 @@ public static partial class PorterPropBuilder
             player.subY = Mathf.Max(1, (int)N(b.ContainsKey("subY") ? b["subY"] : null, 1));
             player.ribbonShape = (int)N(b.ContainsKey("shape") ? b["shape"] : null, 0);
             player.ribbonSides = Mathf.Max(1, (int)N(b.ContainsKey("sides") ? b["sides"] : null, 2));
+            player.sortMode = (int)N(b.ContainsKey("sortMode") ? b["sortMode"] : null, 0);
             if (kind == "Light")
             {
                 player.lightScale = ReplayLightScale;
                 player.radiusScale = (float)N(b.ContainsKey("radiusScale") ? b["radiusScale"] : null, 1.0);
-                log.Add("UNVERIFIED " + emName + ": baked light brightness uses " + ReplayLightScale.ToString("0.##") + " Unity intensity per unit of Unreal colour brightness, range = LightRadius x RadiusScale; match it by eye, PorterParticleReplay.lightScale on the prefab is the one number to change");
+                log.Add("UNVERIFIED " + emName + ": baked light brightness uses " + ReplayLightScale.ToString("0.##") + " Unity intensity per unit of Unreal colour brightness, range = LightRadius x RadiusScale; match it by eye, PorterBakedParticleSystem.lightScale on the prefab is the one number to change");
             }
             else if (kind == "Mesh")
             {
@@ -86,6 +195,23 @@ public static partial class PorterPropBuilder
                     if (m == null) Miss("mesh", names[i], meshWhy);
                     player.meshes[i] = m;
                 }
+                if (b.ContainsKey("meshEntries") && b["meshEntries"] != null)
+                {
+                    var entries = L(b["meshEntries"]);
+                    player.meshRotations = new Quaternion[entries.Count];
+                    player.meshScales = new Vector3[entries.Count];
+                    for (int i = 0; i < entries.Count; i++)
+                    {
+                        var en = D(entries[i]);
+                        var rq = L(en["rotation"]);
+                        var sq = L(en["scale"]);
+                        player.meshRotations[i] = new Quaternion((float)N(rq[0], 0), (float)N(rq[1], 0), (float)N(rq[2], 0), (float)N(rq[3], 1));
+                        player.meshScales[i] = new Vector3((float)N(sq[0], 1), (float)N(sq[1], 1), (float)N(sq[2], 1));
+                        var pv = L(en["pivot"]);
+                        if (pv != null && pv.Count >= 3 && (Math.Abs(N(pv[0], 0)) + Math.Abs(N(pv[1], 0)) + Math.Abs(N(pv[2], 0))) > 1e-6)
+                            log.Add("NOT APPLIED " + emName + ": mesh " + i + " has a pivot offset, the baked mesh turns about its own origin");
+                    }
+                }
                 var matNames = b.ContainsKey("materials") ? Strings(b["materials"]) : new string[0];
                 var mats = new List<Material>();
                 foreach (string mn in matNames)
@@ -93,9 +219,10 @@ public static partial class PorterPropBuilder
                     var mat = FindMaterial(mn);
                     if (mat == null)
                     {
-                        log.Add("MISSING " + emName + ": material " + mn + " for the baked Mesh renderer was not found, it draws with the default material");
+                        mat = FallbackStandIn(mn);
+                        log.Add("MISSING " + emName + ": material " + mn + " for the baked Mesh renderer was not found, it draws with " + (mat != null ? "Porter/ParticleFallback" : "the default material"));
                         missing++;
-                        continue;
+                        if (mat == null) continue;
                     }
                     var inst = StreamCopy(mat, emName + "_" + kind);
                     for (int i = 0; i < 4; i++)
@@ -116,13 +243,15 @@ public static partial class PorterPropBuilder
             }
             else
             {
-                var mat = FindMaterial(S(b.ContainsKey("material") ? b["material"] : null));
+                string matWanted = S(b.ContainsKey("material") ? b["material"] : null);
+                var mat = FindMaterial(matWanted);
                 if (mat == null)
                 {
-                    log.Add("MISSING " + emName + ": material " + S(b.ContainsKey("material") ? b["material"] : null) + " for the baked " + kind + " renderer was not found, it draws with the default material");
+                    mat = FallbackStandIn(matWanted);
+                    log.Add("MISSING " + emName + ": material " + matWanted + " for the baked " + kind + " renderer was not found, it draws with " + (mat != null ? "Porter/ParticleFallback" : "the default material"));
                     missing++;
                 }
-                else
+                if (mat != null)
                 {
                     var inst = StreamCopy(mat, emName + "_" + kind);
                     // slot k of the replay mesh carries Dynamic Parameter component comps[k]; the shader reads _PorterDPSlot<i>.<c> as the slot of DP i component c
