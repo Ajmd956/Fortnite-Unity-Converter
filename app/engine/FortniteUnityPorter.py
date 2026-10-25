@@ -2788,6 +2788,13 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     except (TypeError, ValueError):
         clip = 0.3333
     tr.notes.append("two-sided: %s" % ("yes (Cull Off, back faces lit with flipped normal)" if two else "no (back faces culled)"))
+    tangent_space_normal = True
+    for src_d in (ov, asset, mp):
+        if isinstance(src_d, dict) and "bTangentSpaceNormal" in src_d:
+            tangent_space_normal = truthy(src_d["bTangentSpaceNormal"])
+            break
+    if not tangent_space_normal:
+        tr.notes.append("normal output: world space (Tangent Space Normal is off), converted to tangent space for Unity")
 
     f3 = lambda n: tr.fit(vals[n], 3).e
     f1 = lambda n: tr.fit(vals[n], 1).e
@@ -3036,7 +3043,15 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("            o.Emission = max(%s, 0.0);" % f3("EmissiveColor"))
         nrm = vals["Normal"]
         if not (nrm.const and nrm.e.replace(" ", "") == "float3(0.0,0.0,1.0)"):
-            o.append("            float3 nUE = %s;" % tr.fit(nrm, 3).e)
+            if tangent_space_normal:
+                o.append("            float3 nUE = %s;" % tr.fit(nrm, 3).e)
+            else:
+                o.append("            float3 nWorldUE = %s;" % tr.fit(nrm, 3).e)
+                o.append("            float3 nWorld = nWorldUE.xzy;")
+                o.append("            float3 nTx = WorldNormalVector(IN, float3(1.0, 0.0, 0.0));")
+                o.append("            float3 nTy = WorldNormalVector(IN, float3(0.0, 1.0, 0.0));")
+                o.append("            float3 nTz = WorldNormalVector(IN, float3(0.0, 0.0, 1.0));")
+                o.append("            float3 nUE = float3(dot(nWorld, nTx), -dot(nWorld, nTy), dot(nWorld, nTz));")
             o.append("            o.Normal = normalize(float3(nUE.x, lerp(nUE.y, -nUE.y, _FlipNormalY), max(nUE.z, 0.0001)));")
     if "tangent" in tr.uses and not any("o.Normal" in l for l in o):
         o.append("            o.Normal = float3(0.0, 0.0, 1.0);")
