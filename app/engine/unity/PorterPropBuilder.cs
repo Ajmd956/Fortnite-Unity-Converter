@@ -344,7 +344,7 @@ public static partial class PorterPropBuilder
         for (int i = 0; i < rl.Count; i++)
         {
             string t = S(D(rl[i])["type"]);
-            if (t == "Mesh" || t == "Sprite" || t == "Ribbon") picks.Add(i);
+            if (t == "Mesh" || t == "Sprite" || t == "Ribbon" || t == "Light") picks.Add(i);
         }
         if (picks.Count < 2)
         {
@@ -362,7 +362,7 @@ public static partial class PorterPropBuilder
             if (k > 0) copy["name"] = baseName + "_Renderer" + (k + 1);
             BuildEmitterOne(parent, copy, awake, seed);
         }
-        log.Add("UNVERIFIED " + baseName + ": Unity draws one renderer per Particle System, so its " + picks.Count + " renderers became " + picks.Count + " Particle Systems with identical settings and the same random seed; per-particle random values stay in step only as far as Unity's seeded randomness does");
+        log.Add("UNVERIFIED " + baseName + ": Unity draws one renderer per Particle System, so its " + picks.Count + " renderers became " + picks.Count + " separate objects (a Light renderer becomes a point light) with identical settings and the same random seed; per-particle random values stay in step only as far as Unity's seeded randomness does");
     }
 
     static void BuildEmitterOne(GameObject parent, Dictionary<string, object> e, bool awake, int sharedSeed)
