@@ -206,7 +206,9 @@ def emitter_spec(folder, sysdata, handle):
             note("UNSUPPORTED", handle["Name"] + ": dynamic material parameters with curves/bindings (not applied; shader needs custom vertex streams)")
     spec["unhandledModules"] = sorted(k for k in mods if k not in HANDLED_MODULES)
     if spec["unhandledModules"]:
-        note("UNSUPPORTED", handle["Name"] + ": Niagara modules not converted: " + ", ".join(spec["unhandledModules"]))
+        spec["unhandledRaw"] = {k: mods[k] for k in spec["unhandledModules"]}
+        described = [k + " (settings: " + ", ".join(sorted(mods[k].keys())) + ")" if mods[k] else k for k in spec["unhandledModules"]]
+        note("UNSUPPORTED", handle["Name"] + ": Niagara modules not converted: " + ", ".join(described))
     for r in rends:
         spec["renderers"].append(renderer_spec(folder, handle["Name"], r["Type"], r.get("Properties", {})))
     return spec
