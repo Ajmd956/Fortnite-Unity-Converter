@@ -518,9 +518,44 @@ public static partial class PorterPropBuilder
             float m = Mathf.Max(rr, Mathf.Max(gg, bb));
             if (m > 0f) c = new Color(rr / m, gg / m, bb / m);
         }
+        bool fromReplay = false;
+        if (r.ContainsKey("streams") && r["streams"] != null)
+        {
+            var st = D(r["streams"]);
+            if (st.ContainsKey("radius") && st["radius"] != null && L(st["radius"]).Count > 0)
+            {
+                var radii = L(st["radius"]);
+                float radiusSum = 0f;
+                foreach (var rv in radii) radiusSum += (float)N(rv, 0);
+                float meanRadius = radiusSum / radii.Count;
+                if (meanRadius > 0f)
+                {
+                    l.range = meanRadius * (float)N(r["radiusScale"], 1) * CmToM;
+                    fromReplay = true;
+                }
+            }
+            if (st.ContainsKey("color") && st["color"] != null && L(st["color"]).Count > 0)
+            {
+                float sumR = 0f, sumG = 0f, sumB = 0f;
+                foreach (var co in L(st["color"]))
+                {
+                    var cd = D(co);
+                    sumR += Mathf.Max(0f, (float)N(cd["r"], 0));
+                    sumG += Mathf.Max(0f, (float)N(cd["g"], 0));
+                    sumB += Mathf.Max(0f, (float)N(cd["b"], 0));
+                }
+                float sumMax = Mathf.Max(sumR, Mathf.Max(sumG, sumB));
+                if (sumMax > 0f)
+                {
+                    c = new Color(sumR / sumMax, sumG / sumMax, sumB / sumMax);
+                    fromReplay = true;
+                }
+            }
+        }
         l.color = c.gamma;
         l.intensity = 1f;
-        log.Add("APPROX light emitter " + go.name + ": colour from first colour-scale key, intensity 1, range " + l.range.ToString("0.##") + " m (UE per-particle radius/intensity not exported)");
+        if (fromReplay) log.Add("APPROX light emitter " + go.name + ": range " + l.range.ToString("0.##") + " m and colour are the replayed light's averages over its life, intensity 1, and the light stays on for as long as the system plays");
+        else log.Add("APPROX light emitter " + go.name + ": colour from first colour-scale key, intensity 1, range " + l.range.ToString("0.##") + " m (no replayed radius or colour for this light)");
     }
 
     static bool ReplayRange(Dictionary<string, object> e, out Vector3 lo, out Vector3 hi)

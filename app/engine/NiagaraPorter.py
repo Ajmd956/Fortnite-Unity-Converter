@@ -54,6 +54,10 @@ def tracked_names(system, emitter):
             found.append(n)
 
     for rtype, props in renderer_exports(system, emitter):
+        if "Light" in rtype:
+            add(renderer_bindings(props)[0])
+            add(binding_name(props, "RadiusBinding", "LightRadius"))
+            continue
         if "Mesh" not in rtype and "Sprite" not in rtype and not (MOTION_FIT and "Ribbon" in rtype):
             continue
         color, dps = renderer_bindings(props)

@@ -72,8 +72,8 @@ def renderer_spec(folder, emname, rtype_name, rp):
         rs.update({
             "radiusScale": rp.get("RadiusScale", 1.0),
             "inverseSquared": rp.get("bUseInverseSquaredFalloff", False),
+            "radiusAttr": NiagaraPorter.binding_name(rp, "RadiusBinding", "LightRadius"),
         })
-        note("DEFAULT", emname + ": light renderer radius not exported (per-particle LightRadius), Unity range uses 100 cm x RadiusScale")
     else:
         note("UNSUPPORTED", emname + ": renderer " + rs["type"] + " (a Unity Particle System has no equivalent)")
     return rs
@@ -303,6 +303,26 @@ def stream_spec(emname, em, rs):
     return out
 
 
+def light_stream_spec(emname, em, rs):
+    st = em.get("streams") or {}
+    out = {"color": None, "radius": None}
+    c = st.get(rs.get("colorAttr"))
+    if c and c["width"] == 4:
+        n = len(c["mean"])
+        out["color"] = [{"t": i / float(n - 1), "r": m[0], "g": m[1], "b": m[2], "a": m[3]} for i, m in enumerate(c["mean"])]
+    r = st.get(rs.get("radiusAttr"))
+    if r and r["width"] == 1:
+        out["radius"] = [m[0] for m in r["mean"]]
+    for attr in (rs.get("colorAttr"), rs.get("radiusAttr")):
+        if attr in (em.get("incompleteStreams") or []):
+            note("MISSING", emname + ": light attribute " + str(attr) + " changes with the particle's age but no particle lived out its life in " + str(em.get("streamSeconds", "the replay")) + " seconds of play, so it is not carried")
+    if out["radius"] is None:
+        note("DEFAULT", emname + ": light radius not read from the replay, Unity range uses 100 cm x RadiusScale")
+    else:
+        note("APPROX", emname + ": light radius and colour change over the particle's life in Unreal, the Unity light uses their average")
+    return out
+
+
 def replay_position(em):
     """Where the replay's particles were born, as the smallest and largest value of each axis in cm (None if nothing spawned)."""
     pos = (em.get("initial") or {}).get("Position")
@@ -369,6 +389,8 @@ def scripted_emitter_spec(loader, system, em, seconds):
             rs["srcIndex"] = src_index
             if rs["type"] in ("Mesh", "Sprite"):
                 rs["streams"] = stream_spec(name, em, rs)
+            elif rs["type"] == "Light":
+                rs["streams"] = light_stream_spec(name, em, rs)
             renderers.append(rs)
     if not renderers:
         note("UNSUPPORTED", name + ": no enabled renderer")
