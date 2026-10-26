@@ -96,6 +96,7 @@ def emitter_spec(folder, sysdata, handle):
     st = ep.get("EmitterState", {})
     spec = {
         "name": handle["Name"],
+        "local": bool(ep.get("bLocalSpace", True)),
         "loop": {
             "duration": dist(st.get("LoopDuration")),
             "delay": dist(st.get("LoopDelay")),
@@ -346,7 +347,7 @@ def scripted_emitter_spec(loader, system, em, seconds):
     if "Position" in init:
         mods["position"] = span3(init["Position"])
         if em["local"] is False:
-            note("APPROX", name + ": world-space emitter, positions treated as local to the object")
+            note("INFERRED", name + ": world-space emitter, simulated in Unity world space")
     if "SpriteRotation" in init and sprite:
         mods["rotation"] = span1(init["SpriteRotation"])
     if "MeshOrientation" in init and not sprite:
@@ -375,6 +376,8 @@ def scripted_emitter_spec(loader, system, em, seconds):
         note("INFERRED", name + ": only emits when the game sets " + ", ".join(em["requires"]) + " to 1, the replay set it")
     return {
         "name": name,
+        "local": bool(em["local"]),
+        "maxAlive": int(em["maxAlive"]),
         "loop": {"duration": {"min": duration, "max": duration}, "delay": None, "delayEnabled": False, "delayFirstOnly": False,
                  "behavior": "Once" if one_shot else "Infinite"},
         "spawn": spawn,
@@ -463,6 +466,7 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
     for em in summaries:
         if em["name"] in stateless:
             spec = stateless.pop(em["name"])
+            spec["maxAlive"] = int(em["maxAlive"])
             replayed = replay_position(em)
             if replayed is not None:
                 spec["replayPosition"] = replayed

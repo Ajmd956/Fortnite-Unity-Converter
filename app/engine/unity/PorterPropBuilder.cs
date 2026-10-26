@@ -402,9 +402,10 @@ public static partial class PorterPropBuilder
         main.duration = Mathf.Max(0.05f, dmin);
         main.loop = S(loop["behavior"]) != "Once";
         main.playOnAwake = awake;
-        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        bool worldSpace = e.ContainsKey("local") && !B(e["local"], true);
+        main.simulationSpace = worldSpace ? ParticleSystemSimulationSpace.World : ParticleSystemSimulationSpace.Local;
         main.scalingMode = ParticleSystemScalingMode.Hierarchy;
-        main.maxParticles = 2000;
+        main.maxParticles = ParticleCap(e);
         main.startSpeed = 0f;
         if (B(loop["delayEnabled"], false) && loop["delay"] != null)
         {
@@ -481,6 +482,23 @@ public static partial class PorterPropBuilder
             col.color = new ParticleSystem.MinMaxGradient(g);
             if (maxScale > 1.001f) log.Add("APPROX " + name + ": colour scale up to " + maxScale.ToString("0.###") + " normalised to 1 (particle vertex colours are LDR)");
         }
+    }
+
+    static int ParticleCap(Dictionary<string, object> e)
+    {
+        int alive = (int)N(e.ContainsKey("maxAlive") ? e["maxAlive"] : null, 0);
+        int burst = 0;
+        foreach (var so in L(e["spawn"]))
+        {
+            var s = D(so);
+            if (S(s["type"]) != "Burst") continue;
+            float a, b;
+            ScalarRange(s["amount"], 1, out a, out b);
+            burst += Mathf.RoundToInt(Mathf.Max(a, b));
+        }
+        int peak = Mathf.Max(alive, burst);
+        if (peak <= 0) return 2000;
+        return Mathf.Clamp(Mathf.CeilToInt(peak * 1.5f) + 16, 64, 50000);
     }
 
     static void BuildLightEmitter(GameObject go, Dictionary<string, object> mod, Dictionary<string, object> r, bool awake, Vector3 uePos)
@@ -1047,6 +1065,7 @@ public static partial class PorterPropBuilder
         string facing = r.ContainsKey("facing") ? S(r["facing"]) : "Default";
         bool faced = facing == "CameraPosition" || facing == "CameraPlane" || facing == "Velocity";
         bool negativeX = PorterBlueprintSetup.MeshArrivesMirroredX;
+        bool mirroredMeshes = false;
         if (negativeX && faced)
         {
             pr.flip = new Vector3(1f, 0f, 0f);
@@ -1059,11 +1078,44 @@ public static partial class PorterPropBuilder
             {
                 mesh = mirrored;
                 negativeX = false;
+                mirroredMeshes = true;
             }
             else log.Add("CHECK " + name + ": could not build a mirrored copy of mesh '" + meshName + "', using a negative X particle size (the mesh may draw inside out)");
         }
         pr.renderMode = ParticleSystemRenderMode.Mesh;
         pr.mesh = mesh;
+        var meshSet = new List<Mesh>();
+        if (mesh != null) meshSet.Add(mesh);
+        int wanted = meshSet.Count;
+        if (r.ContainsKey("meshes") && r["meshes"] != null)
+        {
+            foreach (var mo in L(r["meshes"]))
+            {
+                string extraName = S(mo);
+                if (string.IsNullOrEmpty(extraName) || extraName == meshName) continue;
+                var extra = FindMesh(extraName);
+                if (extra == null)
+                {
+                    Miss("mesh", extraName, meshWhy);
+                    continue;
+                }
+                if (mirroredMeshes)
+                {
+                    var extraMirrored = MirroredMesh(extra, extraName);
+                    if (extraMirrored != null) extra = extraMirrored;
+                    else log.Add("CHECK " + name + ": could not build a mirrored copy of mesh '" + extraName + "', it may draw inside out");
+                }
+                if (meshSet.Contains(extra)) continue;
+                wanted++;
+                if (meshSet.Count < 4) meshSet.Add(extra);
+            }
+        }
+        if (meshSet.Count > 1)
+        {
+            pr.SetMeshes(meshSet.ToArray());
+            log.Add("APPROX " + name + ": the renderer lists " + meshSet.Count + " meshes; Unity picks one at random for each particle, Unreal picks by the particle's mesh index");
+        }
+        if (wanted > 4) log.Add("NOT APPLIED " + name + ": the renderer lists " + wanted + " meshes but a Unity renderer holds 4, the first 4 are used");
         var mats = L(r["materials"]);
         if (mats.Count > 0)
         {
