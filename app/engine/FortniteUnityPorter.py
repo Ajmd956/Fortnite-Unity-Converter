@@ -2622,17 +2622,22 @@ float3 GradientNoise3UE(float3 p)
 
 
 DEPTH_HELPERS = """
-sampler2D_float _CameraDepthTexture;
+UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);
+float _PorterDepthFade;
 
 float SceneDepthUE(float4 sp)
 {
-    float d = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sp.xy / max(sp.w, 0.0001)));
+    if (_PorterDepthFade < 0.5)
+        return _ProjectionParams.z * 100.0;
+    float d = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(sp)));
     return d * 100.0;
 }
 
 float DepthFadeUE(float4 sp, float dist)
 {
-    float raw = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sp.xy / max(sp.w, 0.0001));
+    if (_PorterDepthFade < 0.5)
+        return 1.0;
+    float raw = SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexture, UNITY_PROJ_COORD(sp));
     if (raw < 0.000001)
         return 1.0;
     float scene = LinearEyeDepth(raw) * 100.0;
@@ -2826,6 +2831,10 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        [Space(6)]")
     if "pstreams" in tr.uses:
         o.append('        [HideInInspector] _PorterParticleStreams ("Particle Streams", Float) = 0')
+    if "depth" in tr.uses:
+        o.append('        [Toggle] _PorterDepthFade ("Use Scene Depth (soft particles; needs a depth texture, which VRChat only gives with a real-time shadowed light and never in mirrors)", Float) = 0')
+    if has_wpo:
+        o.append('        [Toggle] _PorterWpoScale ("Scale World Position Offset With Object Size", Float) = 1')
     if bm == "BLEND_Masked":
         o.append('        [HideInInspector] _Cutoff ("Mask Clip", Range(0, 1)) = %s' % pf(clip))
     for i in sorted(tr.dpidx):
@@ -2953,6 +2962,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             o.append("        %s %s;" % ("float" if v["kind"] == "float" else "float4", k))
     if "pstreams" in tr.uses:
         o.append("        float _PorterParticleStreams;")
+    if has_wpo:
+        o.append("        float _PorterWpoScale;")
     for i in sorted(tr.dpidx):
         o.append("        float4 _PorterDPSlot%d;" % i)
     for prop in sorted(tr.slotprops):
@@ -3012,7 +3023,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
                 l = l.replace("float3(unity_ObjectToWorld._m03, unity_ObjectToWorld._m23, unity_ObjectToWorld._m13) * 100.0", "float3(0.0, 0.0, 0.0)")
             o.append("            " + l)
         o.append("            float3 wpoUE = %s;" % tr.fit(wpo, 3).e)
-        o.append("            v.vertex.xyz += mul((float3x3)unity_WorldToObject, wpoUE.xzy * 0.01);")
+        o.append("            float wpoK = lerp(1.0, (length(unity_ObjectToWorld._m00_m10_m20) + length(unity_ObjectToWorld._m01_m11_m21) + length(unity_ObjectToWorld._m02_m12_m22)) / 3.0, _PorterWpoScale);")
+        o.append("            v.vertex.xyz += mul((float3x3)unity_WorldToObject, wpoUE.xzy * 0.01) * wpoK;")
     o.append("        }")
     o.append("")
     if unlit:
@@ -4783,7 +4795,7 @@ def apply_fixes(text, issues):
     if need:
         block = ""
         if any(n in ("SceneDepthUE", "DepthFadeUE") for n in need) and "_CameraDepthTexture" not in text:
-            block += "sampler2D_float _CameraDepthTexture;\n"
+            block += "UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);\nfloat _PorterDepthFade;\n"
         for n in reversed(need):    # dependencies first
             block += lib[n] + "\n"
         block = "\n".join(("        " + l) if l else "" for l in block.split("\n"))
@@ -4981,7 +4993,7 @@ def unity_compile(paths, unity=None, timeout=900):
     return out
 
 
-UNITY_BUILTIN_NEEDS = {"_CameraDepthTexture": "decl:sampler2D_float _CameraDepthTexture;", "_LightColor0": "inc:Lighting.cginc",
+UNITY_BUILTIN_NEEDS = {"_CameraDepthTexture": "decl:UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);", "_LightColor0": "inc:Lighting.cginc",
                        "_Time": "inc:UnityCG.cginc", "_SinTime": "inc:UnityCG.cginc", "_CosTime": "inc:UnityCG.cginc",
                        "_WorldSpaceCameraPos": "inc:UnityCG.cginc", "_ScreenParams": "inc:UnityCG.cginc",
                        "_ProjectionParams": "inc:UnityCG.cginc", "_ZBufferParams": "inc:UnityCG.cginc",
