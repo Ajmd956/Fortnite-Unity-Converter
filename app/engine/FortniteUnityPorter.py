@@ -2831,10 +2831,6 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        [Space(6)]")
     if "pstreams" in tr.uses:
         o.append('        [HideInInspector] _PorterParticleStreams ("Particle Streams", Float) = 0')
-    if "depth" in tr.uses:
-        o.append('        [Toggle] _PorterDepthFade ("Use Scene Depth (soft particles; needs a depth texture, which VRChat only gives with a real-time shadowed light and never in mirrors)", Float) = 0')
-    if has_wpo:
-        o.append('        [Toggle] _PorterWpoScale ("Scale Vertex Animation (World Position Offset) With Object Size", Float) = 1')
     if bm == "BLEND_Masked":
         o.append('        [HideInInspector] _Cutoff ("Mask Clip", Range(0, 1)) = %s' % pf(clip))
     for i in sorted(tr.dpidx):
@@ -2883,6 +2879,15 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append('        %s%s ("%s", 2D) = "%s" {}' % ("[Normal] " if v.get("normal") else "", v["prop"], os.path.basename(k).split(".")[0], "bump" if v.get("normal") else "white"))
     while o and re.fullmatch(r"\s*(?:\[[^\]\n]*\]\s*)+", o[-1]):
         o.pop()
+    vr_toggles = []
+    if "depth" in tr.uses:
+        vr_toggles.append('        [Toggle] _PorterDepthFade ("Depth Fade", Float) = 0')
+    if has_wpo:
+        vr_toggles.append('        [Toggle] _PorterWpoScale ("Scale Vertex", Float) = 1')
+    if vr_toggles:
+        o.append("        [Space(6)]")
+        o.append("        [Header(VRChat)]")
+        o.extend(vr_toggles)
     o.append("    }")
     o.append("    SubShader")
     o.append("    {")
