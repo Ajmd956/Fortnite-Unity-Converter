@@ -2714,12 +2714,12 @@ def find_two_sided(entry, asset, mp):
                     return r
         return None
 
-    for d in (asset, entry, mp):
+    for label, d in (("master material asset settings", asset), ("material data", entry), ("master material", mp)):
         r = read(d)
         if r is not None:
-            return r
+            return r, label
     r = deep(entry, 0)
-    return bool(r)
+    return bool(r), ("nested material data" if r is not None else "no two-sided setting found in the material data")
 
 
 def build(src, entry, name, graph_path, blend=None, two_sided=None):
@@ -2779,15 +2779,18 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         unlit = True
     elif not use_attrs and not sm_name and not ms:
         unlit = False
-    if two_sided is None and "TwoSided" in ov:
-        two_sided = truthy(ov["TwoSided"])
-    two = find_two_sided(entry, asset, mp) if two_sided is None else two_sided
+    if two_sided is not None:
+        two, two_from = two_sided, "set by the caller"
+    elif "TwoSided" in ov:
+        two, two_from = truthy(ov["TwoSided"]), "set by the material instance"
+    else:
+        two, two_from = find_two_sided(entry, asset, mp)
     clip = ov.get("OpacityMaskClipValue", asset.get("OpacityMaskClipValue", mp.get("OpacityMaskClipValue", 0.3333)))
     try:
         clip = float(clip)
     except (TypeError, ValueError):
         clip = 0.3333
-    tr.notes.append("two-sided: %s" % ("yes (Cull Off, back faces lit with flipped normal)" if two else "no (back faces culled)"))
+    tr.notes.append("two-sided: %s, from %s" % ("yes (Cull Off, back faces lit with flipped normal)" if two else "no (back faces culled; the Cull setting on the material can override this)", two_from))
     tangent_space_normal = True
     for src_d in (ov, asset, mp):
         if isinstance(src_d, dict) and "bTangentSpaceNormal" in src_d:
@@ -2863,6 +2866,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     if not unlit:
         o.append("        [Header(Lighting)]")
         o.append('        [Toggle] _FlipNormalY ("Flip Normal Y (DirectX normal maps)", Float) = 0')
+    o.append("        [Header(Rendering)]")
+    o.append('        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull (Off = two-sided)", Float) = %d' % (0 if (two or sun_cap) else 2))
     if tr.textures:
         o.append("        [Header(Textures)]")
     for k, v in tr.textures.items():
@@ -2882,8 +2887,7 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
     o.append('        Tags { "RenderType"="%s" "Queue"="%s" "IgnoreProjector"="True" }' % (tags, queue))
     if sky_first:
         o.append("        ZWrite Off")
-    if two or sun_cap:
-        o.append("        Cull Off")
+    o.append("        Cull [_Cull]")
     if bm == "BLEND_Additive":
         o.append("        Blend One One")
         o.append("        ZWrite Off")
