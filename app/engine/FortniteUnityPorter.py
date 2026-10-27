@@ -673,6 +673,47 @@ class Translator:
         self.body.append("float%s %s = %s;" % ("" if w == 1 else w, name, e))
         return V(name, w)
 
+    def traces_to(self, e, tokens):
+        defs = {}
+        for line in self.body:
+            m = re.match(r"float\d? (v\d+) = (.*);$", line)
+            if m:
+                defs[m.group(1)] = m.group(2)
+        seen = set()
+
+        def walk(s):
+            if any(t in s for t in tokens):
+                return True
+            for n in re.findall(r"\bv\d+\b", s):
+                if n in seen:
+                    continue
+                seen.add(n)
+                if n in defs and walk(defs[n]):
+                    return True
+            return False
+
+        return walk(e)
+
+    def object_anchored_distance(self, a, b):
+        obj_tok = ("unity_ObjectToWorld._m03",)
+        world_tok = ("IN.worldPos", "mul(unity_ObjectToWorld, float4(vpos")
+        if a.w != 3 or b.w != 3:
+            return None
+        a_obj, b_obj = self.traces_to(a.e, obj_tok), self.traces_to(b.e, obj_tok)
+        a_wld, b_wld = self.traces_to(a.e, world_tok), self.traces_to(b.e, world_tok)
+        if b_obj and a_wld and not a_obj:
+            wv, av = a, b
+        elif a_obj and b_wld and not b_obj:
+            wv, av = b, a
+        else:
+            return None
+        origin = self.tmp("float3(unity_ObjectToWorld._m03, unity_ObjectToWorld._m23, unity_ObjectToWorld._m13) * 100.0", 3)
+        scale = self.tmp("dot(float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22)), float3(1.0, 1.0, 1.0)) / 3.0", 1)
+        anchor = self.tmp("%s + (%s - %s) * %s" % (origin.e, par(av.e), origin.e, scale.e), 3)
+        d = self.tmp("distance(%s, %s) / max(%s, 0.00001)" % (wv.e, anchor.e, scale.e), 1)
+        self.note("Distance between a world position and a point anchored to the object's own position is measured relative to the object's scale, so reveal and glow radii keep the same size relative to the mesh when it is scaled in Unity")
+        return d
+
     def fit(self, v, w):
         if v.tex is not None or v.at is not None:
             return self.const(0.0, w)
@@ -1303,6 +1344,9 @@ class Translator:
             return self.tmp("cross(%s, %s)" % (self.fit(P("A"), 3).e, self.fit(P("B"), 3).e), 3)
         if t == "Distance":
             a, b, w = self.match(P("A"), P("B"))
+            anchored = self.object_anchored_distance(a, b)
+            if anchored is not None:
+                return anchored
             return self.tmp("distance(%s, %s)" % (a.e, b.e), 1)
         if t == "Length":
             v = P("Input")
