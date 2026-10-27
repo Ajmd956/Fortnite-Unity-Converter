@@ -2833,6 +2833,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append('        [HideInInspector] _PorterParticleStreams ("Particle Streams", Float) = 0')
     if "depth" in tr.uses:
         o.append('        [Toggle] _PorterDepthFade ("Use Scene Depth (soft particles; needs a depth texture, which VRChat only gives with a real-time shadowed light and never in mirrors)", Float) = 0')
+    if has_wpo:
+        o.append('        [Toggle] _PorterWpoScale ("Scale Vertex Animation (World Position Offset) With Object Size", Float) = 1')
     if bm == "BLEND_Masked":
         o.append('        [HideInInspector] _Cutoff ("Mask Clip", Range(0, 1)) = %s' % pf(clip))
     for i in sorted(tr.dpidx):
@@ -2960,6 +2962,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
             o.append("        %s %s;" % ("float" if v["kind"] == "float" else "float4", k))
     if "pstreams" in tr.uses:
         o.append("        float _PorterParticleStreams;")
+    if has_wpo:
+        o.append("        float _PorterWpoScale;")
     for i in sorted(tr.dpidx):
         o.append("        float4 _PorterDPSlot%d;" % i)
     for prop in sorted(tr.slotprops):
@@ -3014,12 +3018,15 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("            float4 vcol = v.color;")
         o.append("            float2 uv0 = v.texcoord.xy;")
         o.append("            float2 uv1 = v.texcoord1.xy;")
+        o.append("            float3 wpoLen = float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22));")
+        o.append("            float3x3 wpoRot = mul((float3x3)unity_ObjectToWorld, float3x3(1.0 / max(wpoLen.x, 1e-6), 0.0, 0.0, 0.0, 1.0 / max(wpoLen.y, 1e-6), 0.0, 0.0, 0.0, 1.0 / max(wpoLen.z, 1e-6)));")
+        o.append("            float3x3 wpoMat = lerp((float3x3)unity_ObjectToWorld, wpoRot, _PorterWpoScale);")
         for l in vs_body:
             if sun_cap:
                 l = l.replace("float3(unity_ObjectToWorld._m03, unity_ObjectToWorld._m23, unity_ObjectToWorld._m13) * 100.0", "float3(0.0, 0.0, 0.0)")
-            o.append("            " + l)
+            o.append("            " + l.replace("(float3x3)unity_ObjectToWorld", "wpoMat"))
         o.append("            float3 wpoUE = %s;" % tr.fit(wpo, 3).e)
-        o.append("            v.vertex.xyz += mul((float3x3)unity_WorldToObject, wpoUE.xzy * 0.01);")
+        o.append("            v.vertex.xyz += mul((float3x3)unity_WorldToObject, wpoUE.xzy * 0.01) * lerp(1.0, (wpoLen.x + wpoLen.y + wpoLen.z) / 3.0, _PorterWpoScale);")
     o.append("        }")
     o.append("")
     if unlit:
