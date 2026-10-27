@@ -325,6 +325,10 @@ class Lazy:
         return self.v[tr.mode]
 
 
+# Set to False to export Dynamic Parameter inspector defaults exactly as Unreal has them (many effects then start invisible)
+DP_VISIBLE_PREVIEW_DEFAULTS = True
+
+
 class Graph:
     def __init__(self, path):
         self.path = path
@@ -1646,7 +1650,9 @@ class Translator:
         if t == "ScreenPosition":
             sp = self.tmp(self.screen_pos(), 4).e
             if out == 1:
-                return self.tmp("%s.xy / FPU_NZ(%s.w)" % (sp, sp), 2)
+                # UE's Pixel Position pin is in pixels, top-left origin. A 0..1 value here made integer dither math
+                # (uint casts, % 5, /64 tiling noise) collapse to one value, so the alpha never passed the clip cutoff
+                return self.tmp("float2(%s.x / FPU_NZ(%s.w), 1.0 - %s.y / FPU_NZ(%s.w)) * _ScreenParams.xy" % (sp, sp, sp, sp), 2)
             return self.tmp("float2(%s.x / FPU_NZ(%s.w), 1.0 - %s.y / FPU_NZ(%s.w))" % (sp, sp, sp, sp), 2)
         if t == "ViewSize":
             return self.tmp("_ScreenParams.xy", 2)
@@ -1681,6 +1687,10 @@ class Translator:
             d = p.get("DefaultValue") or {}
             idx = int(p.get("ParameterIndex", 0) or 0)
             dflt = [float(d.get(k, 0.0)) for k in ("R", "G", "B", "A")]
+            if DP_VISIBLE_PREVIEW_DEFAULTS:
+                # UE shows nothing when a particle sends no data (a 0 here usually means "not born yet / fully masked"),
+                # but a shader used outside a converted particle should still show its effect, so the inspector value starts at 1
+                dflt = [1.0 if c == 0.0 else c for c in dflt]
             v = self.vector_prop("Dynamic Parameter %d" % idx, dflt, tag="_DP_")
             msg = "DynamicParameter %d is set per particle by the game's Niagara system; exposed as %s (default %s)" % (idx, v.e, dflt)
             if msg not in self.notes:
