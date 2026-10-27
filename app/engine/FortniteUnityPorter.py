@@ -1492,8 +1492,18 @@ class Translator:
             a, b = P("A"), P("B")
             radius = self.input(g, p.get("Radius"), scope, C(float(p.get("AttenuationRadius", 256.0))))
             hard = self.input(g, p.get("Hardness"), scope, C(float(p.get("HardnessPercent", 100.0))))
+            around_object = False
+            if linked(p.get("A")) and linked(p.get("B")):
+                ta = T(g.by.get(g.key(p.get("A"))) or {})
+                tb = T(g.by.get(g.key(p.get("B"))) or {})
+                obj_types = ("ObjectPositionWS", "ActorPositionWS", "ParticlePositionWS")
+                around_object = (ta == "WorldPosition" and tb in obj_types) or (tb == "WorldPosition" and ta in obj_types)
             a, b, w = self.match(a, b)
             d = self.tmp("distance(%s, %s)" % (a.e, b.e), 1)
+            if around_object:
+                scale = self.tmp("dot(float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22)), float3(1.0, 1.0, 1.0)) / 3.0", 1)
+                d = self.tmp("%s / max(%s, 0.00001)" % (d.e, scale.e), 1)
+                self.note("SphereMask around the object's own position (glow radius) is divided by the object's scale, so the glow keeps the same size and brightness relative to the mesh when it is scaled in Unity")
             nd = self.tmp("%s / max(%s, 0.00001)" % (d.e, par(radius.e)), 1)
             soft = self.tmp("1.0 - %s * 0.01" % par(hard.e), 1)
             return self.tmp("saturate((1.0 - %s) / max(%s, 0.00001))" % (nd.e, soft.e), 1)
