@@ -15,6 +15,7 @@ A GPU emitter is run from its CPU spawn and update scripts when the cook kept th
 have no script either, only settings: niagara_stateless works their particles out.
 """
 import base64
+import re
 import struct
 
 import numpy as np
@@ -773,7 +774,10 @@ class Emitter:
         self.block = bytearray(EMITTER_SIZE)
         self.previous = None
         self.ids = Ids()
-        self.infos = [n for n, v in system.layout.vars.items() if v[0] == "NiagaraSpawnInfo" and n.startswith(self.name + ".")]
+        # the name its parameters carry in the compiled data. It is normally the handle's name, but a renamed emitter keeps the
+        # name (and capitalisation) it was made with: handle "LargeLightningsGround" with "LargeLightningsGRound.SpawnRate"
+        self.ns = self.namespace(system, handle, export)
+        self.infos = [n for n, v in system.layout.vars.items() if v[0] == "NiagaraSpawnInfo" and n.startswith(self.ns + ".")]
         # the events its update script sends (name: buffer, and the most per tick); its spawn script's go nowhere
         self.events, self.sends = {}, []
         for g in version["UpdateScriptProps"].get("EventGenerators") or []:
@@ -783,13 +787,32 @@ class Emitter:
         self.scratch = [Layout(g["DataSetCompiledData"]["Variables"]).buffer() for g in version["SpawnScriptProps"].get("EventGenerators") or []]
         self.handlers = [Handler(system, self, handle, h) for h in version.get("EventHandlerScriptProps") or []]
 
+    @staticmethod
+    def namespace(system, handle, export):
+        prefixes = {}
+        for n in system.layout.vars:
+            if "." in n:
+                prefixes.setdefault(n.split(".", 1)[0], n.split(".", 1)[0])
+        guesses = [handle["Name"]]
+        own = str((export or {}).get("name") or "")
+        if own:
+            guesses.append(re.sub(r"_\d+$", "", own))      # the emitter object is "<name>_0"
+        for g in guesses:
+            if g in prefixes:
+                return g
+        for g in guesses:
+            for p in prefixes:
+                if p.lower() == g.lower():
+                    return p
+        return handle["Name"]
+
     def fill(self):
         """The emitter's constant block, as it stands before a tick."""
         struct.pack_into("<iiffii", self.block, 0, self.data.count, self.spawned, 1.0, self.age, self.seed, self.instance_seed)
 
     def tick(self, dt):
         system = self.system
-        state = system.read(self.name + ".ExecutionState")
+        state = system.read(self.ns + ".ExecutionState")
         self.state = int(state[0]) if state is not None else ACTIVE
         if self.state in (INACTIVE_CLEAR, DISABLED):
             self.data.count = 0
@@ -843,9 +866,9 @@ class Emitter:
         def spawn(count, start, interval, group):
             nonlocal alive, first
             store = self.spawn.store
-            store.put(self.name + ".SpawnInterval", "<f", interval)
-            store.put(self.name + ".InterpSpawnStartDt", "<f", start)
-            store.put(self.name + ".SpawnGroup", "<i", group)
+            store.put(self.ns + ".SpawnInterval", "<f", interval)
+            store.put(self.ns + ".InterpSpawnStartDt", "<f", start)
+            store.put(self.ns + ".SpawnGroup", "<i", group)
             store.put("Engine.ExecutionCount", "<i", count)
             if first:
                 store.keep()
