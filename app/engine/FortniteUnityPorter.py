@@ -2886,7 +2886,6 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         vr_toggles.append('        [Toggle] _PorterWpoScale ("Scale Vertex", Float) = 1')
     if vr_toggles:
         o.append("        [Space(6)]")
-        o.append("        [Header(VRChat)]")
         o.extend(vr_toggles)
     o.append("    }")
     o.append("    SubShader")
