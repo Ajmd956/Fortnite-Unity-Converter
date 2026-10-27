@@ -3209,6 +3209,28 @@ def export_textures(src, tr, folder):
     return copied, missing, kept
 
 
+PREMUL_ENERGY_SHADERS = {"m_skymango_dp_shardenergy"}
+
+
+def premul_energy_hole(text, shader_name):
+    """Only for the shaders listed in PREMUL_ENERGY_SHADERS (M_SkyMango_DP_ShardEnergy). Its energy ring must add light
+    (alpha 0, no dark fringe) while the black hole and stars keep real alpha, which one premultiplied blend does."""
+    if str(shader_name).lower() not in PREMUL_ENERGY_SHADERS:
+        return text, False
+    old_pragma, new_pragma = " alpha:fade ", " alpha:premul "
+    old_blend = "        Blend SrcAlpha OneMinusSrcAlpha\n"
+    old_out = "            o.Emission = max(v150, 0.0);\n            o.Normal = float3(0.0, 0.0, 1.0);\n            o.Alpha = saturate(v163);\n"
+    needs = ("float3 v116 =", "float3 v145 =", "float v51 =", "float v152 =", "float v162 =")
+    if old_pragma not in text or old_blend not in text or old_out not in text or not all(n in text for n in needs):
+        return text, False
+    new_out = ("            float fadeMul = saturate(v152 * v162);\n"
+               "            o.Emission = max((v116 + v145) * _S_FX_Emissive_EyeAdaptation_Prescale * fadeMul, 0.0);\n"
+               "            o.Normal = float3(0.0, 0.0, 1.0);\n"
+               "            o.Alpha = saturate(v51 * fadeMul);\n")
+    text = text.replace(old_pragma, new_pragma, 1).replace(old_blend, "        Blend One OneMinusSrcAlpha\n", 1).replace(old_out, new_out, 1)
+    return text, True
+
+
 def convert(src, material=None, graph=None, entry_file=None, name=None, out=".", blend=None):
     entry = {}
     if entry_file:
@@ -3243,6 +3265,9 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
         text, ms_added = add_metal_smooth_editor(text)
         if ms_added:
             tr.notes.append("%s multiplier/offset sliders added; the original Metallic/Smoothness/Roughness parameters are hidden so these are the controls (neutral defaults, the look is unchanged)" % ms_added)
+    text, premul_done = premul_energy_hole(text, shader_name)
+    if premul_done:
+        tr.notes.append("energy ring is additive and the black hole and stars keep alpha (one premultiplied blend), so the ring has no dark fringe")
     text, n_guard = guard_divisions(text)
     if n_guard:
         tr.notes.append("%d division(s) guarded with FPU_NZ() so a zero divisor cannot cause a division-by-zero warning or NaN" % n_guard)
