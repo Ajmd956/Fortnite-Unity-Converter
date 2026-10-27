@@ -4796,8 +4796,11 @@ def apply_fixes(text, issues):
             want(f[1])
     if need:
         block = ""
-        if any(n in ("SceneDepthUE", "DepthFadeUE") for n in need) and "_CameraDepthTexture" not in text:
-            block += "UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);\nfloat _PorterDepthFade;\n"
+        if any(n in ("SceneDepthUE", "DepthFadeUE") for n in need):
+            if "_CameraDepthTexture" not in text:
+                block += "UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);\n"
+            if "_PorterDepthFade" not in text:
+                block += "float _PorterDepthFade;\n"
         for n in reversed(need):    # dependencies first
             block += lib[n] + "\n"
         block = "\n".join(("        " + l) if l else "" for l in block.split("\n"))
