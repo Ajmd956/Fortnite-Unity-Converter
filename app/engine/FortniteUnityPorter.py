@@ -606,6 +606,7 @@ class Translator:
         self.bodies = {"ps": [], "vs": []}
         self.uses = set()
         self.dpidx = set()
+        self.dpdefault = {}     # Dynamic Parameter index: the default the Unreal node has, kept apart from the inspector value
         self.slotprops = set()
         self.props = {}
         self.tex_trace = []
@@ -1687,6 +1688,7 @@ class Translator:
             d = p.get("DefaultValue") or {}
             idx = int(p.get("ParameterIndex", 0) or 0)
             dflt = [float(d.get(k, 0.0)) for k in ("R", "G", "B", "A")]
+            self.dpdefault.setdefault(idx, list(dflt))
             if DP_VISIBLE_PREVIEW_DEFAULTS:
                 # UE shows nothing when a particle sends no data (a 0 here usually means "not born yet / fully masked"),
                 # but a shader used outside a converted particle should still show its effect, so the inspector value starts at 1
@@ -2855,6 +2857,9 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append('        [HideInInspector] _Cutoff ("Mask Clip", Range(0, 1)) = %s' % pf(clip))
     for i in sorted(tr.dpidx):
         o.append('        [HideInInspector] _PorterDPSlot%d ("Particle Data Slots %d", Vector) = (-1, -1, -1, -1)' % (i, i))
+        if DP_VISIBLE_PREVIEW_DEFAULTS and i in tr.dpdefault:
+            # Unreal's own default, which the converted particle's material copies go back to (the inspector value above is the visible one)
+            o.append('        [HideInInspector] _DP_Dynamic_Parameter_%d_UE ("Dynamic Parameter %d, Unreal default", Vector) = (%s)' % (i, i, ", ".join(pf(c) for c in tr.dpdefault[i])))
     for prop in sorted(tr.slotprops):
         o.append('        [HideInInspector] %s ("Particle Data Slot", Float) = -1' % prop)
     cloud_tone = unlit and bm == "BLEND_Translucent" and "bakedclouds" in name.lower()
@@ -2990,6 +2995,8 @@ def build(src, entry, name, graph_path, blend=None, two_sided=None):
         o.append("        float _PorterWpoScale;")
     for i in sorted(tr.dpidx):
         o.append("        float4 _PorterDPSlot%d;" % i)
+        if DP_VISIBLE_PREVIEW_DEFAULTS and i in tr.dpdefault:
+            o.append("        float4 _DP_Dynamic_Parameter_%d_UE;" % i)
     for prop in sorted(tr.slotprops):
         o.append("        float %s;" % prop)
     if not unlit:

@@ -1441,6 +1441,7 @@ public static partial class PorterPropBuilder
             if (sm.HasProperty("_PorterRandSlot")) wantRand = true;
         }
         float ageSlot = -1f, randSlot = -1f;
+        bool randStream = false;
         if (wantAge)
         {
             if (slot < 4)
@@ -1459,7 +1460,13 @@ public static partial class PorterPropBuilder
                 randSlot = slot;
                 slot++;
             }
-            else log.Add("NOT APPLIED " + name + ": the shader reads the particle random number (ParticleRandom) but all 4 Custom Data slots are taken, so it reads 0");
+            else
+            {
+                // Custom Data 2 is full, so the random number comes from Unity's own Stable Random stream, which lands in TEXCOORD3.x:
+                // slot 4 of the shader (slots 4 to 7 are read from TEXCOORD3)
+                randSlot = 4f;
+                randStream = true;
+            }
         }
         if (slot > 0)
         {
@@ -1478,6 +1485,7 @@ public static partial class PorterPropBuilder
             ParticleSystemVertexStream.Tangent
         };
         if (slot > 0) streams.Insert(streams.Count - 1, ParticleSystemVertexStream.Custom2XYZW);
+        if (randStream) streams.Insert(streams.Count - 1, ParticleSystemVertexStream.StableRandomX);
         pr.SetActiveVertexStreams(streams);
         var copies = new Material[shared.Length];
         for (int i = 0; i < shared.Length; i++) copies[i] = StreamCopy(shared[i], name);
@@ -1501,7 +1509,8 @@ public static partial class PorterPropBuilder
             if (cm.HasProperty("_PorterRandSlot")) cm.SetFloat("_PorterRandSlot", randSlot);
             EditorUtility.SetDirty(cm);
         }
-        if (slot > 0) log.Add("STREAMS " + name + ": " + slot + " per-particle value(s) sent to the shader in Custom Data 2 (dynamic parameters" + (ageSlot >= 0f ? ", particle age" : "") + (randSlot >= 0f ? ", particle random" : "") + "), the rest set as fixed values on the material copy");
+        if (slot > 0) log.Add("STREAMS " + name + ": " + slot + " per-particle value(s) sent to the shader in Custom Data 2 (dynamic parameters" + (ageSlot >= 0f ? ", particle age" : "") + (randSlot >= 0f && !randStream ? ", particle random" : "") + "), the rest set as fixed values on the material copy");
+        if (randStream) log.Add("STREAMS " + name + ": the particle random number is sent in Unity's Stable Random vertex stream (slot 4), as all 4 Custom Data 2 slots hold dynamic parameters");
         pr.sharedMaterials = copies;
         log.Add("STREAMS " + name + ": particle colour (start colour x colour scale, up to " + maxV.ToString("0.###") + ", not clamped) is sent to the shader in Custom Data 1, so mesh vertex colours stay separate; materials copied per emitter with _PorterParticleStreams = 1");
         return true;
@@ -1542,6 +1551,14 @@ public static partial class PorterPropBuilder
             AssetDatabase.CreateAsset(inst, path);
         }
         inst.SetFloat("_PorterParticleStreams", 1f);
+        // the shader's inspector value for a Dynamic Parameter is a visible one for plain use; on a converted particle a component the
+        // particle does not send goes back to the default the Unreal node has (kept in _DP_Dynamic_Parameter_<i>_UE)
+        for (int dpi = 0; dpi < 4; dpi++)
+        {
+            string dpBaseName = "_DP_Dynamic_Parameter_" + dpi;
+            string dpUeName = dpBaseName + "_UE";
+            if (inst.HasProperty(dpBaseName) && inst.HasProperty(dpUeName)) inst.SetVector(dpBaseName, inst.GetVector(dpUeName));
+        }
         EditorUtility.SetDirty(inst);
         return inst;
     }
