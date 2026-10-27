@@ -673,6 +673,11 @@ class Translator:
         self.body.append("float%s %s = %s;" % ("" if w == 1 else w, name, e))
         return V(name, w)
 
+    def object_scale_factor(self):
+        raw = self.tmp("dot(float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22)), float3(1.0, 1.0, 1.0)) / 3.0", 1)
+        ref = self.scalar_prop("ObjectScaleRef", 0.0)
+        return self.tmp("(%s > 0.0) ? (%s / max(%s, 0.000001)) : 1.0" % (ref.e, raw.e, ref.e), 1)
+
     def traces_to(self, e, tokens):
         defs = {}
         for line in self.body:
@@ -708,7 +713,7 @@ class Translator:
         else:
             return None
         origin = self.tmp("float3(unity_ObjectToWorld._m03, unity_ObjectToWorld._m23, unity_ObjectToWorld._m13) * 100.0", 3)
-        scale = self.tmp("dot(float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22)), float3(1.0, 1.0, 1.0)) / 3.0", 1)
+        scale = self.object_scale_factor()
         anchor = self.tmp("%s + (%s - %s) * %s" % (origin.e, par(av.e), origin.e, scale.e), 3)
         d = self.tmp("distance(%s, %s) / max(%s, 0.00001)" % (wv.e, anchor.e, scale.e), 1)
         self.note("Distance between a world position and a point anchored to the object's own position is measured relative to the object's scale, so reveal and glow radii keep the same size relative to the mesh when it is scaled in Unity")
@@ -1550,7 +1555,7 @@ class Translator:
             a, b, w = self.match(a, b)
             d = self.tmp("distance(%s, %s)" % (a.e, b.e), 1)
             if around_object:
-                scale = self.tmp("dot(float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22)), float3(1.0, 1.0, 1.0)) / 3.0", 1)
+                scale = self.object_scale_factor()
                 d = self.tmp("%s / max(%s, 0.00001)" % (d.e, scale.e), 1)
                 self.note("SphereMask around the object's own position (glow radius) is divided by the object's scale, so the glow keeps the same size and brightness relative to the mesh when it is scaled in Unity")
             nd = self.tmp("%s / max(%s, 0.00001)" % (d.e, par(radius.e)), 1)
