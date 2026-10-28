@@ -673,9 +673,9 @@ class Translator:
         self.body.append("float%s %s = %s;" % ("" if w == 1 else w, name, e))
         return V(name, w)
 
-    def object_scale_factor(self):
+    def object_scale_factor(self, prop_name="ObjectScaleRef", default_ref=0.0):
         raw = self.tmp("dot(float3(length(unity_ObjectToWorld._m00_m10_m20), length(unity_ObjectToWorld._m01_m11_m21), length(unity_ObjectToWorld._m02_m12_m22)), float3(1.0, 1.0, 1.0)) / 3.0", 1)
-        ref = self.scalar_prop("ObjectScaleRef", 0.0)
+        ref = self.scalar_prop(prop_name, default_ref)
         return self.tmp("(%s > 0.0) ? (%s / max(%s, 0.000001)) : 1.0" % (ref.e, raw.e, ref.e), 1)
 
     def traces_to(self, e, tokens):
@@ -1555,7 +1555,7 @@ class Translator:
             a, b, w = self.match(a, b)
             d = self.tmp("distance(%s, %s)" % (a.e, b.e), 1)
             if around_object:
-                scale = self.object_scale_factor()
+                scale = self.object_scale_factor("GlowScaleRef", 1.0)
                 d = self.tmp("%s / max(%s, 0.00001)" % (d.e, scale.e), 1)
                 self.note("SphereMask around the object's own position (glow radius) is divided by the object's scale, so the glow keeps the same size and brightness relative to the mesh when it is scaled in Unity")
             nd = self.tmp("%s / max(%s, 0.00001)" % (d.e, par(radius.e)), 1)
