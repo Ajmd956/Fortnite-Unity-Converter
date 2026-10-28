@@ -681,7 +681,7 @@ class Translator:
     def traces_to(self, e, tokens):
         defs = {}
         for line in self.body:
-            m = re.match(r"float\d? (v\d+) = (.*);$", line)
+            m = re.match(r"float\d? (v\d+) = (.*?);\s*(?://.*)?$", line)
             if m:
                 defs[m.group(1)] = m.group(2)
         seen = set()
@@ -2360,6 +2360,7 @@ def ue_texture_macros(code, name, prop, vertex=False):
             out += code[m.start():j]
             i = j
             continue
+        rest = [ue_texture_macros(a, name, prop, vertex) for a in rest]
         uv = flip(rest[0])
         if vertex:
             lod = rest[1] if kind == "SampleLevel" else "0.0"
