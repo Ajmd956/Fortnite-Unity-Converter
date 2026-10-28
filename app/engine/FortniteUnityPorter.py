@@ -3369,6 +3369,12 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
     text, n_guard = guard_divisions(text)
     if n_guard:
         tr.notes.append("%d division(s) guarded with FPU_NZ() so a zero divisor cannot cause a division-by-zero warning or NaN" % n_guard)
+    text, n_side = stable_eye_side(text)
+    if n_side:
+        tr.notes.append("%d flipbook(s) pick left/right from the eye cell the pixel is in instead of the posed object position, so an eye no longer disappears when the head or model rotates" % n_side)
+    text, n_clamp = clamp_visor_depth(text)
+    if n_clamp:
+        tr.notes.append("%d view-ray depth divide(s) clamped at 0.05 so grazing angles cannot push the flipbook out of its cell" % n_clamp)
     if len(tr.textures) > SAMPLER_BUDGET:
         nearest = set()
         for v in tr.textures.values():
@@ -4425,6 +4431,214 @@ def guard_divisions(text):
     return (t.replace("\n", "\r\n") if crlf else t), n
 
 
+_PS_STMT = re.compile(r"^(\s*)(?:(float[234]?|half[234]?|int)\s+)?([A-Za-z_]\w*)\s*=\s*(.+?);\s*$")
+_PS_ID = re.compile(r"[A-Za-z_]\w*")
+_PS_SAMPLE = re.compile(r"tex2D|FPU_TEX2D|SampleLevel|SampleGrad")
+_PS_STEP0 = re.compile(r"^step\(\s*0(?:\.0*)?f?\s*,\s*([A-Za-z_]\w*)\s*\)$")
+_PS_LERP3 = re.compile(r"^lerp\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)$")
+
+
+def _surf_span(lines):
+    s0 = next((i for i, l in enumerate(lines) if re.search(r"\bvoid\s+surf\s*\(", l)), None)
+    if s0 is None:
+        return None
+    b0 = next((i for i in range(s0, len(lines)) if lines[i].strip() == "{"), None)
+    if b0 is None:
+        return None
+    ind = len(lines[b0]) - len(lines[b0].lstrip())
+    for i in range(b0 + 1, len(lines)):
+        if lines[i].strip() == "}" and len(lines[i]) - len(lines[i].lstrip()) == ind:
+            return b0 + 1, i
+    return None
+
+
+def _ps_deps(nodes):
+    count = {}
+    for nd in nodes:
+        count[nd["name"]] = count.get(nd["name"], 0) + 1
+    single = {nd["name"]: i for i, nd in enumerate(nodes) if count[nd["name"]] == 1}
+    cur, deps = {}, []
+    for i, nd in enumerate(nodes):
+        d = set()
+        for n in set(_PS_ID.findall(nd["expr"])):
+            if n in single:
+                if single[n] != i:
+                    d.add(single[n])
+            elif n in cur:
+                d.add(cur[n])
+        if nd["typ"] is None and nd["name"] in cur:
+            d.add(cur[nd["name"]])
+        deps.append(d)
+        cur[nd["name"]] = i
+    return deps
+
+
+def _ps_parse(lines, a, z):
+    nodes = []
+    for k in range(a, z):
+        l = lines[k]
+        if not l.strip():
+            continue
+        m = _PS_STMT.match(l)
+        if not m:
+            return None
+        nodes.append({"ind": m.group(1), "typ": m.group(2), "name": m.group(3), "expr": m.group(4), "prio": float(len(nodes))})
+    return nodes
+
+
+def stable_eye_side(text):
+    """Flipbook eyes and brows choose their left/right half with step(0, LocalPosition.x). LocalPosition is IN.objPos, the posed vertex position, so
+    when the head turns one eye's x crosses 0, that eye takes the other eye's half and its mirrored UV leaves the flipbook cell (the eye vanishes).
+    The half is instead taken from which of the two mirrored cells the pixel lies in, which does not depend on pose, rotation or scale.
+    Returns (new_text, number_of_flipbooks_fixed)."""
+    crlf = "\r\n" in text
+    lines = text.replace("\r\n", "\n").split("\n")
+    span = _surf_span(lines)
+    if not span or "IN.objPos" not in text:
+        return text, 0
+    a, z = span
+    tail0 = next((i for i in range(a, z) if lines[i].lstrip().startswith("o.")), z)
+    nodes = _ps_parse(lines, a, tail0)
+    if not nodes:
+        return text, 0
+    n = len(nodes)
+    deps = _ps_deps(nodes)
+    users = [set() for _ in range(n)]
+    for i, d in enumerate(deps):
+        for j in d:
+            users[j].add(i)
+    taint = [False] * n
+    for i in range(n):
+        taint[i] = "IN.objPos" in nodes[i]["expr"] or "LRPos(" in nodes[i]["expr"] or any(taint[j] for j in deps[i])
+    byname = {}
+    for i, nd in enumerate(nodes):
+        byname.setdefault(nd["name"], []).append(i)
+    steps = []
+    for i, nd in enumerate(nodes):
+        if nd["typ"] != "float":
+            continue
+        m = _PS_STEP0.match(nd["expr"].strip())
+        if m and m.group(1) in byname and len(byname[m.group(1)]) == 1 and taint[byname[m.group(1)][0]]:
+            steps.append(i)
+    if not steps:
+        return text, 0
+    samples = {}
+    for s in steps:
+        seen, stack = {s}, [s]
+        while stack:
+            for u in users[stack.pop()]:
+                if u not in seen:
+                    seen.add(u)
+                    stack.append(u)
+        samples[s] = {k for k in seen if _PS_SAMPLE.search(nodes[k]["expr"])}
+    parent = {s: s for s in steps}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    owner = {}
+    for s in steps:
+        for k in samples[s]:
+            if k in owner:
+                parent[find(s)] = find(owner[k])
+            else:
+                owner[k] = s
+    fams = {}
+    for s in steps:
+        fams.setdefault(find(s), []).append(s)
+    new_nodes = [dict(nd) for nd in nodes]
+    extra = []
+    fixed = 0
+    for fam in fams.values():
+        sites = []
+        for s in fam:
+            for u in users[s]:
+                m = _PS_LERP3.match(nodes[u]["expr"].strip())
+                if m and m.group(3) == nodes[s]["name"] and nodes[u]["typ"] == "float2" and all(g in byname and len(byname[g]) == 1 and nodes[byname[g][0]]["typ"] == "float2" for g in m.groups()[:2]):
+                    sites.append((s, m.group(1), m.group(2)))
+        if len(sites) != 1:
+            continue
+        s, p, q = sites[0]
+        side, raw, orig = "fpuSide%d" % fixed, "fpuRawSide%d" % fixed, nodes[s]["name"]
+        in_p, in_q = "all(%s > 0.0) && all(%s < 1.0)" % (p, p), "all(%s > 0.0) && all(%s < 1.0)" % (q, q)
+        expr = "((%s) && (%s)) ? (abs(%s.x - 0.5) < abs(%s.x - 0.5) ? 0.0 : 1.0) : ((%s) ? 1.0 : ((%s) ? 0.0 : %s))" % (in_p, in_q, p, q, in_q, in_p, raw)
+        new_nodes[s]["name"] = raw
+        extra.append({"ind": nodes[s]["ind"], "typ": "float", "name": side, "expr": expr, "prio": nodes[s]["prio"] + 0.25})
+        extra.append({"ind": nodes[s]["ind"], "typ": "float", "name": orig, "expr": side, "prio": nodes[s]["prio"] + 0.5})
+        for t in fam:
+            if t != s:
+                new_nodes[t]["expr"] = side
+        fixed += 1
+    if not fixed:
+        return text, 0
+    all_nodes = new_nodes + extra
+    deps = _ps_deps(all_nodes)
+    users = [[] for _ in all_nodes]
+    for i, d in enumerate(deps):
+        for j in d:
+            users[j].append(i)
+    indeg = [len(d) for d in deps]
+    import heapq
+    heap = [(all_nodes[i]["prio"], i) for i in range(len(all_nodes)) if indeg[i] == 0]
+    heapq.heapify(heap)
+    order = []
+    while heap:
+        _, i = heapq.heappop(heap)
+        order.append(i)
+        for u in users[i]:
+            indeg[u] -= 1
+            if indeg[u] == 0:
+                heapq.heappush(heap, (all_nodes[u]["prio"], u))
+    if len(order) != len(all_nodes):
+        return text, 0
+    out = ["%s%s%s = %s;" % (all_nodes[i]["ind"], (all_nodes[i]["typ"] + " ") if all_nodes[i]["typ"] else "", all_nodes[i]["name"], all_nodes[i]["expr"]) for i in order]
+    lines = lines[:a] + out + lines[tail0:]
+    t = "\n".join(lines)
+    return (t.replace("\n", "\r\n") if crlf else t), fixed
+
+
+def clamp_visor_depth(text):
+    """A view-ray offset divides a depth by abs(ray.z) of a reflected view vector; at grazing angles that goes huge and throws the sampled cell
+    coordinates out of the flipbook cell. Same clamp (0.05) the VerTet graph already has at its first site. Returns (new_text, number_clamped)."""
+    crlf = "\r\n" in text
+    lines = text.replace("\r\n", "\n").split("\n")
+    span = _surf_span(lines)
+    if not span:
+        return text, 0
+    a, z = span
+    defs = {}
+    for k in range(a, z):
+        m = _PS_STMT.match(lines[k])
+        if m:
+            defs.setdefault(m.group(3), []).append((k, m))
+    body = "\n".join(lines[a:z])
+    n = 0
+    for name, ds in defs.items():
+        if len(ds) != 1:
+            continue
+        k, m = ds[0]
+        m2 = re.match(r"^abs\(\s*([A-Za-z_]\w*)\s*\)$", m.group(4).strip())
+        if not m2 or m.group(2) != "float":
+            continue
+        src = defs.get(m2.group(1))
+        if not src or len(src) != 1:
+            continue
+        m3 = re.match(r"^([A-Za-z_]\w*)\.z$", src[0][1].group(4).strip())
+        if not m3 or not re.search(r"\b%s\.xy\b" % re.escape(m3.group(1)), body):
+            continue
+        if not re.search(r"(?:/\s*|FPU_NZ\(\s*)%s\b" % re.escape(name), body):
+            continue
+        lines[k] = "%sfloat %s = max(abs(%s), 0.05);" % (m.group(1), name, m2.group(1))
+        n += 1
+    if not n:
+        return text, 0
+    t = "\n".join(lines)
+    return (t.replace("\n", "\r\n") if crlf else t), n
+
+
 def clean_path(text):
     return text.strip().strip('"').strip("'")
 
@@ -4594,6 +4808,10 @@ def check_shader_text(text):
         issues.append(Issue("error", "the shared-sampler host texture is not used in every shader stage. Unity pairs a sampler with the texture of the same name in each compiled program and fails with \"Unrecognized sampler 'sampler_..._s' - does not match any texture\" when the host is missing there (the vertex stage samples with .SampleLevel and never uses the host). The host gets a zero-valued use in vert() and surf()", None, ("host_touch",)))
     if fix_equal_smoothstep(code)[1]:
         issues.append(Issue("warn", "smoothstep() with two identical edges divides by zero (\"floating point division by zero\"). UE gives the same hard 0/1 jump as step(), so it is rewritten as step()", None, ("equal_smoothstep",)))
+    if stable_eye_side(code)[1]:
+        issues.append(Issue("warn", "flipbook eyes or brows pick left/right with the sign of the posed object-space X, so one eye disappears when the head or model rotates. They now pick it from the eye cell the pixel lies in", None, ("eye_side",)))
+    if clamp_visor_depth(code)[1]:
+        issues.append(Issue("warn", "a view-ray depth is divided by abs() of a reflected vector's z with no lower limit, which throws the flipbook out of its cell at grazing angles. The divisor is clamped at 0.05", None, ("visor_clamp",)))
     n_sep = count_separate_samplers(text)
     if n_sep > SAMPLER_BUDGET:
         issues.append(Issue("error", "%d textures each use their own sampler2D. Unity on DX11 allows only 16 sampler registers per shader and its lighting needs several, so this fails with \"maximum ps_4_0 sampler register index (16) exceeded\" (the textures can share one host texture's sampler instead)" % n_sep, None, ("share_samplers",)))
@@ -4910,6 +5128,14 @@ def apply_fixes(text, issues):
         text, ok = add_host_touch(text)
         if ok:
             done.append("shared-sampler host texture(s) now used in vert() and surf() (value 0, the look is unchanged), so Unity no longer reports an unrecognized sampler")
+    if any(f[0] == "eye_side" for f in fixes):
+        text, n = stable_eye_side(text)
+        if n:
+            done.append("%d flipbook(s) now pick left/right from the eye cell the pixel is in, so an eye no longer disappears when the head or model rotates" % n)
+    if any(f[0] == "visor_clamp" for f in fixes):
+        text, n = clamp_visor_depth(text)
+        if n:
+            done.append("%d view-ray depth divide(s) clamped at 0.05 so grazing angles cannot push the flipbook out of its cell" % n)
     if any(f[0] == "equal_smoothstep" for f in fixes):
         text, n = fix_equal_smoothstep(text)
         if n:
