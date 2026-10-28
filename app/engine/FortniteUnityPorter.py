@@ -2252,10 +2252,7 @@ class Translator:
             if v.tex is not None:
                 prop = self.tex_prop(*v.tex) if v.tex[0] else None
                 if prop:
-                    code = re.sub(r"\b%s\.Sample\(\s*%sSampler\s*,\s*" % (re.escape(name), re.escape(name)), "tex2D(%s, " % prop, code)
-                    code = re.sub(r"\b%s\.SampleLevel\(\s*%sSampler\s*,\s*([^,]+),\s*([^)]+)\)" % (re.escape(name), re.escape(name)),
-                                  r"tex2Dlod(%s, float4(\1, 0.0, \2))" % prop, code)
-                    code = ue_texture_macros(code, name, prop)
+                    code = ue_texture_macros(code, name, prop, self.mode == "vs")
                 continue
             if v.at is not None:
                 continue
@@ -2328,11 +2325,21 @@ def ue_split_args(text):
     return args
 
 
-def ue_texture_macros(code, name, prop):
-    """Texture2DSample(Tex, sampler, uv) style calls on the Custom node input `name`, rewritten to sample the texture property `prop`."""
-    forms = {"Texture2DSample": 3, "Texture2DSampleLevel": 4, "Texture2DSampleBias": 4, "Texture2DSampleGrad": 5}
+def ue_texture_macros(code, name, prop, vertex=False):
+    """Texture reads on the Custom node input `name` (Texture2DSample*(Tex, Sampler, uv...) and Tex.Sample*(TexSampler, uv...)), rewritten to
+    sample the texture property `prop`. Unreal's V runs down and Unity's runs up, so V is flipped exactly as the Texture Sample node does it;
+    the vertex stage cannot use tex2D, so there every read becomes tex2Dlod."""
+    macro_forms = {"Texture2DSample": 3, "Texture2DSampleLevel": 4, "Texture2DSampleBias": 4, "Texture2DSampleGrad": 5}
+    method_forms = {"Sample": 2, "SampleLevel": 3, "SampleBias": 3, "SampleGrad": 4}
+    pat = re.compile(r"\b(Texture2DSampleLevel|Texture2DSampleBias|Texture2DSampleGrad|Texture2DSample)\s*\(|\b%s\s*\.\s*(SampleLevel|SampleBias|SampleGrad|Sample)\s*\(" % re.escape(name))
+
+    def flip(e):
+        return "float2((%s).x, 1.0 - (%s).y)" % (e, e)
+
+    def flip_grad(e):
+        return "float2((%s).x, -(%s).y)" % (e, e)
+
     out, i = "", 0
-    pat = re.compile(r"\b(Texture2DSampleLevel|Texture2DSampleBias|Texture2DSampleGrad|Texture2DSample)\s*\(")
     while True:
         m = pat.search(code, i)
         if not m:
@@ -2343,18 +2350,28 @@ def ue_texture_macros(code, name, prop):
             j += 1
         args = [a.strip() for a in ue_split_args(code[m.end():j - 1])]
         out += code[i:m.start()]
-        if len(args) == forms[m.group(1)] and args[0] == name:
-            uv = args[2]
-            if m.group(1) == "Texture2DSample":
-                out += "tex2D(%s, %s)" % (prop, uv)
-            elif m.group(1) == "Texture2DSampleLevel":
-                out += "tex2Dlod(%s, float4((%s).xy, 0.0, %s))" % (prop, uv, args[3])
-            elif m.group(1) == "Texture2DSampleBias":
-                out += "tex2Dbias(%s, float4((%s).xy, 0.0, %s))" % (prop, uv, args[3])
-            else:
-                out += "tex2Dgrad(%s, %s, %s, %s)" % (prop, uv, args[3], args[4])
+        if m.group(1):
+            kind, ok = m.group(1)[len("Texture2D"):], len(args) == macro_forms[m.group(1)] and args[0] == name
+            rest = args[2:] if ok else []
         else:
+            kind, ok = m.group(2), len(args) == method_forms[m.group(2)] and args[0] == name + "Sampler"
+            rest = args[1:] if ok else []
+        if not ok:
             out += code[m.start():j]
+            i = j
+            continue
+        uv = flip(rest[0])
+        if vertex:
+            lod = rest[1] if kind == "SampleLevel" else "0.0"
+            out += "tex2Dlod(%s, float4(%s, 0.0, %s))" % (prop, uv, lod)
+        elif kind == "Sample":
+            out += "tex2D(%s, %s)" % (prop, uv)
+        elif kind == "SampleLevel":
+            out += "tex2Dlod(%s, float4(%s, 0.0, %s))" % (prop, uv, rest[1])
+        elif kind == "SampleBias":
+            out += "tex2Dbias(%s, float4(%s, 0.0, %s))" % (prop, uv, rest[1])
+        else:
+            out += "tex2Dgrad(%s, %s, %s, %s)" % (prop, uv, flip_grad(rest[1]), flip_grad(rest[2]))
         i = j
 
 VIEW_HELPERS = """
@@ -3905,7 +3922,7 @@ def lint_shader(text):
             out.append("lint: texture %s is exported but the shader never samples it" % n)
     declared = set(re.findall(r"^\s*(?:float\d?|sampler2D|Texture2D)\s+(_\w+)\s*;", code, re.M)) | set(re.findall(r"^\s*UNITY_DECLARE_TEX2D(?:_NOSAMPLER)?\(\s*(_\w+)\s*\)\s*;", code, re.M))
     for n in sorted(set(re.findall(r"^\s*(?:\[[^\]]*\]\s*)*(_\w+)\s*\(", props, re.M)) - declared):
-        if n != "_Cutoff":
+        if n != "_Cutoff" and not re.search(r"\[%s\]" % re.escape(n), t):
             out.append("lint: property %s is not declared in the CG block" % n)
     return list(dict.fromkeys(out))[:25]
 
@@ -4635,6 +4652,11 @@ def check_shader_text(text):
             for mm in re.finditer(r"\b(?:tex2D|tex2Dbias|tex2Dproj)\s*\(", seg):
                 issues.append(Issue("error", "vert() samples a texture with %s; the vertex stage cannot, it needs tex2Dlod" % mm.group(0).strip("( "), chk_line_of(text, span[0] + mm.start()), ("tex2d_vert",)))
                 break
+            for hspan in chk_vert_helper_spans(code):
+                mm = re.search(r"\b(?:tex2D|tex2Dbias|tex2Dproj)\s*\(", code[hspan[0]:hspan[1]])
+                if mm:
+                    issues.append(Issue("error", "%s is called from vert() and samples a texture with %s; the vertex stage cannot, it needs tex2Dlod" % (hspan[2], mm.group(0).strip("( ")), chk_line_of(text, hspan[0] + mm.start()), ("tex2d_vert",)))
+                    break
             for name in VERT_LOCALS:
                 decl = re.search(r"\b" + CHK_TYPES + r"\s+" + name + r"\b", seg)
                 uses = [u for u in re.finditer(r"\b" + name + r"\b", seg) if not decl or u.start() != decl.end() - len(name)]
@@ -4683,6 +4705,40 @@ def chk_split_args(argtext):
             cur += ch
     args.append(cur)
     return args
+
+
+def chk_vert_helper_spans(code):
+    """(start, end, name) of every CustomN() helper that vert() calls and surf() does not."""
+    vs, ss = chk_body(code, "void vert("), chk_body(code, "void surf(")
+    if not vs:
+        return []
+    spans = []
+    for m in re.finditer(r"^[ \t]*float\d?[ \t]+(Custom\d+)[ \t]*\(", code, re.M):
+        name = m.group(1)
+        if not re.search(r"\b%s\s*\(" % name, code[vs[0]:vs[1]]):
+            continue
+        if ss and re.search(r"\b%s\s*\(" % name, code[ss[0]:ss[1]]):
+            continue
+        body = chk_body(code[m.start():], m.group(0).strip())
+        if body:
+            spans.append((m.start() + body[0], m.start() + body[1], name))
+    return spans
+
+
+def chk_fix_vert_textures(text):
+    code = chk_strip(text)
+    spans = []
+    vs = chk_body(code, "void vert(")
+    if vs:
+        spans.append((vs[0], vs[1]))
+    spans += [(a, b) for a, b, _ in chk_vert_helper_spans(code)]
+    total = 0
+    for a, b in sorted(spans, reverse=True):
+        new_seg, n = chk_tex2d_to_lod(text[a:b])
+        if n:
+            text = text[:a] + new_seg + text[b:]
+            total += n
+    return text, total
 
 
 def chk_tex2d_to_lod(seg):
@@ -4934,12 +4990,9 @@ def apply_fixes(text, issues):
         if moved:
             done.append("vertex stage: defined %s at the top of vert() so they exist before they are used" % ", ".join(moved))
     if any(f[0] == "tex2d_vert" for f in fixes):
-        span = chk_body(chk_strip(text), "void vert(")
-        if span:
-            new_seg, n = chk_tex2d_to_lod(text[span[0]:span[1]])
-            if n:
-                text = text[:span[0]] + new_seg + text[span[1]:]
-                done.append("vertex stage: %d tex2D call(s) changed to tex2Dlod" % n)
+        text, n = chk_fix_vert_textures(text)
+        if n:
+            done.append("vertex stage: %d tex2D call(s) changed to tex2Dlod" % n)
     # squeezed vectors: add the swizzle (line numbers refer to the text before the edits above, so find by content)
     for f in fixes:
         if f[0] == "trunc":
@@ -5260,13 +5313,10 @@ def apply_unity_fixes(text, msgs):
         elif re.search(r"cannot map expression to vs_|'tex2D(?:bias|proj)?': no matching", msg, re.I):
             in_vert = bool(orig_vert_lines) and orig_vert_lines[0] <= ln <= orig_vert_lines[1]
             if (in_vert or re.search(r"vs_", msg)) and not vert_done:
-                span = chk_body(chk_strip(text), "void vert(")
-                if span:
-                    new_seg, n = chk_tex2d_to_lod(text[span[0]:span[1]])
-                    if n:
-                        text = text[:span[0]] + new_seg + text[span[1]:]
-                        vert_done = True
-                        done.append("vertex stage: %d tex2D call(s) changed to tex2Dlod (Unity rejected tex2D there)" % n)
+                text, n = chk_fix_vert_textures(text)
+                if n:
+                    vert_done = True
+                    done.append("vertex stage: %d tex2D call(s) changed to tex2Dlod (Unity rejected tex2D there)" % n)
         elif re.search(r"unable to unroll loop", msg, re.I) and 0 < ln <= len(orig_lines):
             now = text.split("\n")
             ok = False
