@@ -48,6 +48,71 @@ Not everything converts exactly. Some Unreal features have no Unity
 equivalent, so the app uses a stand-in and tells you when it does.
 
 
+## Shader conversion
+
+Convert reads a material's editor graph from the game files and writes a Unity
+Built-in shader (Shader "UEPort/<name>") with its textures.
+
+- Parameters keep Unreal's values. A material instance's own values are written
+  as the shader's defaults, so the instance converts as it looks in the game.
+  Colours are stored so that Unity's colour pickers give back Unreal's linear
+  value, and world-space values (positions, camera distance, depth fade) are
+  scaled for Unreal's centimetres.
+- Blend mode, shading model, two-sided and mask clip set on the master or on the
+  instance are read, and masked shaders get a hidden Mask Clip value.
+- Textures are exported to the shader's Textures folder next to a
+  <name>.textures.json that says how each one must be imported; the Porter
+  Texture Setup script in Editor applies it.
+- Metallic and smoothness get multiplier and offset sliders and ambient occlusion
+  and cavity get sliders, all neutral by default, so a conversion looks the same
+  until you move them.
+- Some numbers differ between the engines by nature, for example emissive
+  brightness (Unreal's auto exposure and tonemapper against Unity's Built-in
+  pipeline and post effects) and the specular response of lit materials. Those
+  are not calibrated automatically yet; the app does not guess them.
+
+
+## Game files and mapping files
+
+The app reads the game through a built-in helper. Newer game versions store
+object properties in a form that needs a mapping file (.usmap) to be read.
+
+- The Latest (Installed) profile gets its keys and mappings from the service
+  automatically.
+- For another version, make a Custom profile. Fetch Data downloads the keys and,
+  when one exists, the mappings for that version. Some versions have no mapping
+  file online.
+- You can supply the file yourself: pick it in the profile's Mappings File
+  setting, or save it as custom.usmap (or custom.<version>.usmap) in
+  Documents\Fortnite Unity Converter\Game Files.
+- Without a mapping file the helper still starts and says so. A material that
+  needs the mapping file fails with a message that names it, and the log shows the
+  helper's own reason for any other failure.
+
+
+## Older game versions
+
+Older builds do not ship a material's editor graph, so there is nothing to
+translate. For those materials the converter builds an approximate shader from
+what the game files do hold: blend mode, shading model, two-sided and mask clip,
+the instance's scalar, vector and texture values, and the textures the material
+references.
+
+- Each texture gets a role from its parameter name or, failing that, its asset
+  name (Diffuse or _D, Normals or _N, SpecularMasks or _S / SRM / ORM, Emissive,
+  Opacity). The first texture for a role is used; extra layers (SpecularMasks_2
+  and so on) and textures with no known role are listed and left out.
+- A packed mask texture is read as Specular in red, Metallic in green and
+  Roughness in blue. With no mask texture, Metallic and Roughness are sliders.
+- Transparency comes from the opacity texture, or from the base colour texture's
+  alpha for masked and translucent materials. Unlit materials draw their
+  emissive (or base colour) texture as emission.
+- The result is marked APPROXIMATE in the output panel and in the shader's
+  .textures.json. Panners, masks, blends and custom effects from the original
+  graph are not reproduced, so standard props and characters should come out
+  close and effect materials will not.
+
+
 ## Particle Converter
 
 The Particle Converter has its own engine (ParticleConverter.py) and its own
@@ -105,13 +170,17 @@ What the player does:
   turns it on). Meshes with no override materials draw with the default
   material.
 - Sprites: facing the camera or the particle's own direction, length along the
-  velocity or the emitter's own vector, pivot, flipbook sub-images, camera
-  offset.
+  velocity or the emitter's own vector, pivot (including the per-particle Pivot
+  Offset binding), flipbook sub-images, camera offset.
+- Cast Shadows is passed on from the renderer. Camera distance culling of
+  sprites and meshes is baked as a minimum and maximum in metres and applied
+  hard, with a Camera Distance Cull control in the Renderer section.
 - Ribbons: one strip per ribbon ID, points in link order (else age), smoothed
   through its points, facing modes (view, particle facing, side vector), shapes
   (plane, multi-plane, tube), U along the ribbon by the renderer's UV0
   distribution and V across.
-- Lights: a pool of point lights, one per live light particle.
+- Lights: a pool of point lights, one per live light particle. Inverse-squared
+  falloff is passed on, and those lights skip the exponent-to-range adjustment.
 - Decals: projected onto the scene by Porter/DecalProject (Scripts), using the
   decal material's texture and tint (not its graph). Needs the camera depth
   texture; without the shader, or with projectDecals off, decals are flat quads.
@@ -151,18 +220,14 @@ Material instance overrides: blend mode, shading model, two-sided and mask clip 
 
 The ParticleMeshes folder in Unity only holds meshes Unity generates; exported meshes are in Meshes.
 
-Known limits: bound material parameters and a decal material's own graph are not
-read; light brightness is one number (lightScale on the prefab) and is not
+Known limits: material parameter bindings, user-parameter materials, UV scale,
+sub-UV blending, ribbon twist and tension, and a decal material's own graph are
+not read; light brightness is one number (lightScale on the prefab) and is not
 calibrated against Unreal; a Mesh renderer whose mesh the game sets through a
 user parameter is built as a Particle System; shaders that use dynamic
-parameters must be converted again after the converter is updated.
-
-Testing: the Python side (the replay, the bake, every baked file's layout and the
-generated spec) was run through the real conversion path on the NS_SDVB_Body and
-NS_SDVB_Head dumps; only IdleCubes changed from the last version, and its
-baked files are identical. The C# scripts have only been
-syntax-checked; they have not been compiled or run in Unity here, so check a
-converted prefab in Unity before relying on it.
+parameters must be converted again after the converter is updated. The Niagara
+property names used for the culling range are the ones Unreal's renderer
+properties are expected to use; an export that carries them would confirm it.
 
 
 ## Blueprint Converter
@@ -194,18 +259,8 @@ both on. Turning the master switch off locks both again.
 
 ## Viewers
 
-The Files tab viewers were matched to Fortnite Porting by measuring screenshots
-and its source.
-
-- Node graph (Sound Cue and Material): node box with the 2px border, header
-  25px, rows 18px, Texture Sample node about 335x173, Output node 191x157, pins
-  14px, port labels weight 400, wires LightGray at 50% opacity and 3 world units
-  thick scaling with zoom, stage background #212024, initial view at zoom 1
-  centred on the average node position.
-- Chrome: tab strip 17px from the window edge, search box 32px tall, list items
-  12px text with 8/16px padding and a 4px pitch, secondary text #A8A4C0.
-- Model viewer: card title #E2DFF0, cards spaced 12px.
-- Preview-type dialog: subtitle #A8A4C0, buttons 12px padding and weight 400.
+The Files tab previews textures, meshes, sounds, materials and node graphs
+(Sound Cue and Material) in a layout matched to Fortnite Porting.
 
 
 ## License

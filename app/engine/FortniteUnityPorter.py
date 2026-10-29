@@ -363,6 +363,20 @@ class Graph:
         return next((x for x in self.o if x.get("Type") == "Material"), None)
 
 
+def helper_failure(path, e):
+    name = str(path).replace("\\", "/").split("/")[-1].split(".")[-1] or str(path)
+    msg = ""
+    try:
+        msg = str(json.loads(e.read().decode("utf-8")).get("error") or "")
+    except Exception:
+        pass
+    low = msg.lower()
+    if e.code >= 500 and ("mapping" in low or "usmap" in low):
+        return ("the game's mapping file is not available, so the helper could not read %s: %s. "
+                "Put a .usmap file named custom.usmap (or custom.<version>.usmap) in Documents\\Fortnite Unity Converter\\Game Files" % (name, msg))
+    return "helper could not read %s (HTTP Error %d)%s" % (name, e.code, (": " + msg) if msg else "")
+
+
 class Source:
     def __init__(self, bridge=None, folder=None, cache=None):
         self.bridge = bridge.rstrip("/") if bridge else None
@@ -402,7 +416,10 @@ class Source:
             return r.read()
 
     def material(self, path):
-        return json.loads(self._get("material", path).decode("utf-8"))
+        try:
+            return json.loads(self._get("material", path).decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raise SystemExit(helper_failure(path, e))
 
     def local(self, path):
         if os.path.exists(path):
@@ -3329,6 +3346,377 @@ def premul_energy_hole(text, shader_name):
     return text, True
 
 
+FB_SHORT_CODES = {"d": "diffuse", "bc": "diffuse", "n": "normal", "nrm": "normal", "s": "mask", "srm": "mask", "smr": "mask",
+                  "orm": "mask", "rmo": "mask", "mrao": "mask", "e": "emissive"}
+
+
+def fb_tokens(name):
+    return [t.lower() for t in re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])", str(name))]
+
+
+def fb_layer(name):
+    t = fb_tokens(name)
+    if t and t[-1].isdigit():
+        return int(t[-1])
+    return 1
+
+
+def fb_role(name, asset=False):
+    tokens = fb_tokens(name)
+    key = "".join(tokens)
+    if not key:
+        return None
+    if "normal" in key:
+        return "normal"
+    if any(w in key for w in ("specularmask", "specmask", "pbrmask", "metallicroughness")) or key in ("specular", "masks"):
+        return "mask"
+    if any(w in key for w in ("emissive", "emission", "glow")):
+        return "emissive"
+    if "opacity" in key or "alphamask" in key or key == "alpha":
+        return "opacity"
+    if any(w in key for w in ("diffuse", "basecolor", "albedo")) or key in ("color", "colour"):
+        return "diffuse"
+    if asset:
+        core = tokens[:-1] if tokens[-1].isdigit() else tokens
+        return FB_SHORT_CODES.get(core[-1]) if core else None
+    return FB_SHORT_CODES.get(key)
+
+
+def fb_pick_textures(entry):
+    params = entry.get("textures") or {}
+    refs = entry.get("referenced_textures") or []
+    picked, skipped, seen = {}, [], set()
+    order = []
+    for pname, path in params.items():
+        if path:
+            order.append((fb_layer(pname), len(order), str(pname), str(path), False))
+    have = {o[3].lstrip("/").lower() for o in order}
+    for path in refs:
+        if path and str(path).lstrip("/").lower() not in have:
+            have.add(str(path).lstrip("/").lower())
+            order.append((fb_layer(os.path.basename(str(path)).split(".")[0]), len(order), os.path.basename(str(path)).split(".")[0], str(path), True))
+    for layer, _, label, path, from_asset in sorted(order, key=lambda o: (o[0], o[1])):
+        role = fb_role(label, asset=from_asset)
+        if role is None and not from_asset:
+            role = fb_role(os.path.basename(path).split(".")[0], asset=True)
+        if role is None or path.lstrip("/").lower() in seen:
+            skipped.append(label)
+            continue
+        if role in picked or layer > 1:
+            skipped.append(label)
+            continue
+        picked[role] = {"path": path, "label": label}
+        seen.add(path.lstrip("/").lower())
+    return picked, skipped
+
+
+def fb_scalar(entry, pattern, default=None):
+    for k, v in (entry.get("scalars") or {}).items():
+        if re.search(pattern, str(k), re.I):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+    return default
+
+
+def fb_vector(entry, pattern):
+    for k, v in (entry.get("vectors") or {}).items():
+        if re.search(pattern, str(k), re.I) and isinstance(v, (list, tuple)) and len(v) >= 3:
+            try:
+                return [float(c) for c in v[:4]] + ([1.0] if len(v) < 4 else [])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+class FallbackResult(object):
+    def __init__(self, entry):
+        self.entry = entry
+        self.textures = {}
+        self.props = {}
+        self.warnings = []
+        self.notes = []
+        self.tex_trace = []
+        self.uses = set()
+
+    def warn(self, w):
+        if w not in self.warnings:
+            self.warnings.append(w)
+
+    def texture_report(self):
+        lines = []
+        for k, v in self.textures.items():
+            lines.append("  %s = %s  <- %s" % (v["prop"], os.path.basename(k).split(".")[0], v["role"]))
+        return lines, []
+
+
+def build_fallback(entry, name):
+    tr = FallbackResult(entry)
+    asset = entry.get("asset") or {}
+    ov = entry.get("overrides") or {}
+    picked, skipped = fb_pick_textures(entry)
+    used_props = set()
+    for role in ("diffuse", "normal", "mask", "emissive", "opacity"):
+        if role not in picked:
+            continue
+        short = os.path.basename(picked[role]["path"]).split(".")[0]
+        prop = re.sub(r"_+", "_", "_" + ident(short))
+        base, k = prop, 1
+        while prop in used_props:
+            k += 1
+            prop = "%s_%d" % (base, k)
+        used_props.add(prop)
+        picked[role]["prop"] = prop
+        tr.textures[picked[role]["path"]] = {"prop": prop, "path": picked[role]["path"], "param": picked[role]["label"], "role": role,
+                                             "normal": role == "normal"}
+    bm_raw = ov.get("BlendMode") or asset.get("BlendMode") or "BLEND_Opaque"
+    bm, bm_known = norm_blend(bm_raw)
+    sm = str(ov.get("ShadingModel") or asset.get("ShadingModel") or "").split("::")[-1]
+    unlit = "Unlit" in sm
+    if "TwoSided" in ov:
+        two, two_from = truthy(ov["TwoSided"]), "set by the material instance"
+    else:
+        two, two_from = find_two_sided(entry, asset, {})
+    clip = ov.get("OpacityMaskClipValue", asset.get("OpacityMaskClipValue", 0.3333))
+    try:
+        clip = float(clip)
+    except (TypeError, ValueError):
+        clip = 0.3333
+    tr.notes.append("APPROXIMATE: the game files hold no editor graph for this material (an older build), so this is a generic shader built from its textures, values and settings. Panners, masks, blends and custom effects from the original graph are not reproduced")
+    tr.notes.append("blend mode: read %r -> %s%s; shading model: %s; two-sided: %s (%s)" % (bm_raw, bm, "" if bm_known else " (unrecognised value, treated as Translucent)", sm or "not stated, treated as lit", "yes" if two else "no", two_from))
+    for role, label in (("diffuse", "base colour"), ("normal", "normal"), ("mask", "packed mask (Specular R, Metallic G, Roughness B)"), ("emissive", "emissive"), ("opacity", "opacity")):
+        if role in picked:
+            tr.notes.append("%s texture: %s (matched by name %r)" % (label, os.path.basename(picked[role]["path"]).split(".")[0], picked[role]["label"]))
+    if skipped:
+        tr.notes.append("%d texture(s) were not used (extra layers or no known role): %s" % (len(skipped), ", ".join(skipped[:25]) + (" ..." if len(skipped) > 25 else "")))
+    if not tr.textures:
+        tr.warn("no texture with a known role was found for this material, so it draws with plain values only")
+    base_vec = None if "diffuse" in picked else fb_vector(entry, r"^(base|diffuse)?[ _]?colou?r$|^base[ _]?colou?r|^diffuse")
+    emis_vec = fb_vector(entry, r"emissi(ve|on)[ _]?(colou?r|tint)|^emissive$")
+    if emis_vec is not None and max(emis_vec[:3]) <= 0.0:
+        emis_vec = None
+    emis_int = fb_scalar(entry, r"emissi(ve|on).*(intensity|strength|brightness|mult|boost|power)|^emissive$")
+    metallic = fb_scalar(entry, r"^metallic$", 0.0)
+    rough = fb_scalar(entry, r"^roughness$", 0.5)
+    if bm in ("BLEND_Masked", "BLEND_Translucent", "BLEND_AlphaComposite", "BLEND_AlphaHoldout") and "opacity" not in picked and "diffuse" in picked:
+        tr.notes.append("no opacity texture found, so the base colour texture's alpha is used for transparency")
+    o = []
+    o.append('Shader "UEPort/%s"' % name)
+    o.append("{")
+    o.append("    Properties")
+    o.append("    {")
+    if base_vec is not None:
+        d = base_vec
+        o.append('        _BaseColor ("Base Color", Color) = (%s)' % ", ".join(pf(c) for c in (linear_to_gamma(d[0]), linear_to_gamma(d[1]), linear_to_gamma(d[2]), d[3])))
+    if emis_vec is not None:
+        d = emis_vec
+        o.append('        [HDR] _EmissiveColor ("Emissive Color", Color) = (%s)' % ", ".join(pf(c) for c in (linear_to_gamma(d[0]), linear_to_gamma(d[1]), linear_to_gamma(d[2]), d[3])))
+    if emis_int is not None and ("emissive" in picked or emis_vec is not None):
+        o.append('        _EmissiveIntensity ("Emissive Intensity", Float) = %s' % pf(emis_int))
+    if "mask" not in picked and not unlit:
+        o.append('        _Metallic ("Metallic", Range(0, 1)) = %s' % pf(min(max(metallic, 0.0), 1.0)))
+        o.append('        _Roughness ("Roughness", Range(0, 1)) = %s' % pf(min(max(rough, 0.0), 1.0)))
+    if "normal" in picked and not unlit:
+        o.append("        [Header(Lighting)]")
+        o.append('        [Toggle] _FlipNormalY ("Flip Normal Y (DirectX normal maps)", Float) = 0')
+    o.append("        [Header(Rendering)]")
+    o.append('        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull (Off = two-sided)", Float) = %d' % (0 if two else 2))
+    if bm == "BLEND_Masked":
+        o.append('        [HideInInspector] _Cutoff ("Mask Clip", Range(0, 1)) = %s' % pf(clip))
+    if tr.textures:
+        o.append("        [Header(Textures)]")
+    for k, v in tr.textures.items():
+        o.append('        %s%s ("%s", 2D) = "%s" {}' % ("[Normal] " if v.get("normal") else "", v["prop"], os.path.basename(k).split(".")[0], "bump" if v.get("normal") else "white"))
+    o.append("    }")
+    o.append("    SubShader")
+    o.append("    {")
+    tags = {"BLEND_Opaque": "Opaque", "BLEND_Masked": "TransparentCutout"}.get(bm, "Transparent")
+    queue = {"BLEND_Opaque": "Geometry", "BLEND_Masked": "AlphaTest"}.get(bm, "Transparent")
+    o.append('        Tags { "RenderType"="%s" "Queue"="%s" "IgnoreProjector"="True" }' % (tags, queue))
+    o.append("        Cull [_Cull]")
+    if bm == "BLEND_Additive":
+        o.append("        Blend One One")
+        o.append("        ZWrite Off")
+    elif bm == "BLEND_Modulate":
+        o.append("        Blend DestColor Zero")
+        o.append("        ZWrite Off")
+    elif bm in ("BLEND_Translucent", "BLEND_AlphaComposite", "BLEND_AlphaHoldout"):
+        o.append("        Blend SrcAlpha OneMinusSrcAlpha" if bm != "BLEND_AlphaComposite" else "        Blend One OneMinusSrcAlpha")
+        o.append("        ZWrite Off")
+    o.append("        CGPROGRAM")
+    pragma = "#pragma surface surf %s" % ("Unlit vertex:vert noshadow addshadow" if unlit else "Standard fullforwardshadows vertex:vert addshadow")
+    if bm == "BLEND_Masked":
+        pragma += " alphatest:_Cutoff"
+    elif bm in ("BLEND_Translucent", "BLEND_AlphaHoldout"):
+        pragma += " alpha:fade"
+    elif bm == "BLEND_AlphaComposite":
+        pragma += " alpha:premul"
+    pragma += " nofog noforwardadd nolightmap nodynlightmap nodirlightmap novertexlights noambient" if unlit else ""
+    o.append("        " + pragma)
+    o.append("        #pragma target 3.0")
+    o.append('        #include "UnityCG.cginc"')
+    o.append('        #include "Lighting.cginc"')
+    for v in tr.textures.values():
+        o.append("        sampler2D %s;" % v["prop"])
+    if base_vec is not None:
+        o.append("        float4 _BaseColor;")
+    if emis_vec is not None:
+        o.append("        float4 _EmissiveColor;")
+    if emis_int is not None and ("emissive" in picked or emis_vec is not None):
+        o.append("        float _EmissiveIntensity;")
+    if "mask" not in picked and not unlit:
+        o.append("        float _Metallic;")
+        o.append("        float _Roughness;")
+    if "normal" in picked and not unlit:
+        o.append("        float _FlipNormalY;")
+    o.append("")
+    o.append("        struct Input")
+    o.append("        {")
+    o.append("            float4 tc01;")
+    if two and not unlit:
+        o.append("            float facing : VFACE;")
+    o.append("        };")
+    o.append("")
+    o.append("        void vert(inout appdata_full v, out Input o)")
+    o.append("        {")
+    o.append("            UNITY_INITIALIZE_OUTPUT(Input, o);")
+    o.append("            o.tc01 = float4(v.texcoord.xy, v.texcoord1.xy);")
+    o.append("        }")
+    o.append("")
+    if unlit:
+        o.append("        half4 LightingUnlit(SurfaceOutput s, half3 lightDir, half atten)")
+        o.append("        {")
+        o.append("            return half4(0.0, 0.0, 0.0, s.Alpha);")
+        o.append("        }")
+        o.append("")
+        o.append("        void surf(Input IN, inout SurfaceOutput o)")
+    else:
+        o.append("        void surf(Input IN, inout SurfaceOutputStandard o)")
+    o.append("        {")
+    o.append("            float2 uv = float2(IN.tc01.x, 1.0 - IN.tc01.y);")
+    if "diffuse" in picked:
+        o.append("            float4 baseTex = tex2D(%s, uv);" % picked["diffuse"]["prop"])
+        o.append("            float3 baseRgb = baseTex.rgb;")
+        o.append("            float baseA = baseTex.a;")
+    elif base_vec is not None:
+        o.append("            float3 baseRgb = _BaseColor.rgb;")
+        o.append("            float baseA = _BaseColor.a;")
+    else:
+        o.append("            float3 baseRgb = float3(0.5, 0.5, 0.5);")
+        o.append("            float baseA = 1.0;")
+    if "emissive" in picked:
+        o.append("            float3 emis = tex2D(%s, uv).rgb;" % picked["emissive"]["prop"])
+    elif unlit:
+        o.append("            float3 emis = baseRgb;")
+    else:
+        o.append("            float3 emis = float3(0.0, 0.0, 0.0);")
+    if emis_vec is not None and ("emissive" in picked or unlit):
+        o.append("            emis *= _EmissiveColor.rgb;")
+    if emis_int is not None and ("emissive" in picked or emis_vec is not None):
+        o.append("            emis *= _EmissiveIntensity;")
+    if "opacity" in picked:
+        o.append("            float alphaIn = tex2D(%s, uv).r;" % picked["opacity"]["prop"])
+    elif bm in ("BLEND_Masked", "BLEND_Translucent", "BLEND_AlphaComposite", "BLEND_AlphaHoldout"):
+        o.append("            float alphaIn = baseA;")
+    else:
+        o.append("            float alphaIn = 1.0;")
+    if unlit:
+        o.append("            o.Albedo = 0.0;")
+        o.append("            o.Emission = max(emis, 0.0);")
+    else:
+        o.append("            o.Albedo = saturate(baseRgb);")
+        if "mask" in picked:
+            o.append("            float4 packedMask = tex2D(%s, uv);" % picked["mask"]["prop"])
+            o.append("            o.Metallic = saturate(packedMask.g);")
+            o.append("            o.Smoothness = 1.0 - saturate(packedMask.b);")
+        else:
+            o.append("            o.Metallic = saturate(_Metallic);")
+            o.append("            o.Smoothness = 1.0 - saturate(_Roughness);")
+        o.append("            o.Occlusion = 1.0;")
+        o.append("            o.Emission = max(emis, 0.0);")
+        if "normal" in picked:
+            o.append("            float3 nUE = UnpackNormal(tex2D(%s, uv));" % picked["normal"]["prop"])
+            o.append("            o.Normal = normalize(float3(nUE.x, lerp(nUE.y, -nUE.y, _FlipNormalY), max(nUE.z, 0.0001)));")
+        if two:
+            o.append("            o.Normal = normalize(float3(o.Normal.xy, o.Normal.z * (IN.facing > 0.0 ? 1.0 : -1.0)));")
+    if bm == "BLEND_Additive":
+        o.append("            o.Emission *= saturate(alphaIn);")
+    if bm == "BLEND_Opaque":
+        o.append("            o.Alpha = 1.0;")
+    else:
+        o.append("            o.Alpha = saturate(alphaIn);")
+    o.append("        }")
+    o.append("        ENDCG")
+    o.append("    }")
+    o.append('    FallBack "Diffuse"')
+    o.append("}")
+    return "\n".join(o) + "\n", tr
+
+
+def convert_fallback(src, entry, material, name, out):
+    material_arg = (material or "").replace("\\", "/").split("/")[-1].split(".")[0]
+    candidates = [("--name", name), ("app entry name", entry.get("name")), ("material path", material_arg)]
+    shader_name, source = pick_name(candidates)
+    print("shader name: %s (from %s)" % (shader_name, source))
+    print("no editor graph for this material: building the approximate fallback shader")
+    text, tr = build_fallback(entry, shader_name)
+    for w in lint_shader(text):
+        tr.warn(w)
+    folder_shown = os.path.abspath(os.path.join(out, shader_name))
+    folder = long_path(folder_shown)
+    deepest = len(folder_shown) + len(os.sep) + len(shader_name) + len(".textures.json")
+    if deepest > WINDOWS_PATH_LIMIT:
+        tr.warn("the shader's file path is %d characters, over Windows' %d-character limit: it was written anyway, but Unity may refuse to import it. Convert into a shorter output folder to avoid this" % (deepest, WINDOWS_PATH_LIMIT))
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, shader_name + ".shader"), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    importer_path = os.path.join(out, "Editor", "PorterTextureSetup.cs")
+    if not os.path.exists(importer_path):
+        os.makedirs(os.path.dirname(importer_path), exist_ok=True)
+        open(importer_path, "w", encoding="utf-8").write(IMPORTER_CS)
+    tex_info = {}
+    for v in tr.textures.values():
+        info = src.texture_info(v["path"])
+        if info:
+            tex_info[v["prop"]] = {k: info.get(k) for k in ("Srgb", "Kind", "Width", "Height", "Depth", "Hdr", "Nearest", "FullWidth") if k in info}
+    tex_list = []
+    for k, v in tr.textures.items():
+        info = tex_info.get(v["prop"], {})
+        sr = info.get("Srgb")
+        if isinstance(sr, str):
+            sr = sr.strip().lower() in ("true", "1", "yes")
+        tex_list.append({"name": os.path.basename(k).split(".")[0], "prop": v["prop"],
+                         "srgb": -1 if sr is None else int(bool(sr)), "normal": bool(v.get("normal")),
+                         "width": int(info.get("Width") or 0), "height": int(info.get("Height") or 0),
+                         "nearest": bool(info.get("Nearest")),
+                         "stack": str(info.get("Kind", "2d")).lower() != "2d"})
+    copied, missing, kept = export_textures(src, tr, folder)
+    for w in low_res_texture_warnings(tr, tex_info):
+        tr.warn(w)
+    if kept:
+        tr.warn("textures left as DDS: %s" % "; ".join(kept))
+    if missing:
+        tr.warn("texture files not exported (the app gave no file for them): %s" % ", ".join(missing))
+    tex_lines, _ = tr.texture_report()
+    print("textures (%d slots):" % len(tex_lines))
+    for l in tex_lines:
+        print(l)
+    manifest = {"shader": shader_name, "approximate": True, "textureSources": [], "textures": {v["prop"]: v["path"] for v in tr.textures.values()},
+                "textureInfo": tex_info, "textureList": tex_list, "params": tr.props, "warnings": tr.warnings, "notes": tr.notes}
+    with open(os.path.join(folder, shader_name + ".textures.json"), "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
+    print("wrote %s.shader (%d textures, %d warnings)" % (shader_name, len(tr.textures), len(tr.warnings)))
+    print("folder: %s" % folder_shown)
+    print("textures copied to Textures: %d of %d" % (len(copied), len(tr.textures)))
+    for w in tr.warnings:
+        print("  warning:", w)
+    for n in tr.notes:
+        print("  note:", n)
+    src.file_away(shader_name)
+    return shader_name, tr
+
+
 def convert(src, material=None, graph=None, entry_file=None, name=None, out=".", blend=None):
     entry = {}
     if entry_file:
@@ -3337,6 +3725,8 @@ def convert(src, material=None, graph=None, entry_file=None, name=None, out=".",
         entry = src.material(material)
     gp = graph or (src.local(entry["graph"]) if entry.get("graph") else None)
     if not gp:
+        if entry.get("fallback") and not graph:
+            return convert_fallback(src, entry, material, name, out)
         raise SystemExit("no graph: give a graph file or a material path (with the app running)")
     graph0 = src.graph(gp, os.path.basename(gp))
     material_obj = graph0.material_object() if graph0 else None

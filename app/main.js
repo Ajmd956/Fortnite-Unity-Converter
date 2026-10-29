@@ -793,6 +793,8 @@ async function ensureFnp() {
 }
 
 function classifyFailure(output) {
+  if (/the game's mapping file is not available/i.test(output)) return 'mappings'
+  if (/helper could not read [^\r\n]*\(HTTP Error 5\d\d\): \S/i.test(output)) return 'unreadable'
   if (/HTTP Error 5\d\d/i.test(output)) return 'error'
   if (/Connection refused|actively refused|urlopen error|timed out|Remote end closed|Connection reset|Connection aborted|getaddrinfo/i.test(output)) return 'unreachable'
   if (/HTTP Error 4\d\d/i.test(output)) return 'missing'
@@ -803,6 +805,14 @@ function noticeFor(kinds) {
   if (kinds.includes('unreachable')) return {
     title: 'The API stopped responding',
     body: 'The connection to the API dropped while converting. Try again in a moment.'
+  }
+  if (kinds.includes('mappings')) return {
+    title: 'Mapping file not available',
+    body: "This game version needs a mapping file (.usmap) to read its materials, and none is loaded. Some versions have no mapping file online. Put one named custom.usmap (or custom.<version>.usmap) in Documents\\Fortnite Unity Converter\\Game Files, or pick it in the profile's Mappings File setting, then try again."
+  }
+  if (kinds.includes('unreadable')) return {
+    title: "The API couldn't read that material",
+    body: "The API is running but failed while reading the material. The reason is in the log. Other materials may still convert."
   }
   if (kinds.includes('error')) return {
     title: "Looks like Fortnite's down",
@@ -1493,6 +1503,7 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
     }
     const shader = path.join(outDir, m[1], m[1] + '.shader')
     if (!fs.existsSync(shader)) return null
+    if (/building the approximate fallback shader/.test(res.output)) send('engine:log', m[1] + ': converted as APPROXIMATE. This game version has no editor graph for the material, so it uses a generic shader built from its textures and values.\n')
     converted++
     const row = { name: m[1], shader, dir: path.dirname(shader) }
     made.push(row)
@@ -1681,6 +1692,7 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
   const scripts = unityScriptsDir()
   if (typeof payload.bake === 'boolean') send('engine:log', 'Bake Scripts: ' + (payload.bake ? 'on, every particle is played from a baked replay' : 'off, sprites and meshes stay Unity Particle Systems (ribbons, lights and decals are still baked)') + '\n')
   let converted = 0
+  let meshFailed = 0
   const made = []
   const kinds = []
   const queue = paths.slice()
@@ -1792,12 +1804,14 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
                   if (note) send('engine:log', note + '\n')
                 }
               } catch (err) {
+                meshFailed++
                 send('engine:log', 'fbx conversion FAILED for ' + ref.slice(ref.lastIndexOf('/') + 1).split('.')[0] + ', keeping the glb: ' + (err && err.message ? err.message : err) + '\nUnity cannot import a .glb, so this mesh will show as missing in Unity until the conversion works\n')
               }
             }
             send('engine:log', (/\.glb$/i.test(file) ? 'mesh exported as a .glb only, NOT usable in Unity: ' : 'mesh exported: ') + file + '\n')
           } else {
-            send('engine:log', 'mesh not exported: ' + ((r && r.error) || 'unknown error') + '\n')
+            meshFailed++
+            send('engine:log', 'mesh not exported: ' + (r && r.error && /mapping|usmap/i.test(r.error) ? "the game's mapping file is not available (" + r.error + ")" : ((r && r.error) || 'unknown error')) + '\n')
           }
         }
       } else {
@@ -1806,6 +1820,10 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
     }
   }
   let builtAll = false
+  {
+    const matsFailed = made.reduce((n, r) => n + (r.missing ? r.missing.length : 0), 0)
+    if (made.length && (matsFailed || meshFailed)) send('engine:log', '\nPartly converted: ' + matsFailed + ' material' + (matsFailed === 1 ? '' : 's') + ' and ' + meshFailed + ' mesh' + (meshFailed === 1 ? '' : 'es') + ' could not be converted (reasons are in the log above).\n')
+  }
   if (made.length && !stopped) {
     const built = await buildBlueprintPrefabs(made, outDir, rootName)
     for (const row of made) {

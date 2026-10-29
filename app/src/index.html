@@ -2748,7 +2748,7 @@ $('profFetch').onclick = async () => {
   c.mainKey = r.mainKey
   c.extraKeys = r.extraKeys.slice()
   if (r.mappingsError) {
-    showNotice({ title: 'Fetch Data', body: 'Failed to download mappings for ' + v, noRetry: true })
+    showNotice({ title: 'Fetch Data', body: 'Failed to download mappings for ' + v + '. Some versions have no mapping file online. If you have one, pick it under Mappings File in this profile.', noRetry: true })
   } else if (r.mappingsFile) {
     c.mappingsFile = r.mappingsFile
     c.useMappingsFile = true

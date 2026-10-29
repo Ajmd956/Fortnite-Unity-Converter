@@ -101,14 +101,7 @@ try
 
         mappingsPath = await FindMappingsAsync(http, cache, gameVersion);
         if (mappingsPath is null)
-        {
-            if (serve)
-            {
-                Say("error: no-mappings");
-                return 4;
-            }
             Say("status: No mappings found, reading without them");
-        }
     }
 
     Say("status: Preparing decompression");
