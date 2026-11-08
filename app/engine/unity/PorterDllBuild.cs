@@ -15,6 +15,43 @@ public static class PorterDllBuild
     static string projectRoot;
     static string outDir;
     static AssemblyBuilder editorBuilder;
+    static double started;
+    static bool finished;
+
+    static void StartEditor(string editorDll, string[] editorFiles, string runtimeDll)
+    {
+        try
+        {
+            editorBuilder = new AssemblyBuilder(editorDll, editorFiles);
+            editorBuilder.buildTarget = BuildTarget.StandaloneWindows64;
+            editorBuilder.buildTargetGroup = BuildTargetGroup.Standalone;
+            editorBuilder.flags = AssemblyBuilderFlags.EditorAssembly;
+            editorBuilder.additionalReferences = new[] { runtimeDll };
+            editorBuilder.buildFinished += (p, m) =>
+            {
+                Collect("editor", m);
+                editorDone = true;
+                Finish();
+            };
+            if (!editorBuilder.Build()) { Report.AppendLine("ERROR the editor assembly could not start"); failed = true; Finish(); }
+        }
+        catch (Exception ex)
+        {
+            Report.AppendLine("ERROR " + ex.GetType().Name + ": " + ex.Message);
+            failed = true;
+            Finish();
+        }
+    }
+
+    static void Watchdog()
+    {
+        if (!finished && EditorApplication.timeSinceStartup - started > 600)
+        {
+            Report.AppendLine("ERROR the compile did not finish within 10 minutes");
+            failed = true;
+            Finish();
+        }
+    }
 
     public static void Run()
     {
@@ -39,19 +76,10 @@ public static class PorterDllBuild
                 Collect("runtime", messages);
                 runtimeDone = true;
                 if (failed || !File.Exists(runtimeDll)) { Finish(); return; }
-                editorBuilder = new AssemblyBuilder(editorDll, editorFiles);
-                editorBuilder.buildTarget = BuildTarget.StandaloneWindows64;
-                editorBuilder.buildTargetGroup = BuildTargetGroup.Standalone;
-                editorBuilder.flags = AssemblyBuilderFlags.EditorAssembly;
-                editorBuilder.additionalReferences = new[] { runtimeDll };
-                editorBuilder.buildFinished += (p, m) =>
-                {
-                    Collect("editor", m);
-                    editorDone = true;
-                    Finish();
-                };
-                if (!editorBuilder.Build()) { Report.AppendLine("ERROR the editor assembly could not start"); failed = true; Finish(); }
+                EditorApplication.delayCall += () => StartEditor(editorDll, editorFiles, runtimeDll);
             };
+            started = EditorApplication.timeSinceStartup;
+            EditorApplication.update += Watchdog;
             if (!runtime.Build()) { Report.AppendLine("ERROR the runtime assembly could not start"); failed = true; Finish(); }
         }
         catch (Exception ex)
@@ -76,6 +104,8 @@ public static class PorterDllBuild
 
     static void Finish()
     {
+        if (finished) return;
+        finished = true;
         bool ok = !failed && runtimeDone && editorDone
             && File.Exists(Path.Combine(outDir, "PorterRuntime.dll")) && File.Exists(Path.Combine(outDir, "PorterEditor.dll"));
         File.WriteAllText(Path.Combine(projectRoot, "PorterDllBuild.txt"), (ok ? "OK\n" : "FAILED\n") + Report, new UTF8Encoding(false));
