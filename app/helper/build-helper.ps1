@@ -46,6 +46,16 @@ if (-not (Test-Path -LiteralPath (Join-Path $source 'CUE4Parse\CUE4Parse.csproj'
     Remove-Item -LiteralPath $extract -Recurse -Force
 }
 
+$skeletalSource = Join-Path $source 'CUE4Parse\UE4\Assets\Exports\SkeletalMesh\USkeletalMesh.cs'
+if (Test-Path -LiteralPath $skeletalSource) {
+    $skeletalText = [System.IO.File]::ReadAllText($skeletalSource)
+    $naniteRead = 'NaniteResources = new FNaniteResources(Ar);'
+    $naniteSafe = 'try { NaniteResources = new FNaniteResources(Ar); } catch (Exception) { NaniteResources = null; }'
+    if ($skeletalText.Contains($naniteRead) -and -not $skeletalText.Contains($naniteSafe)) {
+        [System.IO.File]::WriteAllText($skeletalSource, $skeletalText.Replace($naniteRead, $naniteSafe), (New-Object System.Text.UTF8Encoding($false)))
+    }
+}
+
 $out = Join-Path $app 'engine\bin'
 & $dotnetExe publish (Join-Path $here 'FileLister\FileLister.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=false -p:GenerateDocumentationFile=false -p:SatelliteResourceLanguages=en --nologo -v:q -maxcpucount -p:DebugType=none -o $out
 if ($LASTEXITCODE -ne 0) { exit 1 }
