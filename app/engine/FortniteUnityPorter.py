@@ -5732,6 +5732,53 @@ def unity_compile(paths, unity=None, timeout=900):
     def run(args):
         return subprocess.run([unity, "-batchmode", "-quit", "-logFile", log] + args, timeout=timeout, capture_output=True)
 
+    def run_live(args):
+        import time
+        try:
+            os.remove(log)
+        except OSError:
+            pass
+        proc = subprocess.Popen([unity, "-batchmode", "-quit", "-logFile", log] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        start = time.time()
+        shown, offset, tail, last_say = set(), 0, "", time.time()
+        while True:
+            done = proc.poll() is not None
+            try:
+                size = os.path.getsize(log)
+                if size < offset:
+                    offset = 0
+                with open(log, "rb") as fh:
+                    fh.seek(offset)
+                    chunk = fh.read()
+                    offset += len(chunk)
+                tail += chunk.decode("utf-8", errors="replace")
+            except OSError:
+                pass
+            lines = tail.split("\n")
+            tail = "" if done else lines.pop()
+            for raw in lines:
+                line = raw.strip()
+                msg = None
+                m = re.match(r"Start importing Assets/PorterCheck/(.+?\.shader)", line)
+                if m:
+                    msg = "importing %s" % m.group(1)
+                elif line.startswith("Shader error in") or line.startswith("Shader warning in"):
+                    msg = line[:220]
+                if msg and msg not in shown:
+                    shown.add(msg)
+                    print("  Unity: " + msg, flush=True)
+                    last_say = time.time()
+            if done:
+                return
+            if time.time() - start > timeout:
+                proc.kill()
+                raise subprocess.TimeoutExpired("Unity", timeout)
+            if time.time() - last_say >= 15:
+                sec = int(time.time() - start)
+                print("  Unity: still compiling (%d:%02d so far)..." % (sec // 60, sec % 60), flush=True)
+                last_say = time.time()
+            time.sleep(1)
+
     try:
         if not os.path.exists(os.path.join(proj, "ProjectSettings", "ProjectVersion.txt")):
             print("  Unity: creating a throw-away check project (first run only, can take a minute)...")
@@ -5748,7 +5795,7 @@ def unity_compile(paths, unity=None, timeout=900):
             m = re.search(r'Shader\s+"([^"]+)"', open(p, encoding="utf-8", errors="replace").read())
             names[m.group(1) if m else os.path.basename(p)] = p
         print("  Unity: compiling %d shader(s) in the real editor..." % len(paths))
-        run(["-projectPath", proj, "-executeMethod", "PorterShaderCheck.Run"])
+        run_live(["-projectPath", proj, "-executeMethod", "PorterShaderCheck.Run"])
     except Exception as e:
         print("  Unity: could not run (%s: %s)" % (type(e).__name__, e))
         return None
@@ -6276,11 +6323,13 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
         print("Fixing copies in: %s (your originals are not touched)" % os.path.abspath(target))
     summary = {}
     originals = {}
-    for p in paths:
+    for n, p in enumerate(paths, 1):
         try:
             originals[p] = read_shader(p)[2]
         except Exception:
             pass
+        print("")
+        print("[%d/%d] Checking %s..." % (n, len(paths), os.path.basename(p)), flush=True)
         summary[p] = check_one_shader(p, fix=fix)
     last, applied = {}, {p: [] for p in paths}
     ran_unity = False
@@ -6305,11 +6354,17 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
                 if not any(lv == "error" or re.search(r"division by zero", m, re.I) for lv, m, _ in msgs):
                     continue
                 raw, crlf, text = read_shader(p)
+                print("")
+                print("Fixing %s from Unity's messages..." % os.path.basename(p), flush=True)
                 new_text, done = apply_unity_fixes(text, msgs)
                 if done and new_text != text:
                     write_shader(p, new_text, crlf)
                     applied[p] += done
                     changed.append(p)
+                    for d in done:
+                        print("   fixed: " + d, flush=True)
+                else:
+                    print("   nothing in Unity's messages could be fixed automatically", flush=True)
             if not changed:
                 break
             pending = changed
