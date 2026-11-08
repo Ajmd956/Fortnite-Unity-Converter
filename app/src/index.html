@@ -618,7 +618,8 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
   align-items:center;justify-content:center;transition:opacity .6s ease,visibility 0s .6s;
 }
 #splash.gone{opacity:0;visibility:hidden;pointer-events:none;}
-.sp-logo{width:104px;height:104px;opacity:0;transform:scale(.8);animation:spIn .9s cubic-bezier(.22,1,.36,1) .15s forwards;filter:drop-shadow(0 0 22px #8e22eb55);}
+.sp-logo{width:104px;height:104px;opacity:0;transform:scale(.8);animation:spIn .9s cubic-bezier(.22,1,.36,1) .15s forwards;filter:var(--logo-filter,none) drop-shadow(0 0 22px color-mix(in srgb,var(--cyan) 33%,transparent));}
+img[src$="logo.png"]:not(.sp-logo){filter:var(--logo-filter,none);}
 #splash .glow{top:50%;left:50%;margin:-300px 0 0 -300px;}
 .sp-logo,.sp-name,.sp-load{position:relative;}
 .sp-name{
@@ -1200,12 +1201,30 @@ function readableOn(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#0b0a10' : '#ffffff'
 }
 
+function logoFilter(hex) {
+  const [r, g, b] = hexToRgb(hex).map(v => v / 255)
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min
+  const l = (max + min) / 2
+  const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1))
+  let h = 0
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    h = (h * 60 + 360) % 360
+  }
+  const turn = Math.round(((h - 270 + 540) % 360) - 180)
+  const k = Math.max(0.15, Math.min(1.2, sat / 0.93))
+  return 'hue-rotate(' + turn + 'deg) saturate(' + k.toFixed(2) + ')'
+}
+
 function applyTheme() {
   const r = document.documentElement.style
   const put = (name, value) => { if (value) r.setProperty(name, value); else r.removeProperty(name) }
   const t = {}
   Object.keys(theme).forEach(k => { if (validColor(theme[k])) t[k] = theme[k] })
   put('--cyan', t.accent)
+  put('--logo-filter', t.accent && t.accent.length === 7 ? logoFilter(t.accent) : '')
   put('--accent', t.accent ? t.accent + '22' : '')
   put('--primary', t.primary)
   put('--on-primary', readableOn(t.primary || t.accent || DEFAULT_ACCENT) === '#ffffff' ? '' : '#0b0a10')
