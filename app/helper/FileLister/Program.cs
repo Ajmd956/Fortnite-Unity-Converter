@@ -20,6 +20,9 @@ const string KeysUrl = "https://fortnite-api.com/v2/aes";
 const string PortingVersionUrl = "https://api.fortniteporting.app/v2/fortnite/versions/latest";
 // Same service Fortnite Porting uses for "Fetch Version": keys and mappings for any game version, e.g. .../versions/38.11
 const string PortingVersionBase = "https://api.fortniteporting.app/v2/fortnite/versions/";
+const string FortForgeMappingsUrl = "https://fortforge.co.uk/mappings";
+const string FortXdMappingsApi = "https://api.github.com/repos/FortXD/legacy-archive/contents/manifests/mappings";
+const string FortXdMappingsRaw = "https://github.com/FortXD/legacy-archive/raw/refs/heads/master/manifests/mappings/";
 const string MappingsListUrl = "https://fortnitecentral.genxgames.gg/api/v1/mappings";
 
 var archive = ArgValue(args, "--archive");
@@ -689,7 +692,57 @@ static async Task<string?> FindMappingsAsync(HttpClient http, string cache, stri
     }
     catch (Exception) { }
 
+    var archived = await FindArchiveMappingsAsync(http, cache, version);
+    if (archived is not null) return archived;
+
     return FindVersionMappings(cache, version);
+}
+
+static async Task<string?> FindArchiveMappingsAsync(HttpClient http, string cache, string version)
+{
+    var safe = SafeVersion(version);
+    var target = version.Length == 0 ? null : Path.Combine(cache, "custom." + safe + ".fetched.usmap");
+    if (target is not null && File.Exists(target) && IsUsmap(target)) return target;
+
+    var candidates = new List<ArchiveMapping>();
+    try
+    {
+        var html = await http.GetStringAsync(FortForgeMappingsUrl);
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(html, @"(?:\+\+|%2B%2B)Fortnite(?:\+|%2B)Release-[^""'<>\s\\]*?\.usmap", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            var name = Uri.UnescapeDataString(m.Value);
+            if (ArchiveMapping.TryParse(name, FortForgeMappingsUrl.TrimEnd('/') + "/" + name, out var entry)) candidates.Add(entry);
+        }
+    }
+    catch (Exception) { }
+
+    try
+    {
+        using var doc = JsonDocument.Parse(await http.GetStringAsync(FortXdMappingsApi));
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                var name = Prop(item, "name")?.GetString();
+                if (name is not null && name.EndsWith(".usmap", StringComparison.OrdinalIgnoreCase) && ArchiveMapping.TryParse(name, FortXdMappingsRaw + name, out var entry)) candidates.Add(entry);
+            }
+    }
+    catch (Exception) { }
+
+    var ranked = candidates
+        .Where(c => version.Length == 0 || c.Version.Equals(version, StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(c => c.VersionKey)
+        .ThenByDescending(c => c.Score)
+        .ThenByDescending(c => c.Changelist)
+        .ToList();
+
+    foreach (var pick in ranked.Take(4))
+    {
+        var path = target ?? Path.Combine(cache, pick.Name);
+        if (File.Exists(path) && IsUsmap(path)) return target is null ? KeepOnlyMappings(cache, path) : path;
+        Say("status: Downloading mappings for " + pick.Version);
+        if (await DownloadUsmapAsync(http, pick.Url, path)) return target is null ? KeepOnlyMappings(cache, path) : path;
+    }
+    return null;
 }
 
 static string? FindVersionMappings(string cache, string version)
@@ -758,7 +811,39 @@ static async Task<string?> FindLatestMappingsAsync(HttpClient http, string cache
     var custom = Path.Combine(cache, "custom.usmap");
     if (File.Exists(custom)) return custom;
 
+    var archived = await FindArchiveMappingsAsync(http, cache, "");
+    if (archived is not null) return archived;
+
     return Directory.EnumerateFiles(cache, "*.usmap").Where(IsUsmap).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+}
+
+sealed class ArchiveMapping
+{
+    public string Name { get; init; } = "";
+    public string Url { get; init; } = "";
+    public string Version { get; init; } = "";
+    public long VersionKey { get; init; }
+    public long Changelist { get; init; }
+    public int Score { get; init; }
+
+    public static bool TryParse(string name, string url, out ArchiveMapping entry)
+    {
+        entry = null!;
+        var m = System.Text.RegularExpressions.Regex.Match(name, @"Release-(\d+)\.(\d+)-CL-(\d+)(?:-([A-Za-z]+))?(?:_([A-Za-z0-9]+))?\.usmap$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return false;
+        var platform = m.Groups[4].Value;
+        if (platform.Length > 0 && !platform.Equals("Windows", StringComparison.OrdinalIgnoreCase)) return false;
+        entry = new ArchiveMapping
+        {
+            Name = name,
+            Url = url,
+            Version = m.Groups[1].Value + "." + m.Groups[2].Value,
+            VersionKey = long.Parse(m.Groups[1].Value) * 1000 + long.Parse(m.Groups[2].Value),
+            Changelist = long.Parse(m.Groups[3].Value),
+            Score = platform.Length > 0 ? 2 : 1
+        };
+        return true;
+    }
 }
 
 class VersionInfo
