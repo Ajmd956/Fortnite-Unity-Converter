@@ -188,6 +188,26 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .hint{font-size:12px;color:var(--muted);line-height:1.5;}
 .label{font-size:12px;color:var(--muted);}
 .row{display:flex;gap:10px;align-items:center;}
+.chk-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+.chk-stage{font-size:14px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chk-time{font-size:12px;color:var(--muted);flex:0 0 auto;}
+.chk-bar{height:6px;border-radius:3px;background:var(--input);overflow:hidden;position:relative;}
+.chk-bar i{display:block;height:100%;width:0;border-radius:3px;background:var(--cyan);transition:width .25s ease;}
+.chk-bar.busy i{width:35%!important;position:absolute;left:0;animation:chkslide 1.2s ease-in-out infinite;}
+@keyframes chkslide{0%{left:-35%}100%{left:100%}}
+.chk-sum{font-size:12px;color:var(--muted);min-height:15px;}
+.chk-list{display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
+.chk-row{display:flex;align-items:center;gap:10px;min-height:38px;padding:0 8px 0 14px;background:linear-gradient(var(--card),var(--card2));border-radius:14px;box-shadow:var(--card-shadow);}
+.chk-name{flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chk-pill{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border-radius:11px;font-size:12px;background:var(--input);color:var(--muted);}
+.chk-pill.run{color:var(--text);background:var(--accent);}
+.chk-pill.ok{color:#7fe3a0;background:#7fe3a01f;}
+.chk-pill.warn{color:#f2c46d;background:#f2c46d1f;}
+.chk-pill.bad{color:#ff8a8a;background:#ff8a8a1f;}
+.chk-spin{width:10px;height:10px;border-radius:50%;border:2px solid var(--border-hi);border-top-color:var(--cyan);animation:chkspin .7s linear infinite;}
+@keyframes chkspin{to{transform:rotate(360deg)}}
+.chk-x{flex:0 0 auto;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:12px;color:var(--muted);font-size:16px;cursor:pointer;}
+.chk-x:hover{background:var(--card-hover);color:var(--text);}
 .check-row{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);cursor:pointer;}
 .check-row input{appearance:none;-webkit-appearance:none;width:20px;height:20px;flex:0 0 20px;margin:0;border-radius:16px;background:var(--btn-hover);box-shadow:var(--card-shadow);cursor:pointer;display:grid;place-content:center;transition:background-color var(--fade);}
 .check-row input:hover{background:var(--sel-hover);}
@@ -873,7 +893,12 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="grow"></div>
         <div class="rc-ctl" style="gap:18px"><label class="check-row"><input type="checkbox" id="optFix"> Fix problems</label><label class="check-row"><input type="checkbox" id="optUnity"> Compile in Unity</label></div>
       </div>
-      <div class="chips" id="chips"></div>
+      <div class="row-card col chk-live" id="chkLive" style="display:none">
+        <div class="chk-top"><div class="chk-stage" id="chkStage"></div><div class="chk-time" id="chkTime"></div></div>
+        <div class="chk-bar" id="chkBar"><i id="chkFill"></i></div>
+        <div class="chk-sum" id="chkSum"></div>
+      </div>
+      <div class="chk-list" id="chips"></div>
       <div class="row-card"><div class="rc-text"><div class="rc-desc" style="margin:0">Fixes are made on copies in the Fixed Conversions folder. Your original shaders are never changed.</div></div><div class="rc-ctl"><button class="btn sm" id="openFixed">Open folder</button><button class="btn primary" id="checkBtn">Check</button></div></div>
     </div>
 
@@ -1446,7 +1471,7 @@ function setRunning(state) {
   $('stopBtn').style.display = running ? '' : 'none'
   $('stateText').textContent = running ? state.label.toUpperCase() + '...' : ''
   setStatus(running ? state.label + '...' : apiIdle)
-  if (!running) refreshShaders()
+  if (!running) { refreshShaders(); chkStop() }
 }
 
 function lineClass(line) {
@@ -1482,7 +1507,13 @@ function onLog(chunk) {
   const text = partial + chunk.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const lines = text.split('\n')
   partial = lines.pop()
-  lines.forEach(addLine)
+  lines.forEach(l => {
+    if (l.startsWith('@check ')) {
+      try { chkEvent(JSON.parse(l.slice(7))) } catch (e) {}
+      return
+    }
+    addLine(l)
+  })
 }
 
 function flushLog() {
@@ -1490,24 +1521,175 @@ function flushLog() {
   partial = ''
 }
 
+const chk = { rows: [], active: false, stage: '', t0: 0, timer: null, unity: false, round: 1, codeDone: 0, skipped: false, finished: false }
+
+function chkPill(r) {
+  if (r.phase === 'wait') return { cls: '', text: chk.active ? 'Waiting' : '' }
+  if (r.phase === 'stopped') return { cls: '', text: 'Stopped' }
+  if (r.phase === 'code') return { cls: 'run', text: 'Checking', spin: true }
+  if (r.phase === 'unity') return { cls: 'run', text: chk.round > 1 ? 'Compiling again' : 'Compiling', spin: true }
+  const fixed = (r.fixed || 0) + (r.unityFixed || 0)
+  const left = r.unityErrors != null ? r.unityErrors : r.errors || 0
+  const bits = []
+  let cls = 'ok'
+  if (r.unityErrors != null) bits.push(left ? left + ' Unity error' + (left > 1 ? 's' : '') : 'Compiles')
+  else bits.push(left ? left + ' error' + (left > 1 ? 's' : '') : 'No errors')
+  if (left) cls = 'bad'
+  else if (r.gaps) { cls = 'warn'; bits.push(r.gaps + ' not converted') }
+  if (fixed) bits.push(fixed + ' fixed')
+  return { cls, text: bits.join(' · ') }
+}
+
 function renderChips() {
   const box = $('chips')
   box.innerHTML = ''
   checkPaths.forEach((p, i) => {
-    const chip = document.createElement('div')
-    chip.className = 'chip'
+    const row = document.createElement('div')
+    row.className = 'chk-row'
     const name = document.createElement('span')
+    name.className = 'chk-name'
     name.textContent = p.split(/[\\/]/).slice(-2).join('/')
     name.title = p
-    const x = document.createElement('button')
-    x.textContent = '×'
-    x.onclick = () => {
-      checkPaths.splice(i, 1)
-      renderChips()
+    row.appendChild(name)
+    const st = chk.rows[i]
+    if (st) {
+      const pill = chkPill(st)
+      if (pill.text) {
+        const el = document.createElement('span')
+        el.className = 'chk-pill ' + pill.cls
+        if (pill.spin) {
+          const sp = document.createElement('span')
+          sp.className = 'chk-spin'
+          el.appendChild(sp)
+        }
+        el.appendChild(document.createTextNode(pill.text))
+        row.appendChild(el)
+      }
     }
-    chip.append(name, x)
-    box.appendChild(chip)
+    if (!chk.active) {
+      const x = document.createElement('button')
+      x.className = 'chk-x'
+      x.textContent = '×'
+      x.title = 'Remove'
+      x.onclick = () => {
+        checkPaths.splice(i, 1)
+        chk.rows = []
+        $('chkLive').style.display = 'none'
+        renderChips()
+      }
+      row.appendChild(x)
+    }
+    box.appendChild(row)
   })
+}
+
+function chkElapsed() {
+  const s = Math.floor((Date.now() - chk.t0) / 1000)
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')
+}
+
+function chkPaint() {
+  const n = chk.rows.length
+  const done = chk.rows.filter(r => r.phase === 'done').length
+  const bar = $('chkBar')
+  let fill = 0
+  let text = ''
+  let busy = false
+  if (chk.finished) { fill = 100; text = chk.stage }
+  else if (chk.stage === 'copy') { text = 'Making copies to fix' }
+  else if (chk.stage === 'code') {
+    const cur = chk.rows.findIndex(r => r.phase === 'code')
+    text = cur >= 0 ? 'Checking ' + (checkPaths[cur] || '').split(/[\\/]/).pop() + ' (' + (cur + 1) + ' of ' + n + ')' : 'Checking the code'
+    fill = (chk.codeDone / Math.max(1, n)) * (chk.unity ? 40 : 100)
+  } else if (chk.stage === 'unity') {
+    const count = chk.unityCount || n
+    text = 'Compiling ' + count + ' shader' + (count === 1 ? '' : 's') + ' in Unity' + (chk.round > 1 ? ' (round ' + chk.round + ', after the fixes)' : '') + '. This can take a minute'
+    busy = true
+    fill = 40
+  }
+  bar.classList.toggle('busy', busy)
+  $('chkFill').style.width = fill + '%'
+  $('chkStage').textContent = text
+  $('chkTime').textContent = chk.t0 ? chkElapsed() : ''
+}
+
+function chkSummary() {
+  const r = chk.rows
+  const fixed = r.reduce((a, x) => a + (x.fixed || 0) + (x.unityFixed || 0), 0)
+  const bad = r.filter(x => (x.unityErrors != null ? x.unityErrors : x.errors) > 0).length
+  const clean = r.length - bad
+  const bits = [clean + ' of ' + r.length + ' clean']
+  if (fixed) bits.push(fixed + ' fix' + (fixed === 1 ? '' : 'es') + ' made on copies')
+  if (bad) bits.push(bad + ' still need' + (bad === 1 ? 's' : '') + ' attention')
+  if (chk.skipped) bits.push('Unity was not found, so its compile check was skipped')
+  $('chkSum').textContent = bits.join(' · ')
+}
+
+function chkEvent(e) {
+  const live = $('chkLive')
+  if (e.ev === 'start') {
+    chk.rows = (e.files || []).map(() => ({ phase: 'wait' }))
+    chk.active = true
+    chk.finished = false
+    chk.stage = e.fix ? 'copy' : 'code'
+    chk.unity = !!e.unity
+    chk.round = 1
+    chk.codeDone = 0
+    chk.skipped = false
+    chk.t0 = Date.now()
+    live.style.display = ''
+    $('chkSum').textContent = ''
+    clearInterval(chk.timer)
+    chk.timer = setInterval(chkPaint, 500)
+  } else if (e.ev === 'stage') {
+    if (e.stage === 'unity') {
+      chk.stage = 'unity'
+      chk.round = e.round || 1
+      const idx = new Set(e.indexes || [])
+      chk.unityCount = idx.size
+      chk.rows.forEach((r, i) => { if (idx.has(i)) r.phase = 'unity' })
+    } else if (e.stage === 'unity-skip') {
+      chk.skipped = true
+    } else if (e.stage === 'finish') {
+      chk.finished = true
+      chk.stage = 'Done in ' + chkElapsed()
+    } else {
+      chk.stage = e.stage
+    }
+  } else if (e.ev === 'file') {
+    const r = chk.rows[e.i]
+    if (r) {
+      if (e.phase === 'code') { r.phase = 'code'; chk.stage = 'code' }
+      else if (e.phase === 'code-done') {
+        r.phase = 'done'
+        r.errors = e.errors
+        r.fixed = e.fixed
+        r.gaps = e.gaps
+        chk.codeDone++
+      } else if (e.phase === 'unity-done') {
+        r.phase = 'done'
+        r.unityErrors = e.errors
+        r.unityFixed = e.fixed
+      }
+    }
+  }
+  chkPaint()
+  renderChips()
+  if (chk.finished) chkSummary()
+}
+
+function chkStop() {
+  if (!chk.active) return
+  chk.active = false
+  clearInterval(chk.timer)
+  if (!chk.finished) {
+    chk.rows.forEach(r => { if (r.phase === 'wait' || r.phase === 'code' || r.phase === 'unity') r.phase = 'stopped' })
+    chk.finished = true
+    chk.stage = 'Stopped after ' + chkElapsed()
+    $('chkSum').textContent = ''
+  }
+  chkPaint()
+  renderChips()
 }
 
 function addCheckPaths(list) {
