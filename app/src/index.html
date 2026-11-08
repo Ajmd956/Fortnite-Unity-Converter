@@ -898,6 +898,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="sec-head">Audio</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Audio Device</div><div class="rc-desc">The device that should be used for audio playback.</div></div><div class="rc-ctl"><div class="dd" id="ddAudio"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Volume</div><div class="rc-desc">The output volume used for audio playback.</div></div><div class="rc-ctl"><svg class="vol-ic" id="volIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg><div class="sld-wrap"><input type="range" class="sld" id="setVolume" min="0" max="1" step="0.05" value="1"><div class="sld-ticks" id="volTicks"></div></div></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Conversion Sound</div><div class="rc-desc">Plays a sound when a shader, particle system or Blueprint finishes converting.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setConvSound" checked><span class="trk"></span><span class="lbl" data-for="setConvSound">On</span></label></div></div>
         <div class="sec-head">Loading</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Default Export Location</div><div class="rc-desc">The default export location used on startup.</div></div><div class="rc-ctl"><div class="dd" id="ddDest"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="sec-head">Other</div>
@@ -1806,7 +1807,9 @@ function showDone(data) {
 const doneSound = new Audio('../assets/sounds/conversion-done.wav')
 doneSound.preload = 'auto'
 function playDoneSound() {
+  if (settings.conversionSound === false) return
   try {
+    doneSound.volume = settings.volume == null ? 1 : Math.min(1, Math.max(0, settings.volume))
     doneSound.currentTime = 0
     const p = doneSound.play()
     if (p && p.catch) p.catch(() => {})
@@ -1970,6 +1973,7 @@ function fillSettings() {
   applyDev()
   applyExp()
   $('setVolume').value = settings.volume == null ? 1 : settings.volume
+  $('setConvSound').checked = settings.conversionSound !== false
   paintVolume()
   buildAudioDD()
   buildFilesDD()
@@ -2498,6 +2502,7 @@ async function buildAudioDD() {
   makeDD('ddAudio', items, cur.t, it => { saveSetting({ audioDevice: it.id }); buildAudioDD() })
 }
 $('setVolume').oninput = () => { paintVolume(); saveSetting({ volume: parseFloat($('setVolume').value) }) }
+$('setConvSound').onchange = () => saveSetting({ conversionSound: $('setConvSound').checked })
 $('setTransitions').onchange = () => { document.documentElement.classList.toggle('notrans', !$('setTransitions').checked); saveSetting({ tabTransitions: $('setTransitions').checked }) }
 $('setPvCache').onchange = () => saveSetting({ previewCache: $('setPvCache').checked })
 $('setPvGrid').onchange = () => saveSetting({ pvGrid: $('setPvGrid').checked })

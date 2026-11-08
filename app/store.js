@@ -20,6 +20,7 @@ const defaults = {
   activeProfile: '',
   tabTransitions: true,
   volume: 1,
+  conversionSound: true,
   audioDevice: '',
   fix: true,
   useUnity: true,
