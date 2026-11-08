@@ -676,15 +676,6 @@ function separateParticleHelpers(dir) {
   }
 }
 
-// The Particle tab's Baked Conversion switch. On bakes every particle from a replay; off keeps sprites and meshes as Unity
-// Particle Systems (ribbons, lights and decals are still baked, a Particle System cannot draw them). No switch, no change.
-function bakeEnv(payload) {
-  if (!payload || typeof payload.bake !== 'boolean') return null
-  return payload.bake
-    ? { PORTER_BAKE: 'all', PORTER_BAKE_SCRIPTED: '1', PORTER_BAKE_MESHES: '1' }
-    : { PORTER_BAKE: 'off', PORTER_BAKE_SCRIPTED: '0', PORTER_BAKE_MESHES: '0' }
-}
-
 function runEngine(args, extraEnv) {
   return new Promise(resolve => {
     const { cmd, pre } = engineCommand()
@@ -1641,7 +1632,7 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
     const scripts = unityScriptsDir()
     fs.mkdirSync(path.join(proj, 'Assets', 'Editor'), { recursive: true })
     fs.copyFileSync(path.join(scripts, headless + '.cs'), path.join(proj, 'Assets', 'Editor', headless + '.cs'))
-    const keep = new Set(['Editor', 'Scripts'])
+    const keep = new Set(particle ? ['Editor', 'Scripts', 'Shared'] : ['Editor', 'Scripts'])
     for (const row of made) keep.add(path.basename(row.dir))
     let present = []
     try { present = fs.readdirSync(projRoot) } catch (e) {}
@@ -1678,7 +1669,17 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
     for (const n of keep) {
       try { fs.rmSync(path.join(outDir, n + '.meta'), { force: true }) } catch (e) {}
     }
-    for (const n of ['Editor', 'Scripts']) {
+    const allBuilt = made.length > 0 && made.every(row => built.has(row.name))
+    if (particle && allBuilt) {
+      for (const n of ['Editor', 'Scripts']) {
+        fs.rmSync(path.join(outDir, n), { recursive: true, force: true })
+        fs.rmSync(path.join(outDir, n + '.meta'), { force: true })
+      }
+      syncTree(path.join(projRoot, 'Shared'), path.join(outDir, 'Shared'), x => /\.meta$/i.test(x))
+      send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The converted folders hold the prefab, materials, shaders, textures, meshes and their .meta files, with no scripts. Drag each converted folder and the Shared folder into your Unity project\'s Assets.\n')
+      return built
+    }
+    for (const n of particle ? ['Editor', 'Scripts', 'Shared'] : ['Editor', 'Scripts']) {
       syncTree(path.join(projRoot, n), path.join(outDir, n), x => /\.meta$/i.test(x))
     }
     send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The prefab and its materials are saved in the ' + rootName + ' folder with their .meta files inside the folders.\n')
@@ -1690,7 +1691,6 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
 
 async function runPropQueue(paths, payload, flag, outDir, rootName) {
   const scripts = unityScriptsDir()
-  if (typeof payload.bake === 'boolean') send('engine:log', 'Bake Scripts: ' + (payload.bake ? 'on, every particle is played from a baked replay' : 'off, sprites and meshes stay Unity Particle Systems (ribbons, lights and decals are still baked)') + '\n')
   let converted = 0
   let meshFailed = 0
   const made = []
@@ -1702,7 +1702,7 @@ async function runPropQueue(paths, payload, flag, outDir, rootName) {
     send('engine:log', '\n[' + (i + 1) + '/' + queue.length + '] ' + queue[i] + (i >= paths.length ? ' (linked from another Blueprint)' : '') + '\n')
     const args = ['--bridge', settings.bridge, flag, queue[i], '--out', outDir, '--scripts', scripts]
     if (payload.name && i === 0 && paths.length === 1) args.push('--name', payload.name)
-    const res = await runEngine(args, bakeEnv(payload))
+    const res = await runEngine(args)
     if (i < paths.length && /^note: .* holds no meshes or materials/m.test(res.output)) {
       for (const lm of res.output.matchAll(/^linked: (.+)$/gm)) {
         const ref = lm[1].trim()

@@ -33,9 +33,9 @@ manually, under App Settings.
   app builds the prefab for you first, in the background.
 - Particle Converter: turn a Niagara system (NS_...) into a Unity prefab. It saves
   each system in its own folder inside Particle Conversions, with its materials,
-  meshes and baked particle data. Copy that folder into your Unity project's
-  Assets. If a Unity editor is found, the app builds the prefab for you first, in
-  a hidden Unity project; otherwise Unity builds it when the folder is copied in.
+  shaders, textures and meshes. If a Unity editor is found, the app builds the
+  prefab for you first, in a hidden Unity project, and the folder holds no
+  scripts: drag it into your Unity project's Assets.
 - Check Shaders: scan shader files for common problems and fix the safe ones.
   Fixes are made on copies in Documents\Fortnite Unity Converter\Fixed
   Conversions, so your originals are never changed.
@@ -115,79 +115,44 @@ references.
 
 ## Particle Converter
 
-The Particle Converter has its own engine (ParticleConverter.py) and its own
-Unity scripts. Its scripts use their own class names (PorterParticleBuilder,
-PorterBakedParticleSystem, PorterParticleReplayBuild, PorterParticleSupport,
-PorterParticleDecalProject, and renamed copies of the shader helper scripts), so
-Particle Conversions and Blueprint Conversions can sit in one Unity project.
+The Particle Converter has its own engine (ParticleConverter.py). A converted
+system is made only of Unity's own components, with no scripts, so it works
+where scripts are not allowed, such as VRChat avatars.
 
 How a system is converted:
 
 - The system is played in the converter for a few seconds and what each emitter
-  does is recorded: spawning, lifetimes, colour and size over age, and the values
-  each renderer reads.
-- Whatever a Unity Particle System can draw is built as a Particle System. The
-  particle colour (including HDR values above 1) and up to four Dynamic
+  does is recorded: spawning, lifetimes, colour and size over age, speed,
+  rotation and the values each renderer reads.
+- Every renderer becomes a Unity Particle System:
+  - Sprites become Billboard (or Stretched Billboard when velocity aligned)
+    particles, with Texture Sheet Animation for sub-images.
+  - Meshes become Mesh particles, one submesh per override material.
+  - Ribbons become the Trails module in Ribbon mode, with the width over the
+    trail read from the replay.
+  - Lights become the Lights module, with a light prefab of its own saved next to
+    the system (<emitter>_Light.prefab). A light exists for each live particle,
+    up to the module's Max Lights, and its intensity follows the colour scale.
+  - Decals become Horizontal Billboard particles lying flat. A Particle System
+    cannot project onto surfaces, so a decal does not wrap over uneven ground.
+- The particle colour (including HDR values above 1) and up to four Dynamic
   Parameters are sent to the converted shaders through the particle vertex
   streams (_PorterParticleStreams = 1).
-- Everything else is recorded tick by tick (the baked replay, files
-  <system>_<emitter>_<n>.bytes, format PRB1) and played back in Unity by
-  PorterBakedParticleSystem (Baked Particle System in the Add Component menu). The Particle Converter bakes every sprite, ribbon, light,
-  decal and mesh renderer it can. PORTER_BAKE=all (the default here), auto
-  (only what a Particle System cannot draw) and off (nothing) are supported. The
-  Blueprint Converter bakes in auto and leaves mesh renderers to the Particle
-  System.
+- Scripted emitters are built from a replay of their scripts: spawn counts,
+  lifetime, colour and size curves, and starting position, velocity and rotation
+  as ranges.
 
-Baked Particle System modules (every one has an on/off box and does nothing
-while off; defaults leave the baked look unchanged):
+Where the files go:
 
-- Main, Emission, Shape, Velocity over Lifetime, Force over Lifetime, Color over
-  Lifetime, Size over Lifetime, Opacity over Lifetime, Rotation over Lifetime,
-  Noise, Simulation.
-- Size by Speed and Color by Speed: a curve or gradient read from each
-  particle's baked speed over a speed range.
-- Custom Data: a multiply and an add for each Dynamic Parameter slot.
-- Texture Sheet Animation (sprites): tiles, and the frame as baked, over
-  lifetime, fixed or random, with a start frame.
-- Meshes: a scale and a rotation for each mesh of a mesh renderer.
-- Renderer: material, facing, sort mode, cast and receive shadows, sorting
-  order, light probes, motion vectors. Lights get intensity, range scale,
-  shadows and render mode.
-- Only controls that act on the baked data are shown.
-- Prefabs built before this version use a thin PorterParticlePlayer class that
-  inherits all of it, so their saved settings carry over.
-
-What the player does:
-
-- Plays in play mode and in edit mode. In the editor it animates in the Scene
-  view while the prefab sits in a scene, and billboards face the Scene view
-  camera. In edit mode the meshes, helper components, decal material and lights
-  it creates are not saved into your scene or prefab.
-- Meshes: the renderer's mesh copied to every particle with its rotation, scale
-  and position; X along the velocity or to the camera for those facing modes;
-  several meshes picked by each particle's mesh index; the renderer's override
-  materials, a submesh each. The mesh's import needs Read/Write on (the builder
-  turns it on). Meshes with no override materials draw with the default
-  material.
-- Sprites: facing the camera or the particle's own direction, length along the
-  velocity or the emitter's own vector, pivot (including the per-particle Pivot
-  Offset binding), flipbook sub-images, camera offset.
-- Cast Shadows is passed on from the renderer. Camera distance culling of
-  sprites and meshes is baked as a minimum and maximum in metres and applied
-  hard, with a Camera Distance Cull control in the Renderer section.
-- Ribbons: one strip per ribbon ID, points in link order (else age), smoothed
-  through its points, facing modes (view, particle facing, side vector), shapes
-  (plane, multi-plane, tube), U along the ribbon by the renderer's UV0
-  distribution and V across.
-- Lights: a pool of point lights, one per live light particle. Inverse-squared
-  falloff is passed on, and those lights skip the exponent-to-range adjustment.
-- Decals: projected onto the scene by Porter/DecalProject (Scripts), using the
-  decal material's texture and tint (not its graph). Needs the camera depth
-  texture; without the shader, or with projectDecals off, decals are flat quads.
-- Baked sprites and ribbons carry the particle's age and random number in the
-  first free vertex stream slots (_PorterAgeSlot, _PorterRandSlot).
-- A warning is written to the Unity console when a player has no baked data
-  assigned.
+- Each system is saved in its own folder inside Particle Conversions, with its
+  prefab, materials, shaders, textures, meshes and their .meta files. A Shared
+  folder holds the fallback shader the materials may use.
+- If a Unity editor is found, the app builds the prefab for you first, in a
+  hidden Unity project that holds all the helper scripts. The finished folders
+  contain no scripts: drag each converted folder and the Shared folder into your
+  Unity project's Assets.
+- If no Unity editor is found, or a prefab could not be built, the folders also
+  hold the helper scripts and Unity builds the prefab when they are copied in.
 
 What the converter tells you instead of guessing (notes in the output panel and
 the .propreport.txt next to each system):
@@ -197,37 +162,26 @@ the .propreport.txt next to each system):
   from their own settings instead.
 - Colour and Dynamic Parameter curves need particles that lived out their whole
   life. When fewer than 8 did, the system is played again for longer (the longest
-  lifetime plus 2 seconds, at most 30) only to read those curves; the baked replay
-  keeps its length. Values that still never finish a particle's life are not
-  carried, and say so.
+  lifetime plus 2 seconds, at most 30) only to read those curves. Values that
+  still never finish a particle's life are not carried, and say so.
 - Particles that never change get a constant curve.
 - Renderers that read more than 8 Dynamic Parameter values keep the first 8 (two
   vertex streams); the rest are listed as NOT APPLIED.
 - Emitters it cannot convert (for example GPU emitters, or emitters that need
   a vector field that is not in the export) are listed as not converted. GPU
-  emitters are left as still pieces, as the Material Porter does.
+  emitters are built from their CPU scripts.
 - Meshes or materials that are missing from the export are named.
-
-Scripted emitters stay Particle Systems by default. Set PORTER_BAKE_SCRIPTED=1 to play their sprites and meshes from the baked replay instead (PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems, PORTER_BAKE=off bakes nothing). Baked meshes are made readable automatically. The baked mesh path has not been run in Unity.
-
-Converter Options (the gear at the right of the Converter tab, or Converter Options in the sidebar) has a Bake Scripts switch (on by default), next to Fix Problems and Compile in Unity. The Blueprint Converter follows it too. On sets PORTER_BAKE=all and PORTER_BAKE_SCRIPTED=1 for that conversion; off sets PORTER_BAKE=auto and PORTER_BAKE_SCRIPTED=0, so only what a Particle System cannot draw is baked. Baked replays show a Particle System style inspector (playback bar, Main, Color, Size, Renderer, Data).
 
 Every Particle System renderer gets Max Particle Size 555 (Unity's default of 0.5 made particles shrink when the camera came close).
 
-Body anchor: every particle system has a PorterParticleBodyAnchor. Drop the character's body or a bone into Body (or type its name in Body Name) and the whole system is parented to it at zero, so it sits where the Unreal system sat on the rig.
-
 Material instance overrides: blend mode, shading model, two-sided and mask clip set on the material instance are read, so an instance that overrides its parent (for example translucent to opaque) converts as in Unreal. Masked shaders get a hidden Mask Clip value.
 
-The ParticleMeshes folder in Unity only holds meshes Unity generates; exported meshes are in Meshes.
-
 Known limits: material parameter bindings, user-parameter materials, UV scale,
-sub-UV blending, ribbon twist and tension, and a decal material's own graph are
-not read; light brightness is one number (lightScale on the prefab) and is not
+sub-UV blending, ribbon twist and tension, ribbon IDs, camera distance culling
+and a decal material's own graph are not read; light brightness is not
 calibrated against Unreal; a Mesh renderer whose mesh the game sets through a
 user parameter is built as a Particle System; shaders that use dynamic
-parameters must be converted again after the converter is updated. The Niagara
-property names used for the culling range are the ones Unreal's renderer
-properties are expected to use; an export that carries them would confirm it.
+parameters must be converted again after the converter is updated.
 
 
 ## Blueprint Converter

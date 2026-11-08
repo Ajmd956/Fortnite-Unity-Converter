@@ -774,7 +774,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
           <button class="btn primary" id="niagaraBtn">Convert</button>
         </div>
       </div>
-      <div class="hint" style="padding:0 4px">Saved to Particle Conversions. Bake Scripts is in Converter Options.</div>
+      <div class="hint" style="padding:0 4px">Saved to Particle Conversions.</div>
       </div>
       <div class="cv-pane" id="cv-blueprint">
       <div class="row-card col">
@@ -798,7 +798,6 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <button class="nav active"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z"/></svg><span>General</span></button>
       </div>
       <div class="exppane">
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Bake Scripts</div><div class="rc-desc">Plays particles from a baked replay. Off makes plain Unity Particle Systems.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="particleBake" checked><span class="trk"></span><span class="lbl" data-for="particleBake">On</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Fix Problems</div><div class="rc-desc">Fixes problems it finds in a converted shader automatically.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="xFix"><span class="trk"></span><span class="lbl" data-for="xFix">Off</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Compile in Unity</div><div class="rc-desc">Checks each converted shader by compiling it in the Unity Editor.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="xUnity"><span class="trk"></span><span class="lbl" data-for="xUnity">Off</span></label></div></div>
       </div>
@@ -1947,10 +1946,7 @@ function syncToggleLabels() {
   document.querySelectorAll('.tgl .lbl').forEach(l => { l.textContent = $(l.dataset.for).checked ? 'On' : 'Off' })
 }
 
-$('particleBake').onchange = () => { saveSetting({ particleBake: $('particleBake').checked }); syncToggleLabels() }
-
 function fillSettings() {
-  $('particleBake').checked = settings.particleBake !== false
   $('setBridge').value = settings.bridge || ''
   $('setUnity').value = settings.unity || ''
   $('setFnp').value = settings.fnpPath || ''
@@ -2933,7 +2929,7 @@ $('niagaraBtn').onclick = async () => {
     addLine('paste at least one Niagara system path first')
     return
   }
-  const res = await window.api.convertNiagara({ materials, name: $('niagaraName').value.trim(), bake: $('particleBake').checked })
+  const res = await window.api.convertNiagara({ materials, name: $('niagaraName').value.trim() })
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }
@@ -2953,7 +2949,7 @@ $('blueprintBtn').onclick = async () => {
     addLine('paste at least one Blueprint path first')
     return
   }
-  const res = await window.api.convertBlueprint({ paths, name: $('blueprintName').value.trim(), bake: $('particleBake').checked })
+  const res = await window.api.convertBlueprint({ paths, name: $('blueprintName').value.trim() })
   flushLog()
   if (!res.ok) addLine('could not start: ' + res.error)
 }

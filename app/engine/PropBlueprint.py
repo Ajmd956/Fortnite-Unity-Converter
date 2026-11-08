@@ -4,7 +4,6 @@ SKIP_TYPES = {"BoxComponent", "CapsuleComponent", "ChildActorComponent", "FortSo
 DEFAULT_PITCH = (0.95, 1.05)
 report = []
 PATHS = {}
-BAKED = {}      # file name: bytes, the baked replay files finish() writes beside the spec
 
 
 def note(kind, text):
@@ -507,12 +506,6 @@ def collect_assets(spec):
                         add(meshes, m)
                     for m in r.get("materials", []) or []:
                         add(materials, m)
-                for b in e.get("baked", []) or []:
-                    for m in b.get("meshes", []) or []:
-                        add(meshes, m)
-                    add(materials, b.get("material"))
-                    for m in b.get("materials", []) or []:
-                        add(materials, m)
     return meshes, materials, waves
 
 
@@ -532,26 +525,15 @@ def finish(spec, out, bp_name, scripts=None, ship=None):
     os.makedirs(folder, exist_ok=True)
     os.makedirs(os.path.join(out, "Editor"), exist_ok=True)
     meshes, materials, waves = collect_assets(spec)
-    for n in spec["nodes"]:         # a baked renderer draws with its own material
-        for e in (n.get("system") or {}).get("emitters", []):
-            for b in e.get("baked", []):
-                if b.get("material") and b["material"] not in materials:
-                    materials.append(b["material"])
     spec["assets"] = {"meshes": meshes, "materials": materials, "waves": waves}
-    import ParticleBake
-    spec["bakeAll"] = ParticleBake.mode() == "all"
     os.makedirs(os.path.join(out, "Scripts"), exist_ok=True)
-    for fname, blob in BAKED.items():
-        with open(os.path.join(folder, fname), "wb") as fh:
-            fh.write(blob)
     with open(os.path.join(folder, bp_name + ".propspec.json"), "w", encoding="utf-8") as fh:
         json.dump(spec, fh, indent=1)
     with open(os.path.join(folder, bp_name + ".propreport.txt"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(spec["report"]) + "\n")
     here = scripts or os.path.join(os.path.dirname(os.path.abspath(__file__)), "unity")
-    files = ship["files"] if ship else (("PorterBlueprintSetup.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterReplayBuild.cs", "Editor"),
-                                        ("PorterParticleReplay.cs", "Scripts"), ("PorterBakedParticleSystem.cs", "Scripts"), ("PorterParticleController.cs", "Scripts"),
-                                        ("PorterDecalProject.shader", "Scripts"), ("PorterParticleFallback.shader", "Scripts"))
+    files = ship["files"] if ship else (("PorterBlueprintSetup.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterFallbackBuild.cs", "Editor"),
+                                        ("PorterParticleFallback.shader", "Scripts"))
     rename = ship["rename"] if ship else ()
     for fname, sub in files:
         srcf = os.path.join(here, fname)

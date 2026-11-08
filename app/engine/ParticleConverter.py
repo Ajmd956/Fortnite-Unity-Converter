@@ -1,18 +1,15 @@
 import json, os, re, sys
 
-from PropBlueprint import report, BAKED, PATHS, note, load, short, asset_name, vec, rot, dist, rpy_dist, mesh_slots, package_of, finish, Loader
+from PropBlueprint import report, PATHS, note, load, short, asset_name, vec, rot, dist, rpy_dist, mesh_slots, package_of, finish, Loader
 
 
 SHIP = {
-    "files": (("PorterParticleSupport.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterReplayBuild.cs", "Editor"),
-              ("PorterParticleReplay.cs", "Scripts"), ("PorterBakedParticleSystem.cs", "Scripts"), ("PorterParticleController.cs", "Scripts"), ("PorterDecalProject.shader", "Scripts"),
-              ("PorterParticleFallback.shader", "Scripts")),
-    "rename": (("PorterBodyAnchor", "PorterParticleBodyAnchor"), ("PorterParticleReplay", "PorterParticlePlayer"), ("Porter/DecalProject", "Porter/ParticleDecalProject"),
-               ("PorterDecalProject", "PorterParticleDecalProject"),
-               ("Porter/ParticleFallback", "Porter/ParticleConvFallback"), ("PorterParticleFallback", "PorterParticleConvFallback"),
-               ("PorterParticleController", "PorterParticleRoot"), ("PorterBlueprintSetup", "PorterParticleSupport"),
+    "files": (("PorterParticleSupport.cs", "Editor"), ("PorterPropBuilder.cs", "Editor"), ("PorterFallbackBuild.cs", "Editor"),
+              ("PorterParticleFallback.shader", "Shared")),
+    "rename": (("Porter/ParticleFallback", "Porter/ParticleConvFallback"), ("PorterParticleFallback", "PorterParticleConvFallback"),
+               ("PorterBlueprintSetup", "PorterParticleSupport"),
                ("PorterPropBuilder", "PorterParticleBuilder"), ("PorterPropWait", "PorterParticleWait"),
-               ("PorterMiniJson", "PorterParticleMiniJson"), ("PorterReplayBuild", "PorterParticleReplayBuild"),
+               ("PorterMiniJson", "PorterParticleMiniJson"),
                ("Tools/Porter Build Prop Blueprint Prefabs", "Tools/Porter Rebuild Particle Prefabs")),
 }
 
@@ -68,6 +65,14 @@ def renderer_spec(folder, emname, rtype_name, rp):
     elif rs["type"] == "Ribbon":
         rs["material"] = asset_name(rp.get("Material"))
         rs["facing"] = str(rp.get("FacingMode") or "").split("::")[-1]
+    elif rs["type"] == "Decal":
+        rs.update({
+            "material": asset_name(rp.get("DecalMaterial") or rp.get("Material")),
+            "alignment": "Unaligned",
+            "facing": "FaceCamera",
+            "pivot": [0.5, 0.5],
+            "subImage": [1.0, 1.0],
+        })
     elif rs["type"] == "Light":
         rs.update({
             "radiusScale": rp.get("RadiusScale", 1.0),
@@ -387,7 +392,7 @@ def scripted_emitter_spec(loader, system, em, seconds):
         if props.get("bIsEnabled", True):
             rs = renderer_spec(loader, name, rtype, props)
             rs["srcIndex"] = src_index
-            if rs["type"] in ("Mesh", "Sprite"):
+            if rs["type"] in ("Mesh", "Sprite", "Decal"):
                 rs["streams"] = stream_spec(name, em, rs)
             elif rs["type"] == "Light":
                 rs["streams"] = light_stream_spec(name, em, rs)
@@ -411,58 +416,9 @@ def scripted_emitter_spec(loader, system, em, seconds):
     }
 
 
-def bake_emitter(system, em, spec, stem, scripted=False):
-    """Write the baked replay of the renderers of this emitter that need it. They are listed on its spec as "baked",
-    with the material each draws with, and the renderers the Particle System cannot draw are no longer reported as lost."""
-    import NiagaraPorter, ParticleBake
-    track = NiagaraPorter.LAST_TRACKS.get(em["name"])
-    if track is None or ParticleBake.mode() == "off":
-        return
-    recorder, emitter = track
-    baked, notes = [], []
-    # A scripted emitter moves, turns, scales and fades its particles in scripts that starting ranges cannot carry, so its sprites and
-    # meshes are played from the replay (PORTER_BAKE=off turns that off, PORTER_BAKE_MESHES=0 keeps meshes as Particle Systems).
-    bake_mode = ParticleBake.mode()
-    if scripted and bake_mode == "auto" and os.environ.get("PORTER_BAKE_SCRIPTED", "0") == "1":
-        bake_mode = "all"
-    with_meshes = bake_mode != "off" and ((scripted and os.environ.get("PORTER_BAKE_SCRIPTED", "0") == "1") or bake_mode == "all") and os.environ.get("PORTER_BAKE_MESHES", "1") != "0"
-    for i, (rtype, props) in enumerate(NiagaraPorter.renderer_exports(system, emitter)):
-        fname = "%s_%s_%d" % (stem, re.sub(r"[^A-Za-z0-9_]", "_", em["name"]), i)
-        b = ParticleBake.bake_renderer(recorder, rtype, props, fname, notes, dt=NiagaraPorter.DT, bake_mode=bake_mode, meshes=with_meshes,
-                                       system=system, emitter_name=em["name"], cycle=float(em.get("loopPeriod") or 0.0))
-        if b is None:
-            continue
-        BAKED[b["file"]] = b.pop("blob")
-        b["srcIndex"] = i
-        if b["kind"] == "Mesh":
-            rs = next((r for r in spec.get("renderers", []) if r.get("srcIndex") == i), {})
-            b["meshes"] = [asset_name(m.get("Mesh")) for m in (props.get("Meshes") or []) if m and m.get("Mesh")] or [rs.get("mesh")]
-            b["materials"] = rs.get("materials") or []
-        b["material"] = asset_name(props.get("Material")) if b["kind"] in ("Sprite", "Ribbon", "Decal") else None
-        if b["kind"] == "Decal" and not b["material"]:
-            b["material"] = asset_name(props.get("DecalMaterial") or props.get("Material"))
-        b["decalParams"] = props.get("MaterialParameters") if b["kind"] == "Decal" else None
-        b["visibility"] = int(props.get("RendererVisibility", 0) or 0)
-        baked.append(b)
-        note("INFERRED", "%s: %s renderer %d is played back from a baked replay (%s, %d particles over %d ticks)" % (
-            em["name"], b["kind"], i, b["why"], b["rows"], b["frames"]))
-        for r in spec.get("renderers", []):
-            if r.get("srcIndex") == i:
-                r["baked"] = b["file"]
-        if b["kind"] in ("Ribbon", "Decal"):
-            for r in list(report):
-                if r.startswith("UNSUPPORTED: %s: renderer %s" % (em["name"], b["kind"])):
-                    report.remove(r)
-    for n in notes:
-        note("UNSUPPORTED", n)
-    if baked:
-        spec["baked"] = baked
-
-
 def run_system(source, path, out, name, scripts=None, seconds=6.0):
     """A Niagara system as a prefab spec: stateless emitters from their module settings, the rest from a replay."""
     import NiagaraPorter
-    BAKED.clear()
     pkg = package_of(path)
     sysname = pkg.rpartition("/")[2]
     PATHS.setdefault(sysname, path if "." in path.rpartition("/")[2] else path + "." + sysname)
@@ -478,14 +434,7 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
         dump = NiagaraPorter.fetch_dump(source.bridge, path)
     except RuntimeError as ex:
         sys.exit(str(ex))
-    import ParticleBake
-    NiagaraPorter.BAKE_FRAMES = ParticleBake.mode() != "off"
-    NiagaraPorter.MOTION_FIT = ParticleBake.mode() == "off"
-    try:
-        system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
-    finally:
-        NiagaraPorter.BAKE_FRAMES = False
-        NiagaraPorter.MOTION_FIT = False
+    system, summaries, skipped = NiagaraPorter.replay(NiagaraPorter.to_exports(dump), sysname, path, seconds)
     emitters = []
     for em in summaries:
         if em["name"] in stateless:
@@ -494,18 +443,16 @@ def run_system(source, path, out, name, scripts=None, seconds=6.0):
             replayed = replay_position(em)
             if replayed is not None:
                 spec["replayPosition"] = replayed
-            bake_emitter(system, em, spec, sysname)
             emitters.append(spec)
             continue
         spec = scripted_emitter_spec(loader, system, em, seconds)
         if spec is not None:
-            bake_emitter(system, em, spec, sysname, scripted=True)
             emitters.append(spec)
     emitters += list(stateless.values())
     for s in skipped:
         note("UNSUPPORTED", s["emitter"] + ": not converted (" + str(s["why"]) + ")")
     for gname, zeros in getattr(system, "gpu", []):
-        note("INFERRED", gname + ": a GPU emitter, baked from its CPU scripts (Unreal runs it on the GPU)" +
+        note("INFERRED", gname + ": a GPU emitter, built from its CPU scripts (Unreal runs it on the GPU)" +
              ((", these GPU-only calls answered zero: " + ", ".join(zeros[:6])) if zeros else ""))
     report[:] = [r for r in report if "enabled non-stateless emitter" not in r]
     bp_name = name or sysname

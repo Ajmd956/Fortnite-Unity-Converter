@@ -304,30 +304,19 @@ public static partial class PorterPropBuilder
     {
         if (!n.ContainsKey("system") || n["system"] == null) return;
         bool awake = B(n["playOnAwake"], true);
-        if (go.GetComponent<PorterBodyAnchor>() == null) go.AddComponent<PorterBodyAnchor>();
         foreach (var eo in L(D(n["system"])["emitters"]))
-        {
-            BuildReplayEmitter(go, D(eo));
             BuildEmitter(go, D(eo), awake);
-        }
-        // one control for the whole effect; added last so the starting values it remembers are the finished ones
-        var controller = go.GetComponent<PorterParticleController>();
-        if (controller == null) controller = go.AddComponent<PorterParticleController>();
-        controller.Collect();
-        controller.Rebase();
     }
 
     static void BuildEmitter(GameObject parent, Dictionary<string, object> e, bool awake)
     {
-        // renderers played from a baked replay are not Particle System renderers
         var all = L(e["renderers"]);
         var rl = new List<object>();
         for (int i = 0; i < all.Count; i++)
         {
             var ri = D(all[i]);
-            if (ri.ContainsKey("baked")) continue;
             string rkind = ri.ContainsKey("type") ? S(ri["type"]) : "";
-            if (rkind != "Sprite" && rkind != "Mesh" && rkind != "Light" && rkind != "Ribbon")
+            if (rkind != "Sprite" && rkind != "Mesh" && rkind != "Light" && rkind != "Ribbon" && rkind != "Decal")
             {
                 log.Add("NOT APPLIED " + S(e["name"]) + ": " + rkind + " renderer has no Particle System equivalent");
                 continue;
@@ -344,7 +333,7 @@ public static partial class PorterPropBuilder
         for (int i = 0; i < rl.Count; i++)
         {
             string t = S(D(rl[i])["type"]);
-            if (t == "Mesh" || t == "Sprite" || t == "Ribbon" || t == "Light") picks.Add(i);
+            if (t == "Mesh" || t == "Sprite" || t == "Ribbon" || t == "Light" || t == "Decal") picks.Add(i);
         }
         if (picks.Count < 2)
         {
@@ -362,7 +351,7 @@ public static partial class PorterPropBuilder
             if (k > 0) copy["name"] = baseName + "_Renderer" + (k + 1);
             BuildEmitterOne(parent, copy, awake, seed);
         }
-        log.Add("UNVERIFIED " + baseName + ": Unity draws one renderer per Particle System, so its " + picks.Count + " renderers became " + picks.Count + " separate objects (a Light renderer becomes a point light) with identical settings and the same random seed; per-particle random values stay in step only as far as Unity's seeded randomness does");
+        log.Add("UNVERIFIED " + baseName + ": Unity draws one renderer per Particle System, so its " + picks.Count + " renderers became " + picks.Count + " separate objects with identical settings and the same random seed; per-particle random values stay in step only as far as Unity's seeded randomness does");
     }
 
     static void BuildEmitterOne(GameObject parent, Dictionary<string, object> e, bool awake, int sharedSeed)
@@ -377,12 +366,6 @@ public static partial class PorterPropBuilder
         Vector3 posMin = Vector3.zero, posMax = Vector3.zero;
         bool hasPos = mod.ContainsKey("position") && mod["position"] != null;
         if (hasPos) VecRange(mod["position"], out posMin, out posMax);
-
-        if (rtype == "Light")
-        {
-            BuildLightEmitter(go, mod, D(rends[0]), awake, hasPos ? (posMin + posMax) * 0.5f : Vector3.zero);
-            return;
-        }
 
         var ps = go.AddComponent<ParticleSystem>();
         ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -452,11 +435,15 @@ public static partial class PorterPropBuilder
 
         bool isMesh = rtype == "Mesh";
         bool isRibbon = rtype == "Ribbon";
+        bool isLight = rtype == "Light";
+        bool isDecal = rtype == "Decal";
         if (isMesh) BuildMeshParticle(ps, pr, mod, D(rends[0]), name);
         else if (isRibbon) BuildRibbonParticle(ps, pr, mod, D(rends[0]), name);
+        else if (isLight) BuildLightParticle(ps, pr, mod, D(rends[0]), name);
         else BuildSpriteParticle(ps, pr, mod, rends.Count > 0 ? D(rends[0]) : null, name);
-        if (!isRibbon) BuildRotation(ps, mod, isMesh, name);
-        if (!isRibbon) BuildRotationFit(ps, mod, name);
+        if (isDecal) BuildDecalParticle(pr, name);
+        if (!isRibbon && !isLight) BuildRotation(ps, mod, isMesh, name);
+        if (!isRibbon && !isLight) BuildRotationFit(ps, mod, name);
         if (rends.Count > 0 && D(rends[0]).ContainsKey("castShadows") && B(D(rends[0])["castShadows"], false))
             pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         if (e.ContainsKey("unhandledModules") && L(e["unhandledModules"]).Count > 0)
@@ -471,7 +458,7 @@ public static partial class PorterPropBuilder
             log.Add("NOT APPLIED " + name + ": SubUV animation (" + S(su["frames"]) + " frames, mode " + S(su["mode"]) + "); only sprite emitters get sheet animation");
         }
 
-        bool streamed = !isRibbon && BuildColorStreams(ps, pr, mod, name, rends.Count > 0 ? D(rends[0]) : null);
+        bool streamed = !isRibbon && !isLight && BuildColorStreams(ps, pr, mod, name, rends.Count > 0 ? D(rends[0]) : null);
         if (!streamed && mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
         {
             var values = L(D(mod["scaleColor"])["values"]);
@@ -501,14 +488,10 @@ public static partial class PorterPropBuilder
         return Mathf.Clamp(Mathf.CeilToInt(peak * 1.5f) + 16, 64, 50000);
     }
 
-    static void BuildLightEmitter(GameObject go, Dictionary<string, object> mod, Dictionary<string, object> r, bool awake, Vector3 uePos)
+    static void BuildLightParticle(ParticleSystem ps, ParticleSystemRenderer pr, Dictionary<string, object> mod, Dictionary<string, object> r, string name)
     {
-        go.transform.localPosition = P(uePos) * CmToM;
-        var l = go.AddComponent<Light>();
-        l.type = LightType.Point;
-        l.enabled = awake;
-        l.shadows = LightShadows.None;
-        l.range = (float)N(r["radiusScale"], 1);
+        pr.renderMode = ParticleSystemRenderMode.None;
+        float range = (float)N(r["radiusScale"], 1);
         Color c = Color.white;
         if (mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
         {
@@ -530,7 +513,7 @@ public static partial class PorterPropBuilder
                 float meanRadius = radiusSum / radii.Count;
                 if (meanRadius > 0f)
                 {
-                    l.range = meanRadius * (float)N(r["radiusScale"], 1) * CmToM;
+                    range = meanRadius * (float)N(r["radiusScale"], 1) * CmToM;
                     fromReplay = true;
                 }
             }
@@ -552,10 +535,54 @@ public static partial class PorterPropBuilder
                 }
             }
         }
+        var temp = new GameObject(Safe(name) + "_Light");
+        var l = temp.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.shadows = LightShadows.None;
+        l.range = range;
         l.color = c.gamma;
         l.intensity = 1f;
-        if (fromReplay) log.Add("APPROX light emitter " + go.name + ": range " + l.range.ToString("0.##") + " m and colour are the replayed light's averages over its life, intensity 1, and the light stays on for as long as the system plays");
-        else log.Add("APPROX light emitter " + go.name + ": colour from first colour-scale key, intensity 1, range " + l.range.ToString("0.##") + " m (no replayed radius or colour for this light)");
+        string lightPath = specFolder + "/" + Safe(name) + "_Light.prefab";
+        var saved = PrefabUtility.SaveAsPrefabAsset(temp, lightPath);
+        UnityEngine.Object.DestroyImmediate(temp);
+        var lights = ps.lights;
+        lights.enabled = true;
+        lights.light = saved != null ? saved.GetComponent<Light>() : null;
+        lights.ratio = 1f;
+        lights.useRandomDistribution = false;
+        lights.useParticleColor = false;
+        lights.sizeAffectsRange = false;
+        lights.alphaAffectsIntensity = false;
+        lights.range = new ParticleSystem.MinMaxCurve(1f);
+        bool faded = false;
+        if (mod.ContainsKey("scaleColor") && mod["scaleColor"] != null)
+        {
+            var vals = L(D(mod["scaleColor"])["values"]);
+            var peaks = new float[vals.Count];
+            float top = 0f;
+            for (int i = 0; i < vals.Count; i++)
+            {
+                var kv = D(vals[i]);
+                peaks[i] = Mathf.Max((float)N(kv["R"], 1), Mathf.Max((float)N(kv["G"], 1), (float)N(kv["B"], 1)));
+                top = Mathf.Max(top, peaks[i]);
+            }
+            if (top > 0f && vals.Count > 1)
+            {
+                var curve = new AnimationCurve();
+                for (int i = 0; i < peaks.Length; i++) curve.AddKey(i / (float)(peaks.Length - 1), peaks[i] / top);
+                for (int i = 0; i < curve.length; i++) curve.SmoothTangents(i, 0f);
+                lights.intensity = new ParticleSystem.MinMaxCurve(1f, curve);
+                faded = true;
+            }
+        }
+        if (!faded) lights.intensity = new ParticleSystem.MinMaxCurve(1f);
+        log.Add("APPROX " + name + ": light renderer built as the Particle System Lights module with its own light prefab " + Safe(name) + "_Light.prefab (range " + range.ToString("0.##") + " m, " + (fromReplay ? "colour and range are the replayed light's averages" : "colour from the first colour-scale key") + ", intensity " + (faded ? "follows the colour scale over the particle's life" : "constant 1") + "); a light exists for each live particle, up to the module's Max Lights");
+    }
+
+    static void BuildDecalParticle(ParticleSystemRenderer pr, string name)
+    {
+        pr.renderMode = ParticleSystemRenderMode.HorizontalBillboard;
+        log.Add("APPROX " + name + ": decal renderer built as a Horizontal Billboard particle lying flat on the ground (a Particle System cannot project onto surfaces); the decal material's texture and tint are used and it does not wrap over uneven ground");
     }
 
     static bool ReplayRange(Dictionary<string, object> e, out Vector3 lo, out Vector3 hi)

@@ -22,11 +22,7 @@ INITIAL_ATTRIBUTES = ("Position", "Velocity", "SpriteRotation", "MeshOrientation
 STREAM_POINTS = 16
 STREAM_MIN_PARTICLES = 8    # complete particles wanted behind a colour or Dynamic Parameter curve
 STREAM_MAX_SECONDS = 30.0   # the longest replay made only to read those curves
-BAKE_FRAMES = False         # keep every tick's particles so ParticleBake can write the replay files
-MOTION_FIT = False          # also follow each particle's velocity, rotation and ribbon width over its age, for the Particle System fit
-BAKE_TAIL = float(os.environ.get("PORTER_BAKE_TAIL", "4.0"))    # seconds recorded past the replay, so particles born near its end live out their life
-BAKE_MOST_ROWS = 400000     # particles over all ticks, per emitter; past that its replay is not written
-LAST_TRACKS = {}            # emitter name: (recorder, emitter) from the last replay()
+MOTION_FIT = True           # also follow each particle's velocity, rotation and ribbon width over its age, for the Particle System fit
 BINDINGS = (("ColorBinding", "Color"), ("DynamicMaterialBinding", "DynamicMaterialParameter"),
             ("DynamicMaterial1Binding", "DynamicMaterialParameter1"), ("DynamicMaterial2Binding", "DynamicMaterialParameter2"),
             ("DynamicMaterial3Binding", "DynamicMaterialParameter3"))
@@ -58,7 +54,7 @@ def tracked_names(system, emitter):
             add(renderer_bindings(props)[0])
             add(binding_name(props, "RadiusBinding", "LightRadius"))
             continue
-        if "Mesh" not in rtype and "Sprite" not in rtype and not (MOTION_FIT and "Ribbon" in rtype):
+        if "Mesh" not in rtype and "Sprite" not in rtype and "Decal" not in rtype and not (MOTION_FIT and "Ribbon" in rtype):
             continue
         color, dps = renderer_bindings(props)
         for n in [color] + dps:
@@ -134,28 +130,13 @@ class Recorder:
         self.sizes = []         # and its size (3, n): sprite size (x, y, 1) or mesh scale
         self.sprite = False
         self.initial = {}       # per attribute: what each particle was born with, (components, born) per birth tick
-        self.frames = []        # every tick's particles as the emitter holds them: (floats, ints), for the baked replay
-        self.frame_rows = 0     # particles over all of those ticks
-        self.layout = None      # the emitter's data layout: where each attribute sits in those frames
-        self.truncated = False  # the frames stopped at the limit and do not hold the whole replay (no longer set: see step)
-        self.step = 1           # one stored tick in every `step` ticks; doubles instead of dropping the replay when it grows too long
-        self.tickno = 0
+        self.layout = None      # the emitter's data layout
         self.window = None      # seconds of the replay that count as spawning time; what comes after is only the tail
 
     def tick(self, e, t0):
         count = int(e.data.count)
         if self.layout is None:
             self.layout = e.layout
-        if BAKE_FRAMES and not self.truncated:
-            if self.tickno % self.step == 0:
-                self.frames.append((e.data.floats[:, :count].copy(), e.data.ints[:, :count].copy()))
-                self.frame_rows += count
-                # too many particle-ticks: keep every second stored tick (the replay's tick length doubles) rather than lose the renderer
-                while self.frame_rows > BAKE_MOST_ROWS and len(self.frames) > 4:
-                    self.frames = self.frames[::2]
-                    self.step *= 2
-                    self.frame_rows = sum(int(f[0].shape[1] if f[0].shape[0] else f[1].shape[1]) for f in self.frames)
-            self.tickno += 1
         self.max_alive = max(self.max_alive, count)
         born = int(getattr(e, "born", 0))
         rows = {}
@@ -554,9 +535,8 @@ def replay(exports, name, source, seconds):
     if asset is None:
         kinds = sorted({e["type"] for e in exports})
         sys.exit("%s is not a Niagara system (it holds: %s)" % (source, ", ".join(kinds[:8])))
-    total = seconds + (BAKE_TAIL if BAKE_FRAMES else 0.0)
-    print("playing %s for %.0f seconds%s" % (name, seconds, (" (+%.0f s tail for the baked replay)" % BAKE_TAIL) if total > seconds else ""))
-    LAST_TRACKS.clear()
+    total = seconds
+    print("playing %s for %.0f seconds" % (name, seconds))
     system, recorders = play(exports, {}, total)
     for r in recorders.values():
         r.window = seconds
@@ -577,7 +557,6 @@ def replay(exports, name, source, seconds):
     for e in system.emitters:
         source_emitter = next((x for x in gsys.emitters if x.name == e.name), e) if e.name in gated else e
         emitters.append(summarize(system, source_emitter, recorders[e.name], gated.get(e.name, []), approximate))
-        LAST_TRACKS[e.name] = (recorders[e.name], source_emitter)
     for em in emitters:
         em["streamSeconds"] = r4(seconds)
     extend_streams(exports, emitters, recorders, gated, seconds)
@@ -586,7 +565,7 @@ def replay(exports, name, source, seconds):
 
 def extend_streams(exports, emitters, recorders, gated, seconds):
     """Colour and Dynamic Parameter curves need particles that lived out their whole life. Where too few did in the
-    replay, play the system again for longer, only to read those curves. The baked replay keeps its own length."""
+    replay, play the system again for longer, only to read those curves."""
     need = []
     for em in emitters:
         r = recorders.get(em["name"])
@@ -604,22 +583,16 @@ def extend_streams(exports, emitters, recorders, gated, seconds):
     if longer <= seconds + 0.25:
         return
     print("playing %s again for %.0f seconds to read curves over age" % (", ".join(em["name"] for em in need), longer))
-    global BAKE_FRAMES
-    saved = BAKE_FRAMES
-    BAKE_FRAMES = False
-    try:
-        grouped = {}
-        for em in need:
-            key = tuple(gated.get(em["name"], []))
-            if key not in grouped:
-                _, grouped[key] = play(exports, {n: [1.0] for n in key}, longer)
-            rec = grouped[key].get(em["name"])
-            if rec is None:
-                continue
-            em["streams"] = stream_curves(rec)
-            if MOTION_FIT:
-                em["motion"] = motion_fit(rec)
-            em["incompleteStreams"] = list(getattr(rec, "incomplete", []))
-            em["streamSeconds"] = r4(longer)
-    finally:
-        BAKE_FRAMES = saved
+    grouped = {}
+    for em in need:
+        key = tuple(gated.get(em["name"], []))
+        if key not in grouped:
+            _, grouped[key] = play(exports, {n: [1.0] for n in key}, longer)
+        rec = grouped[key].get(em["name"])
+        if rec is None:
+            continue
+        em["streams"] = stream_curves(rec)
+        if MOTION_FIT:
+            em["motion"] = motion_fit(rec)
+        em["incompleteStreams"] = list(getattr(rec, "incomplete", []))
+        em["streamSeconds"] = r4(longer)
