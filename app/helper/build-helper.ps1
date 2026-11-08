@@ -79,7 +79,7 @@ if (Test-Path -LiteralPath $lodSource) {
 }
 
 $out = Join-Path $app 'engine\bin'
-& $dotnetExe publish (Join-Path $here 'FileLister\FileLister.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=false -p:GenerateDocumentationFile=false -p:SatelliteResourceLanguages=en --nologo -v:q -maxcpucount -p:DebugType=none -o $out
+& $dotnetExe publish (Join-Path $here 'FileLister\FileLister.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=false -p:GenerateDocumentationFile=false -p:SatelliteResourceLanguages=en --nologo -v:q -maxcpucount -p:DebugType=embedded -o $out
 if ($LASTEXITCODE -ne 0) { exit 1 }
 if (-not (Test-Path -LiteralPath (Join-Path $out 'FortniteFileLister.exe'))) { exit 1 }
 exit 0
