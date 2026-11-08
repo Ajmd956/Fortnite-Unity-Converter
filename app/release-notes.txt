@@ -1,0 +1,4 @@
+- New How to Use page: welcome text and a step-by-step summary on top, then a video player with the app's own controls. The video pauses when you leave the page
+- App Settings, Application page regrouped into General, Files, Preview, Display, Audio, Updates and Advanced
+- Version numbers move to 2.1.x after 2.0.99
+- Release notes in the update pop-up now describe the actual changes

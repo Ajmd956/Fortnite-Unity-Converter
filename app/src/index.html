@@ -52,8 +52,20 @@ button:disabled{opacity:.5;cursor:default !important;}
 .acct-menu.open{display:flex;}
 .acct-menu .am-t{font-size:12px;color:var(--muted);line-height:15px;}
 .acct-menu .btn{justify-content:center;}
-.howto{display:flex;flex-direction:column;gap:12px;}
-.howto video{width:100%;display:block;border-radius:16px;background:#000;box-shadow:var(--card-shadow);}
+#page-howto{flex:1 1 auto;}
+.howto{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:8px;}
+.howto>.row-card .rc-ctl{flex:0 0 auto;}
+.hv-wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:8px;}
+.hv-slot{flex:1 1 auto;min-height:140px;display:flex;align-items:center;justify-content:center;container-type:size;}
+.hv-box{width:min(100cqw,calc(100cqh * 16 / 9));}
+.hv{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:16px;overflow:hidden;box-shadow:var(--card-shadow);}
+.hv video{width:100%;height:100%;display:block;object-fit:contain;cursor:pointer;}
+.hv-ctl{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:32px 12px 10px;background:linear-gradient(to top,#000000d0,#00000000);opacity:0;pointer-events:none;transition:opacity .2s ease;}
+.hv.ctl-on .hv-ctl{opacity:1;pointer-events:auto;}
+.hv-ctl .btn.ico{width:32px;height:32px;flex:none;}
+.hv-ctl .sld{height:32px;}
+.hv-time{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+input[type=range].sld.hv-seek{flex:1 1 auto;width:auto;min-width:0;}
 .welcome-logo{width:56px;height:56px;display:block;margin:0 auto 12px;}
 
 .side{overflow-y:auto;scrollbar-width:none;width:max(225px,14.2857vw);flex:0 0 auto;display:flex;flex-direction:column;background:transparent;padding:16px 8px;}
@@ -823,8 +835,18 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 
     <div class="page" id="page-howto">
       <div class="howto">
-        <div class="row-card"><div class="rc-text"><div class="rc-title">How to use the app</div><div class="rc-desc">Find a material in Files, add it to Convert, press Convert, then drag the saved shader folder into your Unity project's Assets. The video below shows it start to finish.</div></div></div>
-        <video id="howtoVideo" src="../assets/ui/howto.webm" controls loop muted playsinline preload="metadata" onerror="this.style.display='none'"></video>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Welcome, new user</div><div class="rc-desc">Watch the video below. In Files, right-click a material and choose Copy Path Without Extension. Open Converter, paste it under Material Paths, name the shader if you like and press Convert. Then press Open shader and drag that folder into your Unity project's Assets.</div></div><div class="rc-ctl"><button class="btn sm" id="howtoWelcome">Show welcome</button></div></div>
+        <div class="hv-wrap" id="hvWrap">
+          <div class="hv-slot" id="hvSlot"><div class="hv-box">
+            <div class="hv" id="hv"><video id="howtoVideo" src="../assets/ui/howto.webm" loop muted playsinline preload="metadata" onerror="this.style.display='none'"></video>
+              <div class="hv-ctl">
+            <button class="btn ico" id="hvPP" title="Play" aria-label="Play or pause"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg></button>
+            <span class="hv-time" id="hvTime">0:00 / 0:00</span>
+            <input type="range" class="sld hv-seek" id="hvSeek" min="0" max="1000" step="1" value="0" aria-label="Seek">
+              </div>
+            </div>
+          </div></div>
+        </div>
       </div>
     </div>
 
@@ -917,19 +939,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       <div class="subpane active" id="sub-application">
         <div class="sec-head">General</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Assets Folder (Optional)</div><div class="rc-desc">The folder in which all assets will export to. Defaults to Documents/Fortnite Unity Converter/Exports.</div></div><div class="rc-ctl"><label class="check-row"><input type="checkbox" id="setUseExports"></label><input type="text" id="setExports" spellcheck="false" placeholder="Ex. D:/Art/FortniteUnity/Assets"><button class="btn sm ico" id="browseExports" title="Browse"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg></button></div></div>
-        <div class="sec-head">Display</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Tab Transitions</div><div class="rc-desc">Toggles the transition that plays when switching between tabs.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setTransitions"><span class="trk"></span><span class="lbl" data-for="setTransitions">Off</span></label></div></div>
-        <div class="sec-head">Audio</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Audio Device</div><div class="rc-desc">The device that should be used for audio playback.</div></div><div class="rc-ctl"><div class="dd" id="ddAudio"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Volume</div><div class="rc-desc">The output volume used for audio playback.</div></div><div class="rc-ctl"><svg class="vol-ic" id="volIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg><div class="sld-wrap"><input type="range" class="sld" id="setVolume" min="0" max="1" step="0.05" value="1"><div class="sld-ticks" id="volTicks"></div></div></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Conversion Sound</div><div class="rc-desc">Plays a sound when a shader, particle system or Blueprint finishes converting.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setConvSound" checked><span class="trk"></span><span class="lbl" data-for="setConvSound">On</span></label></div></div>
-        <div class="sec-head">Loading</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Default Export Location</div><div class="rc-desc">The default export location used on startup.</div></div><div class="rc-ctl"><div class="dd" id="ddDest"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
-        <div class="sec-head">Other</div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Show Developer Settings</div><div class="rc-desc">Enables the developer settings tab.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setDev"><span class="trk"></span><span class="lbl" data-for="setDev">Off</span></label></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Enable Experimental Settings</div><div class="rc-desc">Shows features that are still being tested. They may change or break.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExperimental"><span class="trk"></span><span class="lbl" data-for="setExperimental">Off</span></label></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Check for Updates</div><div class="rc-desc">Checks for a new version when the app starts and every few hours.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setCheckUpd"><span class="trk"></span><span class="lbl" data-for="setCheckUpd">Off</span></label></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc"><span id="updVersion">Fortnite Unity Converter</span></div></div><div class="rc-ctl"><button class="btn sm" id="updCheckBtn">Check now</button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Default Export Location</div><div class="rc-desc">Where files are sent by default each time the app starts.</div></div><div class="rc-ctl"><div class="dd" id="ddDest"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="sec-head">Files</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Double-Click Action</div><div class="rc-desc">What double-clicking a file does</div></div><div class="rc-ctl"><div class="dd" id="ddDbl"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4H8V6H6V8H4V4M20,4V8H18V6H16V4H20M4,20V16H6V18H8V20H4M20,20H16V18H18V16H20V20M12,7L16,9.2V13.8L12,16L8,13.8V9.2L12,7Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Grid Item Size</div><div class="rc-desc">How large the folders and files are in the grid view.</div></div><div class="rc-ctl"><div class="dd" id="ddGrid"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
@@ -938,6 +948,18 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="row-card"><div class="rc-text"><div class="rc-title">Image Background</div><div class="rc-desc">The background shown behind textures in the preview window.</div></div><div class="rc-ctl"><div class="dd" id="ddPvBg"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,4H8V6H6V8H4V4M20,4V8H18V6H16V4H20M4,20V16H6V18H8V20H4M20,20H16V18H18V16H20V20M12,7L16,9.2V13.8L12,16L8,13.8V9.2L12,7Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Show Grid in 3D Previews</div><div class="rc-desc">Draws a floor grid under models in the 3D preview.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setPvGrid"><span class="trk"></span><span class="lbl" data-for="setPvGrid">Off</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Preview Cache</div><div class="rc-desc"><span id="pvCacheSize">Calculating...</span></div></div><div class="rc-ctl"><button class="btn sm" id="pvClear">Clear</button></div></div>
+        <div class="sec-head">Display</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Tab Transitions</div><div class="rc-desc">Toggles the transition that plays when switching between tabs.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setTransitions"><span class="trk"></span><span class="lbl" data-for="setTransitions">Off</span></label></div></div>
+        <div class="sec-head">Audio</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Audio Device</div><div class="rc-desc">The device that should be used for audio playback.</div></div><div class="rc-ctl"><div class="dd" id="ddAudio"><button class="btn dd-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg><span class="v"></span><svg class="ch" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/></svg></button><div class="dd-menu"></div></div></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Volume</div><div class="rc-desc">The output volume used for audio playback.</div></div><div class="rc-ctl"><svg class="vol-ic" id="volIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg><div class="sld-wrap"><input type="range" class="sld" id="setVolume" min="0" max="1" step="0.05" value="1"><div class="sld-ticks" id="volTicks"></div></div></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Conversion Sound</div><div class="rc-desc">Plays a sound when a shader, particle system or Blueprint finishes converting.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setConvSound" checked><span class="trk"></span><span class="lbl" data-for="setConvSound">On</span></label></div></div>
+        <div class="sec-head">Updates</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Check for Updates</div><div class="rc-desc">Checks for a new version when the app starts and every few hours.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setCheckUpd"><span class="trk"></span><span class="lbl" data-for="setCheckUpd">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc"><span id="updVersion">Fortnite Unity Converter</span></div></div><div class="rc-ctl"><button class="btn sm" id="updCheckBtn">Check now</button></div></div>
+        <div class="sec-head">Advanced</div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Show Developer Settings</div><div class="rc-desc">Enables the developer settings tab.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setDev"><span class="trk"></span><span class="lbl" data-for="setDev">Off</span></label></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Enable Experimental Settings</div><div class="rc-desc">Shows features that are still being tested. They may change or break.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExperimental"><span class="trk"></span><span class="lbl" data-for="setExperimental">Off</span></label></div></div>
       </div>
       <div class="subpane" id="sub-developer">
         <div class="sec-head">Fallback</div>
@@ -1091,7 +1113,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
   <div class="panel done-panel">
     <img class="welcome-logo" src="../assets/logo.png" alt="" draggable="false">
     <h2>Welcome, new user</h2>
-    <div class="done-sub">Here is a quick tutorial on how to use the app. It is a short video of converting a shader, and you can watch it again any time from How to Use.</div>
+    <div class="done-sub">Here is a quick video on how to use the app. It shows a shader being converted, and you can watch it again any time from How to Use.</div>
     <div style="display:flex;gap:8px">
       <button class="btn" id="welcomeSkip" style="flex:1;justify-content:center">Skip</button>
       <button class="btn primary" id="welcomeGo" style="flex:1;justify-content:center">Show me how</button>
@@ -1905,6 +1927,7 @@ function showTab(name) {
     lb.classList.remove('fade')
     if (prev !== name && (name === 'converter' || name === 'check') && transitionsOn()) { void lb.offsetWidth; lb.classList.add('fade') }
   }
+  if (name !== 'howto') { const hv = document.getElementById('howtoVideo'); if (hv) hv.pause() }
   if (name === 'shaders') refreshShaders()
   if (name === 'files') openFiles()
   if (name === 'settings') fillSettings()
@@ -2107,9 +2130,12 @@ $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
 const NEWS_DATE = 'Oct 24'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Blueprints bake, cleaner particle inspector', date: NEWS_DATE }
+const NEWS_FEATURED = { title: 'Latest release', sub: 'New How to Use page, tidier settings, clearer release notes', date: 'Nov 8' }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'App', date: 'Nov 8', title: 'New How to Use page', sub: 'A video player that matches the app.', body: 'How to Use now starts with a short welcome and a summary of what the video shows, and the video sits right under it. The browser\'s plain player controls are replaced with controls in the app\'s own style: a play and pause button, the time, and a bar you can click to jump around. The Show welcome button brings back the first-run welcome pop-up. The video also pauses when you switch to another tab.' },
+  { tag: 'Settings', date: 'Nov 8', title: 'Settings regrouped', sub: 'Related settings now sit together.', body: 'The Application page in App Settings is now grouped as General, Files, Preview, Display, Audio, Updates and Advanced. Default Export Location moved up next to the Assets Folder instead of sitting alone under Loading. Check for Updates and Version are together under Updates, and the Developer and Experimental switches are under Advanced. No setting was removed or changed.' },
+  { tag: 'Updates', date: 'Nov 8', title: 'Version numbers and release notes', sub: 'Next version is 2.1.0, notes list real changes.', body: 'Version numbers were counting up as 2.0.97, 2.0.98 and so on. The release after 2.0.99 is now 2.1.0, then 2.1.1 and up, so the number stays short. Release notes shown in the update pop-up are now written by hand for each release, and only fall back to the list of changes when none were written. The vague line Small fixes and improvements is gone.' },
   { tag: 'Particles', title: 'Baked particle fixes', sub: 'Blueprints bake, cleaner inspector.', body: 'The Blueprint Converter now follows Bake Scripts in Converter Options, so its particles are played from baked replays. The Baked Particle System inspector follows the Unity Particle System layout: Main, then the modules in Unity\'s order, then Renderer and Data, and it hides controls that do nothing for that kind (lights have no size or rotation, ribbons no rotation). Light falloff now uses the baked exponent. A baked mesh with a missing material no longer shifts the other materials, and materials the export has no path for are listed when the conversion finishes.' },
   { tag: 'Converter', title: 'Converter Options', sub: 'Export Options is now Converter Options.', body: 'Export Options is now Converter Options. Bake Scripts moved there from the Particle Converter tab, next to Fix Problems and Compile in Unity. The new gear at the right of the Converter tab opens it. The text in the Converter tab is shorter too.' },
   { tag: 'Particles', title: 'Edit baked particles', sub: 'The particle player now looks like Unity\'s.', body: 'The baked particle player has a Unity Particle System style inspector: a Main module (start lifetime, speed, size, rotation, colour, gravity modifier, simulation space, seed) and modules with on/off boxes for Shape, Velocity, Force, Color, Size, Opacity, Rotation, Noise and Simulation. GPU emitters are now baked from their CPU scripts when the game files keep them. The Particle tab switch is now a small Bake Scripts toggle.' },
@@ -2173,7 +2199,7 @@ function renderNews() {
     pic.appendChild(logo)
     const meta = newsDiv('news-meta')
     meta.appendChild(newsTag(e.tag))
-    meta.appendChild(newsDiv('news-date', NEWS_DATE))
+    meta.appendChild(newsDiv('news-date', e.date || NEWS_DATE))
     const body = newsDiv('news-body')
     body.appendChild(newsDiv('news-t', e.title))
     body.appendChild(newsDiv('news-d', e.sub))
@@ -2198,7 +2224,7 @@ function renderNews() {
     c.appendChild(newsDiv('nw-pic'))
     const meta = newsDiv('news-meta')
     meta.appendChild(newsTag(e.tag))
-    meta.appendChild(newsDiv('news-date', NEWS_DATE))
+    meta.appendChild(newsDiv('news-date', e.date || NEWS_DATE))
     const body = newsDiv('news-body')
     body.appendChild(newsDiv('news-t', e.title))
     body.appendChild(newsDiv('news-d', e.sub))
@@ -3999,6 +4025,45 @@ $('acctOut').onclick = async () => {
 }
 document.addEventListener('click', e => { if (!e.target.closest('#acctMenu')) closeAcctMenu() })
 window.api.accountGet().then(a => { account = a; paintAccount() }).catch(() => {})
+
+// How to Use: the video has its own controls so the player matches the app
+const HV_PLAY = 'M8,5.14V19.14L19,12.14L8,5.14Z'
+const HV_PAUSE = 'M14,19H18V5H14M6,19H10V5H6V19Z'
+const hvVid = $('howtoVideo')
+function hvFmt(t) { t = Math.max(0, Math.floor(t || 0)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') }
+function hvPaint() {
+  const d = isFinite(hvVid.duration) ? hvVid.duration : 0
+  const frac = d ? Math.min(1, hvVid.currentTime / d) : 0
+  if (!hvSeeking) $('hvSeek').value = Math.round(frac * 1000)
+  $('hvSeek').style.setProperty('--f', 'calc(11px + (100% - 22px) * ' + (hvSeeking ? $('hvSeek').value / 1000 : frac) + ')')
+  $('hvTime').textContent = hvFmt(hvVid.currentTime) + ' / ' + hvFmt(d)
+  $('hvPP').querySelector('path').setAttribute('d', hvVid.paused ? HV_PLAY : HV_PAUSE)
+  $('hvPP').title = hvVid.paused ? 'Play' : 'Pause'
+}
+let hvSeeking = false
+function hvToggle() { if (hvVid.paused) hvVid.play().catch(() => {}); else hvVid.pause() }
+;['timeupdate', 'loadedmetadata', 'play', 'pause', 'durationchange'].forEach(n => hvVid.addEventListener(n, hvPaint))
+$('hvPP').onclick = hvToggle
+hvVid.onclick = hvToggle
+$('hvSeek').oninput = () => {
+  hvSeeking = true
+  if (isFinite(hvVid.duration)) hvVid.currentTime = $('hvSeek').value / 1000 * hvVid.duration
+  hvPaint()
+}
+$('hvSeek').onchange = () => { hvSeeking = false; hvPaint() }
+let hvIdle = 0
+function hvShow() {
+  const box = $('hv')
+  box.classList.add('ctl-on')
+  clearTimeout(hvIdle)
+  if (!hvVid.paused && !hvSeeking) hvIdle = setTimeout(() => box.classList.remove('ctl-on'), 2500)
+}
+$('hv').addEventListener('mousemove', hvShow)
+$('hv').addEventListener('pointerdown', hvShow)
+$('hv').addEventListener('mouseleave', () => { if (!hvSeeking) { clearTimeout(hvIdle); $('hv').classList.remove('ctl-on') } })
+hvVid.addEventListener('pause', () => { clearTimeout(hvIdle) })
+$('howtoWelcome').onclick = () => $('welcomeOverlay').classList.add('open')
+hvPaint()
 
 function closeWelcome(go) {
   $('welcomeOverlay').classList.remove('open')

@@ -38,7 +38,10 @@ jobs:
         run: |
           V="$INPUT_VERSION"
           # 2.0.x so every automatic release is newer than the published v2.0.0 and installed apps are offered it
-          if [ -z "$V" ]; then V="2.0.$RUN_NUMBER"; fi
+          # Runs 1-99 are 2.0.x. From run 100 the minor number goes up, so it is 2.1.0, 2.1.1 and so on instead of 2.0.100
+          if [ -z "$V" ]; then
+            if [ "$RUN_NUMBER" -lt 100 ]; then V="2.0.$RUN_NUMBER"; else V="2.1.$((RUN_NUMBER - 100))"; fi
+          fi
           V="${V#v}"
           if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::The version must look like 1.0.1"
@@ -114,9 +117,14 @@ jobs:
           TAG="v$VERSION"
           PREV="$( (git tag --list 'v[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n 1) || true)"
           if [ -n "$PREV" ]; then RANGE="$PREV..HEAD"; else RANGE="-n 15"; fi
-          # one line per change: the title of each commit since the previous release
-          (git log --no-merges --format='%s' $RANGE | grep -viE '^(readme|merge|workflow|ci[: ])' | sed 's/^/- /' > release-notes.txt) || true
-          if [ ! -s release-notes.txt ]; then echo "- Small fixes and improvements" > release-notes.txt; fi
+          # Notes written by hand in app/release-notes.txt are used when that file changed since the last release.
+          # Otherwise it is one line per change: the title of each commit since the previous release.
+          if [ -n "$PREV" ] && ! git diff --quiet "$PREV"..HEAD -- app/release-notes.txt 2>/dev/null && [ -s app/release-notes.txt ]; then
+            cp app/release-notes.txt release-notes.txt
+          else
+            (git log --no-merges --format='%s' $RANGE | grep -viE '^(readme|merge|workflow|ci[: ])' | sed 's/^/- /' > release-notes.txt) || true
+          fi
+          if [ ! -s release-notes.txt ]; then echo "- Internal changes only. Nothing you will notice in the app." > release-notes.txt; fi
           cat release-notes.txt
 
       - name: Publish the release
