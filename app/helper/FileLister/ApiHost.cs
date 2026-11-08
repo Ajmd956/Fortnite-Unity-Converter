@@ -133,11 +133,11 @@ static class AssetExport
                         var mres = await RunWithDiag(provider, stem, mobj, true, () => RunWithRetry(
                             () => { var s1 = new ExportSession(); s1.Add(mobj); return s1.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png)); },
                             () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); }),
-                            r => r.All(x => !x.Success),
+                            r => !HasModelFile(r),
                             true));
                         var bad = mres.FirstOrDefault(r => !r.Success);
-                        if (bad is not null && mres.All(r => !r.Success))
-                            throw new InvalidDataException((bad.Error?.Message ?? "export failed") + " " + MeshDiag(provider, stem, mobj));
+                        if (!HasModelFile(mres))
+                            throw new InvalidDataException((bad?.Error?.Message ?? "the export produced no model file") + " " + MeshDiag(provider, stem, mobj));
                         var made = Directory.EnumerateFiles(work, "*", SearchOption.AllDirectories).ToList();
                         var model = made.FirstOrDefault(f => f.EndsWith(".glb", StringComparison.OrdinalIgnoreCase))
                                     ?? made.FirstOrDefault(f => f.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase))
@@ -165,12 +165,13 @@ static class AssetExport
                     var results = await RunWithDiag(provider, stem, obj, kind == "model", () => RunWithRetry(
                         () => { var s1 = new ExportSession(); s1.Add(obj); return s1.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png)); },
                         () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); }),
-                        r => r.All(x => !x.Success),
+                        r => !HasModelFile(r),
                         kind == "model"));
                     var failed = results.FirstOrDefault(r => !r.Success);
-                    if (failed is not null && results.All(r => !r.Success))
-                        throw kind == "model" ? new InvalidDataException((failed.Error?.Message ?? "export failed") + " " + MeshDiag(provider, stem, obj)) : (failed.Error ?? new InvalidDataException("export failed"));
-                    var first = results.SelectMany(r => r.DiskFilePaths ?? Array.Empty<string>()).FirstOrDefault();
+                    if (kind == "model" ? !HasModelFile(results) : failed is not null && results.All(r => !r.Success))
+                        throw kind == "model" ? new InvalidDataException((failed?.Error?.Message ?? "the export produced no model file") + " " + MeshDiag(provider, stem, obj)) : (failed?.Error ?? new InvalidDataException("export failed"));
+                    var written = results.SelectMany(r => r.DiskFilePaths ?? Array.Empty<string>());
+                    var first = kind == "model" ? written.FirstOrDefault(IsModelFile) : written.FirstOrDefault();
                     return first ?? outRoot;
                 }
                 case "meshthumb":
@@ -350,6 +351,12 @@ static class AssetExport
         }
         catch (Exception e) { return "[diag failed: " + e.Message + "]"; }
     }
+
+    static bool IsModelFile(string f)
+        => f.EndsWith(".glb", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase);
+
+    static bool HasModelFile(IEnumerable<ExportResult> results)
+        => results.SelectMany(r => r.DiskFilePaths ?? Array.Empty<string>()).Any(IsModelFile);
 
     static async Task<T> RunWithDiag<T>(IFileProvider provider, string stem, UObject obj, bool diag, Func<Task<T>> run)
     {
