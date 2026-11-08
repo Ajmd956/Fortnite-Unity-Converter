@@ -183,19 +183,19 @@ static class AssetExport
                     {
                         case UStaticMesh staticMesh:
                         {
-                            var dto = new StaticMeshDto(staticMesh, EMeshQuality.Highest);
-                            if (dto.LODs.Count == 0) { dto.Dispose(); dto = new StaticMeshDto(staticMesh, EMeshQuality.All, ENaniteMeshFormat.NoNanite); }
+                            var dto = new StaticMeshDto(staticMesh, DtoOptions(EMeshQuality.Highest));
+                            if (dto.LODs.Count == 0) { dto.Dispose(); dto = new StaticMeshDto(staticMesh, DtoOptions(EMeshQuality.All)); }
                             using (dto) WriteMeshThumb(file, dto);
                             break;
                         }
                         case USkeletalMesh skeletalMesh:
                         {
-                            var dto = new SkeletalMeshDto(skeletalMesh, EMeshQuality.Highest, exportMorphTarget: false);
+                            var dto = new SkeletalMeshDto(skeletalMesh, DtoOptions(EMeshQuality.Highest));
                             if (dto.LODs.Count == 0)
                             {
                                 dto.Dispose();
                                 var plain = LoadWithoutNanite(provider, stem) as USkeletalMesh ?? skeletalMesh;
-                                dto = new SkeletalMeshDto(plain, EMeshQuality.All, ENaniteMeshFormat.NoNanite, false);
+                                dto = new SkeletalMeshDto(plain, DtoOptions(EMeshQuality.All));
                             }
                             using (dto) WriteMeshThumb(file, dto);
                             break;
@@ -219,6 +219,9 @@ static class AssetExport
             Gate.Release();
         }
     }
+
+    static ExportOptions DtoOptions(EMeshQuality quality)
+        => new(naniteMeshFormat: ENaniteMeshFormat.NoNanite, meshQuality: quality, exportMaterials: false, exportMorphTargets: false, socketFormat: ESocketFormat.None);
 
     sealed class MeshVersionScope : IDisposable
     {
@@ -272,13 +275,13 @@ static class AssetExport
                     {
                         case USkeletalMesh skeletal:
                         {
-                            using var dto = new SkeletalMeshDto(skeletal, EMeshQuality.Highest, exportMorphTarget: false);
+                            using var dto = new SkeletalMeshDto(skeletal, DtoOptions(EMeshQuality.Highest));
                             if (dto.LODs.Count == 0) return false;
                             break;
                         }
                         case UStaticMesh staticMesh when staticMesh.RenderData?.LODs is not null:
                         {
-                            using var dto = new StaticMeshDto(staticMesh, EMeshQuality.Highest);
+                            using var dto = new StaticMeshDto(staticMesh, DtoOptions(EMeshQuality.Highest));
                             if (dto.LODs.Count == 0) return false;
                             break;
                         }

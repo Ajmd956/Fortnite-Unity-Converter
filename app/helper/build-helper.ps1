@@ -32,16 +32,21 @@ if (-not $dotnetExe) {
 }
 $env:DOTNET_ROOT = Split-Path -Parent $dotnetExe
 
+$cuePin = '8fc9a4ddb1a0b89fe33e283a004b99a6faa46c41'
 $source = Join-Path $here 'CUE4Parse'
-if (-not (Test-Path -LiteralPath (Join-Path $source 'CUE4Parse\CUE4Parse.csproj'))) {
+$pinFile = Join-Path $source '.pinned-commit'
+$haveSource = Test-Path -LiteralPath (Join-Path $source 'CUE4Parse\CUE4Parse.csproj')
+$havePin = $haveSource -and (Test-Path -LiteralPath $pinFile) -and (([System.IO.File]::ReadAllText($pinFile)).Trim() -eq $cuePin)
+if (-not $havePin) {
     $zip = Join-Path $env:TEMP 'cue4parse_source.zip'
     $extract = Join-Path $env:TEMP 'cue4parse_source'
     if (Test-Path -LiteralPath $extract) { Remove-Item -LiteralPath $extract -Recurse -Force }
-    Invoke-WebRequest -Uri 'https://github.com/h4lfheart/CUE4Parse/archive/2e29798ee69f418c7853a676f3d1415d7ce55422.zip' -OutFile $zip -UseBasicParsing
+    Invoke-WebRequest -Uri "https://github.com/h4lfheart/CUE4Parse/archive/$cuePin.zip" -OutFile $zip -UseBasicParsing
     Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
     $inner = Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1
     if (Test-Path -LiteralPath $source) { Remove-Item -LiteralPath $source -Recurse -Force }
     Move-Item -LiteralPath $inner.FullName -Destination $source
+    [System.IO.File]::WriteAllText($pinFile, $cuePin)
     Remove-Item -LiteralPath $zip -Force
     Remove-Item -LiteralPath $extract -Recurse -Force
 }
