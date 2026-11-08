@@ -114,11 +114,142 @@ function createUpdater(opts) {
     return out
   }
 
-  async function download(onProgress) {
+  const listeners = new Set()
+  let lastProgress = null
+  let inflight = null
+
+  function emit(p) {
+    lastProgress = p
+    for (const f of listeners) {
+      try { f(p) } catch (e) {}
+    }
+  }
+
+  function targetFile() {
+    return path.join(path.dirname(opts.exePath), path.basename(opts.exePath, '.exe') + '.update.exe')
+  }
+
+  function hashFile(file) {
+    return new Promise((resolve, reject) => {
+      const h = crypto.createHash('sha256')
+      const s = fs.createReadStream(file)
+      s.on('data', c => h.update(c))
+      s.on('error', reject)
+      s.on('end', () => resolve(h.digest('hex')))
+    })
+  }
+
+  // A finished copy of this exact update from an earlier run or a background prefetch can be used as it is
+  async function existingCopy(o, target) {
+    try {
+      const st = fs.statSync(target)
+      if (!o.size || st.size !== o.size) return false
+      if (o.digest && (await hashFile(target)) !== o.digest) return false
+      return !!o.digest
+    } catch (e) {
+      return false
+    }
+  }
+
+  function requestHeaders(extra) {
+    return Object.assign({ 'User-Agent': 'FortniteUnityConverter-Updater', Accept: 'application/octet-stream' }, auth(), extra || {})
+  }
+
+  async function downloadStream(o, tmp) {
+    const res = await fetch(o.url, { headers: requestHeaders(), redirect: 'follow' })
+    if (!res.ok || !res.body) throw new Error('The download failed (' + res.status + ').')
+    const total = Number(res.headers.get('content-length')) || o.size || 0
+    const hash = crypto.createHash('sha256')
+    const out = fs.createWriteStream(tmp)
+    let got = 0
+    let last = 0
+    try {
+      for await (const chunk of res.body) {
+        hash.update(chunk)
+        if (!out.write(chunk)) await new Promise(r => out.once('drain', r))
+        got += chunk.length
+        const now = Date.now()
+        if (now - last > 100) {
+          last = now
+          emit({ got, total })
+        }
+      }
+    } finally {
+      await new Promise(r => out.end(r))
+    }
+    if (o.size && got !== o.size) throw new Error('The download was incomplete. Please try again.')
+    if (o.digest && hash.digest('hex') !== o.digest) throw new Error('The download did not match its checksum. Please try again.')
+    return got
+  }
+
+  // Several connections each fetch a slice of the file; this is usually much faster than one stream
+  async function downloadRanged(o, tmp) {
+    const total = o.size
+    const slice = 6 * 1024 * 1024
+    const count = Math.ceil(total / slice)
+    const fh = await fs.promises.open(tmp, 'w')
+    let next = 0
+    let got = 0
+    let last = 0
+    let failure = null
+    try {
+      await fh.truncate(total)
+      const worker = async () => {
+        while (!failure) {
+          const i = next++
+          if (i >= count) return
+          const from = i * slice
+          const to = Math.min(total, from + slice) - 1
+          let done = false
+          for (let attempt = 0; attempt < 3 && !done && !failure; attempt++) {
+            try {
+              const res = await fetch(o.url, { headers: requestHeaders({ Range: 'bytes=' + from + '-' + to }), redirect: 'follow', signal: AbortSignal.timeout(120000) })
+              if (res.status !== 206) throw codeError('norange', 'The server did not accept ranged downloads.')
+              const buf = Buffer.from(await res.arrayBuffer())
+              if (buf.length !== to - from + 1) continue
+              await fh.write(buf, 0, buf.length, from)
+              got += buf.length
+              const now = Date.now()
+              if (now - last > 100) {
+                last = now
+                emit({ got, total })
+              }
+              done = true
+            } catch (e) {
+              if (e && e.code === 'norange') {
+                failure = e
+                return
+              }
+            }
+          }
+          if (!done && !failure) failure = new Error('A part of the download failed.')
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(6, count) }, worker))
+    } finally {
+      await fh.close()
+    }
+    if (failure) throw failure
+    if (got !== total) throw new Error('The download was incomplete. Please try again.')
+    if (o.digest && (await hashFile(tmp)) !== o.digest) throw new Error('The download did not match its checksum. Please try again.')
+    return got
+  }
+
+  function download(onProgress) {
     const o = state.offered
-    if (!o) throw new Error('No update to download.')
-    if (state.downloading) throw new Error('Already downloading.')
-    if (!opts.exePath) throw new Error('Updating only works from the built app.')
+    if (!o) return Promise.reject(new Error('No update to download.'))
+    if (!opts.exePath) return Promise.reject(new Error('Updating only works from the built app.'))
+    if (onProgress) {
+      listeners.add(onProgress)
+      if (lastProgress) { try { onProgress(lastProgress) } catch (e) {} }
+    }
+    if (inflight && inflight.version === o.version) {
+      return inflight.promise.finally(() => listeners.delete(onProgress))
+    }
+    if (state.ready && state.readyVersion === o.version && fs.existsSync(state.ready)) {
+      if (onProgress) { try { onProgress({ got: o.size, total: o.size }) } catch (e) {} listeners.delete(onProgress) }
+      return Promise.resolve(state.ready)
+    }
     // Updates only ever come from GitHub, over a secure connection
     try {
       const u = new URL(o.url)
@@ -127,46 +258,59 @@ function createUpdater(opts) {
       if (u.protocol !== 'https:' && host !== home) throw new Error('bad scheme')
       if (host !== home && !/(^|\.)(github\.com|githubusercontent\.com)$/.test(host)) throw new Error('bad host')
     } catch (e) {
-      throw new Error('The update came from an unexpected place, so it was not downloaded.')
+      listeners.delete(onProgress)
+      return Promise.reject(new Error('The update came from an unexpected place, so it was not downloaded.'))
     }
-    state.downloading = true
-    const target = path.join(path.dirname(opts.exePath), path.basename(opts.exePath, '.exe') + '.update.exe')
-    const tmp = target + '.part'
-    try {
-      const res = await fetch(o.url, { headers: Object.assign({ 'User-Agent': 'FortniteUnityConverter-Updater', Accept: 'application/octet-stream' }, auth()), redirect: 'follow' })
-      if (!res.ok || !res.body) throw new Error('The download failed (' + res.status + ').')
-      const total = Number(res.headers.get('content-length')) || o.size || 0
-      const hash = crypto.createHash('sha256')
-      const out = fs.createWriteStream(tmp)
-      let got = 0
-      let last = 0
+    const promise = (async () => {
+      state.downloading = true
+      lastProgress = null
+      const target = targetFile()
+      const tmp = target + '.part'
       try {
-        for await (const chunk of res.body) {
-          hash.update(chunk)
-          if (!out.write(chunk)) await new Promise(r => out.once('drain', r))
-          got += chunk.length
-          const now = Date.now()
-          if (onProgress && now - last > 100) {
-            last = now
-            onProgress({ got, total })
-          }
+        if (await existingCopy(o, target)) {
+          state.ready = target
+          state.readyVersion = o.version
+          emit({ got: o.size, total: o.size })
+          return target
         }
+        let got
+        if (o.size >= 16 * 1024 * 1024) {
+          try {
+            got = await downloadRanged(o, tmp)
+          } catch (e) {
+            try { fs.rmSync(tmp, { force: true }) } catch (x) {}
+            if (e && e.code !== 'norange' && /checksum/.test(String(e.message))) throw e
+            got = await downloadStream(o, tmp)
+          }
+        } else {
+          got = await downloadStream(o, tmp)
+        }
+        if (fs.existsSync(target)) fs.rmSync(target, { force: true })
+        fs.renameSync(tmp, target)
+        emit({ got, total: o.size || got })
+        state.ready = target
+        state.readyVersion = o.version
+        return target
+      } catch (e) {
+        try { fs.rmSync(tmp, { force: true }) } catch (x) {}
+        throw e
       } finally {
-        await new Promise(r => out.end(r))
+        state.downloading = false
       }
-      if (o.size && got !== o.size) throw new Error('The download was incomplete. Please try again.')
-      if (o.digest && hash.digest('hex') !== o.digest) throw new Error('The download did not match its checksum. Please try again.')
-      if (fs.existsSync(target)) fs.rmSync(target, { force: true })
-      fs.renameSync(tmp, target)
-      if (onProgress) onProgress({ got, total: total || got })
-      state.ready = target
-      return target
-    } catch (e) {
-      try { fs.rmSync(tmp, { force: true }) } catch (x) {}
-      throw e
-    } finally {
-      state.downloading = false
+    })()
+    inflight = { version: o.version, promise }
+    const clear = () => {
+      if (inflight && inflight.promise === promise) inflight = null
     }
+    promise.then(clear, clear)
+    return promise.finally(() => listeners.delete(onProgress))
+  }
+
+  function discardDownloaded() {
+    state.ready = null
+    state.readyVersion = null
+    try { fs.rmSync(targetFile(), { force: true }) } catch (e) {}
+    try { fs.rmSync(targetFile() + '.part', { force: true }) } catch (e) {}
   }
 
   function applyScript(newExe, targetExe) {
@@ -196,7 +340,7 @@ function createUpdater(opts) {
     return script
   }
 
-  return { check, peekLatest, download, applyScript, notesSince, state }
+  return { check, peekLatest, download, discardDownloaded, applyScript, notesSince, state }
 }
 
 module.exports = { createUpdater, compareVersions, wasUpdated }

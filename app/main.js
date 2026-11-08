@@ -95,7 +95,24 @@ function ensureFolders() {
   fs.mkdirSync(cacheDir, { recursive: true })
 }
 
+let logBuffer = ''
+let logTimer = null
+
+function flushLog() {
+  logTimer = null
+  const text = logBuffer
+  logBuffer = ''
+  if (text && win && !win.isDestroyed()) win.webContents.send('engine:log', text)
+}
+
 function send(channel, data) {
+  if (channel === 'engine:log' && typeof data === 'string') {
+    // Engine and Unity output arrives in many small pieces; one message every 60 ms keeps the window smooth
+    logBuffer += data
+    if (!logTimer) logTimer = setTimeout(flushLog, 60)
+    return
+  }
+  if (logBuffer) flushLog()
   if (win && !win.isDestroyed()) win.webContents.send(channel, data)
 }
 
@@ -909,9 +926,14 @@ async function runUpdateCheck(manual) {
   try {
     const found = await initUpdater().check()
     updateRetries = 0
-    if (!found) return { status: 'latest', current: app.getVersion() }
+    if (!found) {
+      initUpdater().discardDownloaded()
+      return { status: 'latest', current: app.getVersion() }
+    }
     const isNew = !updateOffered || updateOffered.version !== found.version
     updateOffered = found
+    // Start fetching the update now, quietly, so installing it later is nearly instant
+    if (settings.prefetchUpdates !== false) initUpdater().download().catch(() => {})
     if (isNew || manual) send('update:available', Object.assign({ manual: !!manual }, offerPayload(found)))
     return { status: 'available', version: found.version, current: app.getVersion() }
   } catch (e) {
@@ -925,7 +947,7 @@ async function runUpdateCheck(manual) {
 
 function startUpdateChecks() {
   const exe = updateExePath()
-  if (exe) fs.promises.rm(path.join(path.dirname(exe), path.basename(exe, '.exe') + '.update.exe'), { force: true }).catch(() => {})
+  if (exe) fs.promises.rm(path.join(path.dirname(exe), path.basename(exe, '.exe') + '.update.exe.part'), { force: true }).catch(() => {})
   setTimeout(() => runUpdateCheck(false), 6000)
   if (!updateTimer) updateTimer = setInterval(pollUpdate, 30 * 1000)
 }
@@ -1256,6 +1278,17 @@ ipcMain.handle('files:list', async (_e, q) => {
       .sort(collator.compare)
       .map(info)
   }
+  if (!match && !only && type === 'All') {
+    if (!node.sorted || node.sortedFor !== node.files.length) {
+      node.sorted = node.files.slice().sort(collator.compare)
+      node.sortedFor = node.files.length
+    }
+    const quick = node.sorted.slice(0, 2000).map(n => {
+      const p = dir + '/' + n
+      return { n, t: kindOf(p), c: typeCache.get(p) || '' }
+    })
+    return { folders, files: quick, total: node.sorted.length }
+  }
   const files = []
   for (let i = 0; i < node.files.length; i++) {
     const n = node.files[i]
@@ -1510,6 +1543,7 @@ ipcMain.handle('engine:convert', async (_e, payload) => {
     }
     await convertMaterial(materials[i], payload.name && materials.length === 1 ? payload.name : '', conversionsDir)
   }
+  if (made.length && !stopped) await swapShaderScriptsForDlls(conversionsDir)
   busy = false
   send('engine:state', { running: false, label: '' })
   const lost = made.filter(r => r.missing && r.missing.length)
@@ -1598,6 +1632,153 @@ function runUnity(exe, args) {
   })
 }
 
+const DLL_SOURCES = {
+  Runtime: ['TimeOfDayController.cs', 'PorterSkyRig.cs', 'PorterSkyLighting.cs', 'PorterHeightFog.cs', 'PorterObjectBounds.cs'],
+  Editor: ['TimeOfDayOverlay.cs', 'PorterTextureSetup.cs', 'PorterObjectBoundsMenu.cs']
+}
+const DLL_GUIDS = { 'PorterRuntime.dll': 'a7c3e1d94b2f4a6e8c15d0b39f72e4a1', 'PorterEditor.dll': 'b8d4f2ea5c304b7f9d26e1c40a83f5b2' }
+const DLL_COVERED = new Set(DLL_SOURCES.Runtime.concat(DLL_SOURCES.Editor))
+let dllBuild = null
+let dllFailed = false
+
+function dllMeta(name) {
+  const editorOnly = name === 'PorterEditor.dll'
+  return [
+    'fileFormatVersion: 2',
+    'guid: ' + DLL_GUIDS[name],
+    'PluginImporter:',
+    '  externalObjects: {}',
+    '  serializedVersion: 2',
+    '  iconMap: {}',
+    '  executionOrder: {}',
+    '  defineConstraints: []',
+    '  isPreloaded: 0',
+    '  isOverridable: 1',
+    '  isExplicitlyReferenced: 0',
+    '  validateReferences: 1',
+    '  platformData:',
+    '  - first:',
+    '      Any: ',
+    '    second:',
+    '      enabled: ' + (editorOnly ? 0 : 1),
+    '      settings: {}',
+    '  - first:',
+    '      Editor: Editor',
+    '    second:',
+    '      enabled: 1',
+    '      settings:',
+    '        DefaultValueInitialized: true',
+    '  userData: ',
+    '  assetBundleName: ',
+    '  assetBundleVariant: ',
+    ''
+  ].join('\n')
+}
+
+function dllSourceHash(exe) {
+  const dir = unityScriptsDir()
+  const h = crypto.createHash('sha1')
+  h.update(path.basename(path.dirname(path.dirname(exe))))
+  for (const f of ['PorterDllBuild.cs'].concat(DLL_SOURCES.Runtime, DLL_SOURCES.Editor)) h.update(fs.readFileSync(path.join(dir, f)))
+  return h.digest('hex').slice(0, 16)
+}
+
+// The runtime and editor scripts compile once, in a hidden Unity project, into two DLLs that keep the same IDs forever.
+// The result is cached by script contents and Unity version, so later conversions reuse it instantly.
+function ensureScriptDlls() {
+  if (dllFailed) return Promise.resolve(null)
+  if (!dllBuild) {
+    dllBuild = buildScriptDlls().catch(e => {
+      send('engine:log', 'The script library was not built (' + (e && e.message ? e.message : e) + '), so the scripts ship as .cs files instead.\n')
+      return null
+    }).then(r => {
+      if (!r) dllFailed = true
+      dllBuild = null
+      return r
+    })
+  }
+  return dllBuild
+}
+
+async function buildScriptDlls() {
+  const exe = findUnityNow()
+  if (!exe) return null
+  const scripts = unityScriptsDir()
+  const key = dllSourceHash(exe)
+  const base = path.join(app.getPath('userData'), 'script-dlls')
+  const cache = path.join(base, key)
+  const ready = () => Object.keys(DLL_GUIDS).every(n => fs.existsSync(path.join(cache, n)))
+  if (ready()) return cache
+  send('engine:state', { running: true, label: 'Preparing the script library' })
+  send('engine:log', '\nUnity: compiling the Porter script library once (first run only, this can take a minute)...\n')
+  const proj = path.join(os.tmpdir(), 'porter_dll_build_project')
+  const log = path.join(proj, 'dll_build.log')
+  fs.mkdirSync(proj, { recursive: true })
+  if (!fs.existsSync(path.join(proj, 'ProjectSettings', 'ProjectVersion.txt'))) {
+    await runUnity(exe, ['-batchmode', '-quit', '-logFile', log, '-createProject', proj])
+    if (stopped) return null
+    if (!fs.existsSync(path.join(proj, 'ProjectSettings', 'ProjectVersion.txt'))) throw new Error('Unity could not create the build project')
+  }
+  fs.rmSync(path.join(proj, 'PorterDllSource'), { recursive: true, force: true })
+  for (const sub of Object.keys(DLL_SOURCES)) {
+    fs.mkdirSync(path.join(proj, 'PorterDllSource', sub), { recursive: true })
+    for (const f of DLL_SOURCES[sub]) fs.copyFileSync(path.join(scripts, f), path.join(proj, 'PorterDllSource', sub, f))
+  }
+  fs.mkdirSync(path.join(proj, 'Assets', 'Editor'), { recursive: true })
+  fs.copyFileSync(path.join(scripts, 'PorterDllBuild.cs'), path.join(proj, 'Assets', 'Editor', 'PorterDllBuild.cs'))
+  const verdict = path.join(proj, 'PorterDllBuild.txt')
+  fs.rmSync(verdict, { force: true })
+  await runUnity(exe, ['-batchmode', '-nographics', '-logFile', log, '-projectPath', proj, '-executeMethod', 'PorterDllBuild.Run'])
+  if (stopped) return null
+  let said = ''
+  try { said = fs.readFileSync(verdict, 'utf8') } catch (e) {}
+  if (!/^OK/.test(said)) throw new Error((said.split(/\r?\n/).slice(1, 4).join(' ') || 'Unity did not finish') + ' Unity log: ' + log)
+  const out = path.join(proj, 'PorterDllOut')
+  fs.mkdirSync(cache, { recursive: true })
+  for (const n of Object.keys(DLL_GUIDS)) {
+    fs.copyFileSync(path.join(out, n), path.join(cache, n))
+    fs.writeFileSync(path.join(cache, n + '.meta'), dllMeta(n))
+  }
+  try {
+    for (const d of fs.readdirSync(base)) if (d !== key) fs.rmSync(path.join(base, d), { recursive: true, force: true })
+  } catch (e) {}
+  return ready() ? cache : null
+}
+
+function installScriptDlls(cache, destDir) {
+  fs.mkdirSync(destDir, { recursive: true })
+  for (const n of Object.keys(DLL_GUIDS)) {
+    fs.copyFileSync(path.join(cache, n), path.join(destDir, n))
+    fs.writeFileSync(path.join(destDir, n + '.meta'), dllMeta(n))
+  }
+}
+
+function dropCoveredScripts(dir) {
+  for (const f of DLL_COVERED) {
+    fs.rmSync(path.join(dir, f), { force: true })
+    fs.rmSync(path.join(dir, f + '.meta'), { force: true })
+  }
+}
+
+async function swapShaderScriptsForDlls(outDir) {
+  const hasScripts = fs.existsSync(path.join(outDir, 'Editor', 'PorterTextureSetup.cs')) || fs.existsSync(path.join(outDir, 'PorterObjectBounds.cs'))
+  if (!hasScripts) return
+  const cache = await ensureScriptDlls()
+  if (!cache) return
+  try {
+    installScriptDlls(cache, path.join(outDir, 'Shared'))
+    dropCoveredScripts(outDir)
+    dropCoveredScripts(path.join(outDir, 'Editor'))
+    try {
+      if (!fs.readdirSync(path.join(outDir, 'Editor')).filter(n => !/\.meta$/i.test(n)).length) {
+        fs.rmSync(path.join(outDir, 'Editor'), { recursive: true, force: true })
+        fs.rmSync(path.join(outDir, 'Editor.meta'), { force: true })
+      }
+    } catch (e) {}
+    send('engine:log', 'The texture setup and object bounds scripts ship as a precompiled library in the Shared folder: drag Shared into your Unity project with the shaders.\n')
+  } catch (e) {}
+}
+
 async function buildBlueprintPrefabs(made, outDir, rootName) {
   const built = new Set()
   const exe = findUnityNow()
@@ -1632,15 +1813,25 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
     const scripts = unityScriptsDir()
     fs.mkdirSync(path.join(proj, 'Assets', 'Editor'), { recursive: true })
     fs.copyFileSync(path.join(scripts, headless + '.cs'), path.join(proj, 'Assets', 'Editor', headless + '.cs'))
+    const dlls = particle ? null : await ensureScriptDlls()
+    if (stopped) return built
+    send('engine:state', { running: true, label: 'Building prefab in Unity' })
     const keep = new Set(particle ? ['Editor', 'Scripts', 'Shared'] : ['Editor', 'Scripts'])
     for (const row of made) keep.add(path.basename(row.dir))
+    if (dlls) keep.add('Shared')
     let present = []
     try { present = fs.readdirSync(projRoot) } catch (e) {}
     for (const n of present) {
       if (!keep.has(n.replace(/\.meta$/i, ''))) fs.rmSync(path.join(projRoot, n), { recursive: true, force: true })
     }
     for (const n of keep) {
-      syncTree(path.join(outDir, n), path.join(projRoot, n))
+      if (dlls && n === 'Shared') continue
+      syncTree(path.join(outDir, n), path.join(projRoot, n), dlls && (n === 'Editor' || n === 'Scripts') ? x => !DLL_COVERED.has(x.replace(/\.meta$/i, '')) : undefined)
+    }
+    if (dlls) {
+      dropCoveredScripts(path.join(projRoot, 'Editor'))
+      dropCoveredScripts(path.join(projRoot, 'Scripts'))
+      installScriptDlls(dlls, path.join(projRoot, 'Shared'))
     }
     fs.rmSync(verdictFile, { force: true })
     send('engine:log', '\nUnity: building the prefab in a hidden project, no window opens. This takes a minute or two...\n')
@@ -1670,6 +1861,24 @@ async function buildBlueprintPrefabs(made, outDir, rootName) {
       try { fs.rmSync(path.join(outDir, n + '.meta'), { force: true }) } catch (e) {}
     }
     const allBuilt = made.length > 0 && made.every(row => built.has(row.name))
+    if (dlls) {
+      installScriptDlls(dlls, path.join(outDir, 'Shared'))
+      syncTree(path.join(projRoot, 'Scripts'), path.join(outDir, 'Shared'), x => /^PorterHeightFog\.shader(\.meta)?$/.test(x))
+      dropCoveredScripts(path.join(outDir, 'Editor'))
+      dropCoveredScripts(path.join(outDir, 'Scripts'))
+      if (allBuilt) {
+        for (const n of ['Editor', 'Scripts']) {
+          fs.rmSync(path.join(outDir, n), { recursive: true, force: true })
+          fs.rmSync(path.join(outDir, n + '.meta'), { force: true })
+        }
+        send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). The converted folders hold the prefab, materials, shaders, textures, meshes and their .meta files. The Shared folder holds the precompiled Porter script library (the prefabs point at it) and the fog shader. Drag each converted folder and the Shared folder into your Unity project\'s Assets.\n')
+        return built
+      }
+      syncTree(path.join(projRoot, 'Editor'), path.join(outDir, 'Editor'), x => /\.meta$/i.test(x) && !DLL_COVERED.has(x.replace(/\.meta$/i, '')))
+      syncTree(path.join(projRoot, 'Scripts'), path.join(outDir, 'Scripts'), x => /\.meta$/i.test(x) && !DLL_COVERED.has(x.replace(/\.meta$/i, '')))
+      send('engine:log', 'Unity built ' + built.size + ' of ' + made.length + ' prefab(s). Drag the converted folders and the Shared folder (the precompiled script library) into your Unity project; the prefabs that were not built finish building there.\n')
+      return built
+    }
     if (particle && allBuilt) {
       for (const n of ['Editor', 'Scripts']) {
         fs.rmSync(path.join(outDir, n), { recursive: true, force: true })

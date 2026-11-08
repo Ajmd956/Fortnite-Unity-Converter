@@ -25,6 +25,7 @@ const defaults = {
   fix: true,
   useUnity: true,
   checkUpdates: true,
+  prefetchUpdates: true,
   updateToken: '',
   showExperimental: false,
   expParticle: false,

@@ -16,7 +16,9 @@ right. Run it. No setup is needed.
 
 The app updates itself: when a new version is out, a window shows what changed
 and you can update with one click. You can turn update checks off, or check
-manually, under App Settings.
+manually, under App Settings. When an update is found it downloads in the
+background, using several connections at once, so installing it is nearly
+instant. Set "prefetchUpdates" to false in the settings file to turn that off.
 
 
 ## What it does
@@ -30,7 +32,10 @@ manually, under App Settings.
   particle systems, like the Reboot Van) into a Unity prefab. It saves the
   shaders, textures, meshes, sounds and day cycle in Blueprint Conversions. Copy
   that folder into your Unity project's Assets. If a Unity editor is found, the
-  app builds the prefab for you first, in the background.
+  app builds the prefab for you first, in the background. The helper scripts
+  ship as one precompiled library in a Shared folder (drag it in with the
+  converted folders); the app builds that library once with your Unity editor and
+  reuses it. Without a Unity editor the scripts ship as .cs files instead.
 - Particle Converter: turn a Niagara system (NS_...) into a Unity prefab. It saves
   each system in its own folder inside Particle Conversions, with its materials,
   shaders, textures and meshes. If a Unity editor is found, the app builds the
@@ -62,7 +67,9 @@ Built-in shader (Shader "UEPort/<name>") with its textures.
   instance are read, and masked shaders get a hidden Mask Clip value.
 - Textures are exported to the shader's Textures folder next to a
   <name>.textures.json that says how each one must be imported; the Porter
-  Texture Setup script in Editor applies it.
+  Texture Setup script applies it. With a Unity editor installed, that script and
+  the object bounds script ship precompiled in a Shared folder next to the
+  shaders; otherwise they ship as .cs files in Editor.
 - Metallic and smoothness get multiplier and offset sliders and ambient occlusion
   and cavity get sliders, all neutral by default, so a conversion looks the same
   until you move them.
