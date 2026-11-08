@@ -6264,15 +6264,8 @@ def write_fix_log(paths, originals, summary, unity_msgs, unity_applied, fixed_di
     return path
 
 
-def check_event(ev, **kw):
-    kw["ev"] = ev
-    print("@check " + json.dumps(kw, ensure_ascii=True), flush=True)
-
-
 def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
-    check_event("start", files=[os.path.basename(p) for p in paths], fix=bool(fix), unity=unity is not False)
     if fix and paths:
-        check_event("stage", stage="copy")
         target = fixed_out or default_fixed_dir()
         try:
             copies = make_fixed_copies(paths, target)
@@ -6288,9 +6281,7 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
             originals[p] = read_shader(p)[2]
         except Exception:
             pass
-        check_event("file", i=paths.index(p), phase="code")
         summary[p] = check_one_shader(p, fix=fix)
-        check_event("file", i=paths.index(p), phase="code-done", errors=summary[p]["errors"], fixed=summary[p]["fixed"], gaps=summary[p]["gaps"])
     last, applied = {}, {p: [] for p in paths}
     ran_unity = False
     if unity is not False:
@@ -6298,12 +6289,10 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
         for rnd in range(1, UNITY_FIX_ROUNDS + 2):
             print("")
             print("Unity compile%s..." % ("" if rnd == 1 else " (round %d, after the fixes above)" % rnd))
-            check_event("stage", stage="unity", round=rnd, indexes=[paths.index(q) for q in pending])
             res = unity_compile(pending, unity if isinstance(unity, str) else None)
             if res is None:
                 if rnd == 1:
                     print("  Unity: no editor found, so Unity's own compile errors are not included (set the UNITY_EDITOR environment variable to Unity.exe to turn this on)")
-                    check_event("stage", stage="unity-skip")
                 break
             ran_unity = True
             for p in pending:
@@ -6330,8 +6319,6 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
             print_unity_verdict(p, msgs, applied[p])
             summary[p]["unity_errors"] = len([m for m in msgs if m[0] == "error"])
             summary[p]["unity_fixed"] = len(applied[p])
-            check_event("file", i=paths.index(p), phase="unity-done", errors=summary[p]["unity_errors"], fixed=summary[p]["unity_fixed"])
-    check_event("stage", stage="finish", unity=ran_unity)
     print("")
     print("summary:")
     for p in paths:
