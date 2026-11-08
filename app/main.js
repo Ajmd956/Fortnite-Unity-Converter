@@ -1346,6 +1346,97 @@ ipcMain.handle('files:types', async (_e, paths) => {
   })
 })
 
+const DISCORD_PORT = 24331
+let discordWait = null
+
+function discordClientId() {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'discord.json'), 'utf8'))
+    return /^[0-9]{15,25}$/.test(String(j.clientId || '')) ? String(j.clientId) : ''
+  } catch (e) { return '' }
+}
+
+function stopDiscordWait(result) {
+  const w = discordWait
+  if (!w) return
+  discordWait = null
+  clearTimeout(w.timer)
+  try { w.server.close() } catch (e) {}
+  w.done(result)
+}
+
+const DISCORD_PAGE = '<!doctype html><meta charset="utf-8"><title>Fortnite Unity Converter</title><body style="background:#0D0C12;color:#E2DFF0;font:16px Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div id="m">Signing in...</div><script>var h=new URLSearchParams(location.hash.slice(1));fetch("/token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:h.get("access_token")||"",state:h.get("state")||"",error:new URLSearchParams(location.search).get("error")||""})}).then(function(r){return r.json()}).then(function(j){document.getElementById("m").textContent=j.ok?"You are signed in. You can close this tab and go back to the app.":"Sign in did not finish. Go back to the app and try again."}).catch(function(){document.getElementById("m").textContent="Sign in did not finish. Go back to the app and try again."})</script>'
+
+function discordProfile(user) {
+  const name = String(user.global_name || user.username || 'Discord user').slice(0, 64)
+  let avatar = ''
+  if (user.avatar && /^[a-z0-9_]+$/i.test(user.avatar)) avatar = 'https://cdn.discordapp.com/avatars/' + user.id + '/' + user.avatar + '.png?size=128'
+  else avatar = 'https://cdn.discordapp.com/embed/avatars/' + (Number(BigInt(user.id) >> 22n) % 6) + '.png'
+  return { id: String(user.id), name, avatar }
+}
+
+ipcMain.handle('account:get', () => settings.account || null)
+
+ipcMain.handle('account:signout', () => {
+  stopDiscordWait({ ok: false, error: 'cancelled' })
+  settings.account = null
+  store.save(settingsFile, settings)
+  return true
+})
+
+ipcMain.handle('account:cancel', () => {
+  stopDiscordWait({ ok: false, error: 'cancelled' })
+  return true
+})
+
+ipcMain.handle('account:signin', () => new Promise(resolve => {
+  const clientId = discordClientId()
+  if (!clientId) { resolve({ ok: false, error: 'setup' }); return }
+  stopDiscordWait({ ok: false, error: 'cancelled' })
+  const state = crypto.randomBytes(16).toString('hex')
+  const redirect = 'http://127.0.0.1:' + DISCORD_PORT + '/callback'
+  const server = require('http').createServer((req, res) => {
+    const u = new URL(req.url, 'http://127.0.0.1')
+    if (req.method === 'GET' && u.pathname === '/callback') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(DISCORD_PAGE)
+      return
+    }
+    if (req.method === 'POST' && u.pathname === '/token') {
+      let body = ''
+      req.on('data', c => { body += c; if (body.length > 8192) req.destroy() })
+      req.on('end', async () => {
+        let ok = false
+        try {
+          const d = JSON.parse(body)
+          if (d.state === state && /^[A-Za-z0-9._-]{10,200}$/.test(d.token || '')) {
+            const r = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: 'Bearer ' + d.token, 'User-Agent': 'FortniteUnityConverter' }, signal: AbortSignal.timeout(15000) })
+            if (r.ok) {
+              const prof = discordProfile(await r.json())
+              settings.account = prof
+              store.save(settingsFile, settings)
+              ok = true
+              stopDiscordWait({ ok: true, account: prof })
+            }
+          }
+        } catch (e) {}
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok }))
+        if (!ok) stopDiscordWait({ ok: false, error: 'failed' })
+      })
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  server.on('error', () => resolve({ ok: false, error: 'port' }))
+  server.listen(DISCORD_PORT, '127.0.0.1', () => {
+    discordWait = { server, done: resolve, timer: setTimeout(() => stopDiscordWait({ ok: false, error: 'timeout' }), 180000) }
+    const url = 'https://discord.com/oauth2/authorize?response_type=token&client_id=' + clientId + '&scope=identify&redirect_uri=' + encodeURIComponent(redirect) + '&state=' + state
+    shell.openExternal(url)
+  })
+}))
+
 ipcMain.handle('clipboard:write', (_e, text) => {
   clipboard.writeText(String(text || ''))
   return true

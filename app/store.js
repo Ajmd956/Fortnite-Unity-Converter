@@ -30,6 +30,8 @@ const defaults = {
   showExperimental: false,
   expParticle: false,
   expBlueprint: false,
+  account: null,
+  welcomed: false,
   lastVersion: '',
   pendingNotes: '',
   pendingFor: ''
@@ -100,7 +102,9 @@ function migrateProfiles(data) {
 
 function load(file) {
   try {
-    const data = Object.assign({}, defaults, JSON.parse(fs.readFileSync(file, 'utf8')))
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+    const data = Object.assign({}, defaults, raw)
+    if (!('welcomed' in raw)) data.welcomed = true
     migrateProfiles(data)
     if (['#00d4ff', '#8a45fa'].includes(String(data.accent).toLowerCase())) data.accent = defaults.accent
     return data

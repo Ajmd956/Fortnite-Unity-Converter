@@ -41,7 +41,25 @@ button:disabled{opacity:.5;cursor:default !important;}
 .sec .ld i:nth-child(3){animation-delay:.3s;}
 @keyframes ldDot{0%,10%{opacity:.6;transform:scale(.8);}30%,35%{opacity:1;transform:scale(1);}60%,100%{opacity:.6;transform:scale(.8);}}
 .wrap.gated .sec .ld{display:flex;}
-.wrap.gated .tab.gate{opacity:.5;pointer-events:none;}
+.wrap.gated .tab.gate{opacity:.5;cursor:not-allowed;}
+.tab.soon{opacity:.5;}
+.tab.soon:hover{opacity:.75;}
+.side-foot{position:relative;}
+.signin.me{justify-content:flex-start;padding:0 8px 0 5px;gap:8px;}
+.signin .av{width:22px;height:22px;border-radius:50%;object-fit:cover;flex:0 0 22px;}
+.signin .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.acct-menu{position:absolute;left:0;right:0;bottom:46px;display:none;flex-direction:column;gap:6px;padding:10px;background:linear-gradient(var(--popup),var(--popup2));border-radius:14px;box-shadow:var(--card-shadow),0 8px 24px #000a;z-index:20;}
+.acct-menu.open{display:flex;}
+.acct-menu .am-t{font-size:12px;color:var(--muted);line-height:15px;}
+.acct-menu .btn{justify-content:center;}
+.howto{display:flex;flex-direction:column;gap:12px;}
+.howto video{width:100%;display:block;border-radius:16px;background:#000;box-shadow:var(--card-shadow);}
+.ht-steps{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none;counter-reset:ht;}
+.ht-steps li{counter-increment:ht;display:flex;gap:12px;align-items:flex-start;}
+.ht-steps li::before{content:counter(ht);flex:0 0 24px;height:24px;border-radius:50%;background:var(--btn-bright);color:var(--text);font-size:13px;display:flex;align-items:center;justify-content:center;box-shadow:var(--card-shadow);}
+.ht-steps b{display:block;font-size:14px;font-weight:400;color:var(--text);line-height:16px;margin-bottom:2px;}
+.welcome-logo{width:56px;height:56px;display:block;margin:0 auto 12px;}
+
 .side{overflow-y:auto;scrollbar-width:none;width:max(225px,14.2857vw);flex:0 0 auto;display:flex;flex-direction:column;background:transparent;padding:16px 8px;}
 .brand{display:flex;align-items:center;gap:16px;padding:0 8px 16px;height:64px;}
 .side-logo{width:48px;height:48px;flex:0 0 48px;}
@@ -176,6 +194,7 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .rc-ctl input[type=text]{width:min(100%,420px);height:32px;}
 .btn{height:32px;padding:0 11px;background:var(--btn);border:none;border-radius:16px;box-shadow:var(--card-shadow);color:var(--text);font-size:14px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:background-color var(--fade) ease,opacity var(--fade) ease;}
 .btn:hover{background:var(--btn-hover);}
+.dd-btn{transition:none;}
 .btn:active{background:var(--btn-pressed);}
 .btn.primary{}
 
@@ -534,7 +553,7 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .warn-note{font-size:12px;color:#c9a64a;padding:2px 4px;}
 
 /* overlay (conversion finished) */
-.overlay{position:fixed;inset:0;z-index:100;background:var(--overlay);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s ease,visibility 0s;}
+.overlay{position:fixed;inset:0;z-index:100;background:var(--overlay);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .25s ease,visibility 0s;}
 .overlay.open{opacity:1;visibility:visible;pointer-events:auto;}
 .panel{background:linear-gradient(var(--card),var(--card2));border:1px solid var(--border-hi);border-radius:16px;box-shadow:0 6px 14px #0007,0 24px 60px #000b;padding:24px;width:460px;max-height:84vh;overflow-y:auto;transform:translateY(6px);transition:transform .2s ease;}
 .overlay.open .panel{transform:translateY(0);}
@@ -712,18 +731,21 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     </div>
     <div class="sec">General</div>
     <button class="tab nav active" data-tab="home"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z"/></svg><span>Home</span></button>
+    <button class="tab nav" data-tab="howto"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5V7.5L16,12L10,16.5Z"/></svg><span>How to Use</span></button>
     <button class="tab nav" data-tab="updates"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M20,11H4V8H20M20,15H13V13H20M20,19H13V17H20M11,19H4V13H11M20.33,4.67L18.67,3L17,4.67L15.33,3L13.67,4.67L12,3L10.33,4.67L8.67,3L7,4.67L5.33,3L3.67,4.67L2,3V19A2,2 0 0,0 4,21H20A2,2 0 0,0 22,19V3L20.33,4.67Z"/></svg><span>News &amp; Updates</span></button>
     <div class="sec gate">Export<span class="ld"><i></i><i></i><i></i></span></div>
-    <button class="tab nav gate" data-tab="files"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span>Files</span></button>
+    <button class="tab nav gate" data-tab="files" title="Opens when the game files finish loading"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/></svg><span>Files</span></button>
     <div class="sec">Tools</div>
-    <button class="tab nav" data-tab="converter"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/></svg><span>Converter</span></button>
-    <button class="tab nav" data-tab="shaders"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L6.04,7.5L12,10.85L17.96,7.5L12,4.15Z"/></svg><span>My Shaders</span></button>
-    <button class="tab nav" data-tab="check"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z"/></svg><span>Check Shaders</span></button>
+    <button class="tab nav" data-tab="converter"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z"/></svg><span>Converter</span></button>
+    <button class="tab nav" data-tab="shaders"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,18.54L4.62,12.81L3,14.07L12,21.07L21,14.07L19.37,12.8L12,18.54Z"/></svg><span>My Shaders</span></button>
+    <button class="tab nav" data-tab="check"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7,19L13.6,9.9C14.5,7.6 14,4.9 12.1,3C10.1,1 7.1,0.6 4.7,1.7L9,6L6,9L1.6,4.7C0.4,7.1 0.9,10.1 2.9,12.1C4.8,14 7.5,14.5 9.8,13.6L18.9,22.7C19.3,23.1 19.9,23.1 20.3,22.7L22.6,20.4C23.1,20 23.1,19.3 22.7,19Z"/></svg><span>Fix Shaders</span></button>
+    <div class="sec">Community</div>
+    <button class="tab nav soon" data-tab="chat" data-soon="1" title="Coming in a future update"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M20,2H4A2,2 0 0,0 2,4V22L6,18H20A2,2 0 0,0 22,16V4A2,2 0 0,0 20,2M6,9H18V11H6M14,14H6V12H14M18,8H6V6H18"/></svg><span>Chat</span></button>
     <div class="sec">Settings</div>
     <button class="tab nav" data-tab="export"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 18.6V17.6L22.8 16.8C22.9 16.7 23 16.6 22.9 16.5L21.9 14.8C21.9 14.7 21.7 14.7 21.6 14.7L20.4 15.2C20.1 15 19.8 14.8 19.5 14.7L19.3 13.4C19.3 13.3 19.2 13.2 19.1 13.2H17.1C16.9 13.2 16.8 13.3 16.8 13.4L16.6 14.7C16.3 14.9 16.1 15 15.8 15.2L14.6 14.7C14.5 14.7 14.4 14.7 14.3 14.8L13.3 16.5C13.3 16.6 13.3 16.7 13.4 16.8L14.5 17.6V18.6L13.4 19.4C13.3 19.5 13.2 19.6 13.3 19.7L14.3 21.4C14.4 21.5 14.5 21.5 14.6 21.5L15.8 21C16 21.2 16.3 21.4 16.6 21.5L16.8 22.8C16.9 22.9 17 23 17.1 23H19.1C19.2 23 19.3 22.9 19.3 22.8L19.5 21.5C19.8 21.3 20 21.2 20.3 21L21.5 21.4C21.6 21.4 21.7 21.4 21.8 21.3L22.8 19.6C22.9 19.5 22.9 19.4 22.8 19.4L21.7 18.6M18 19.5C17.2 19.5 16.5 18.8 16.5 18S17.2 16.5 18 16.5 19.5 17.2 19.5 18 18.8 19.5 18 19.5M11 18C11 14.1 14.1 11 18 11C20 11 21.7 11.8 23 13.1V4C23 2.9 22.1 2 21 2H3C1.9 2 1 2.9 1 4V20C1 21.1 1.9 22 3 22H12.3C11.5 20.9 11 19.5 11 18M3 4H21V7H3V4Z"/></svg><span>Converter Options</span></button>
     <button class="tab nav" data-tab="settings"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg><span>App Settings</span></button>
     <div class="spacer"></div>
-    <div class="side-foot"><button class="signin" id="signInBtn"><img src="../assets/icons/Discord.png" alt="" draggable="false"><span>Sign In</span></button></div>
+    <div class="side-foot"><div class="acct-menu" id="acctMenu"><div class="am-t" id="acctMenuT"></div><button class="btn sm" id="acctOut">Sign out</button></div><button class="signin" id="signInBtn" title="Sign in with Discord"><img src="../assets/icons/Discord.png" alt="" draggable="false"><span>Sign In</span></button></div>
   </aside>
   <div class="main">
    <div class="content">
@@ -803,6 +825,23 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       </div>
     </div>
 
+    <div class="page" id="page-howto">
+      <div class="howto">
+        <video id="howtoVideo" src="../assets/ui/howto.webm" controls loop muted playsinline preload="metadata" onerror="this.style.display='none'"></video>
+        <div class="row-card col">
+          <div class="rc-text"><div class="rc-title">How to use the app</div><div class="rc-desc">The short version, in the order you will use it.</div></div>
+          <ol class="ht-steps">
+            <li><div><b>Wait for the green dot</b><div class="rc-desc">Bottom left shows API: ready when the game files are loaded. Files opens after that.</div></div></li>
+            <li><div><b>Find an asset in Files</b><div class="rc-desc">Open folders on the left or use Search. Click an asset, then Preview or Properties to look at it first.</div></div></li>
+            <li><div><b>Convert it</b><div class="rc-desc">Right-click an asset and pick Convert, or Add to Convert to collect several. Shaders, particles and Blueprints each have a tab under Converter.</div></div></li>
+            <li><div><b>Drag the result into Unity</b><div class="rc-desc">Open the folder from Converter, then drag it into your Unity project's Assets. Nothing else to install.</div></div></li>
+            <li><div><b>Fix Shaders if Unity shows errors</b><div class="rc-desc">Add the shader files, press Check &amp; Fix. Fixes go to copies, never your originals.</div></div></li>
+          </ol>
+        </div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Need the welcome pop-up again?</div><div class="rc-desc">It only shows the first time you open the app.</div></div><div class="rc-ctl"><button class="btn" id="showWelcome">Show welcome</button></div></div>
+      </div>
+    </div>
+
     <div class="page" id="page-updates">
       <div class="nw-feat" id="nwFeat"></div>
       <div class="nw-grid" id="nwGrid"></div>
@@ -871,10 +910,10 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
       <div class="row-card">
         <div class="rc-ctl"><button class="btn sm" id="addFiles">Add files</button><button class="btn sm" id="addFolder">Add folder</button></div>
         <div class="grow"></div>
-        <div class="rc-ctl" style="gap:18px"><label class="check-row"><input type="checkbox" id="optFix"> Fix problems</label><label class="check-row"><input type="checkbox" id="optUnity"> Compile in Unity</label></div>
+        <div class="rc-ctl" style="gap:18px"><label class="check-row"><input type="checkbox" id="optFix"> Fix problems automatically</label><label class="check-row"><input type="checkbox" id="optUnity"> Test in Unity</label></div>
       </div>
       <div class="chips" id="chips"></div>
-      <div class="row-card"><div class="rc-text"><div class="rc-desc" style="margin:0">Fixes are made on copies in the Fixed Conversions folder. Your original shaders are never changed.</div></div><div class="rc-ctl"><button class="btn sm" id="openFixed">Open folder</button><button class="btn primary" id="checkBtn">Check</button></div></div>
+      <div class="row-card"><div class="rc-text"><div class="rc-desc" style="margin:0">Fixes are made on copies in the Fixed Conversions folder. Your original shaders are never changed.</div></div><div class="rc-ctl"><button class="btn sm" id="openFixed">Open folder</button><button class="btn primary" id="checkBtn">Check &amp; Fix</button></div></div>
     </div>
 
     <div class="page split" id="page-settings">
@@ -988,6 +1027,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="label">Output</div>
         <div class="state" id="stateText"></div>
         <button class="btn sm danger" id="stopBtn" style="display:none">Stop</button>
+        <button class="btn sm" id="copyLog">Copy</button>
         <button class="btn sm" id="clearLog">Clear</button>
       </div>
       <div id="log"></div>
@@ -995,7 +1035,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
    </div>
   </div>
 </div>
-<div class="statusbar"><div class="fb-prog" id="fileProg"><i></i></div><span class="sb-left" id="bridgeBtn" title="Click to check the connection"><div class="dot" id="bridgeDot"></div><span id="statusText">API: checking</span></span><button class="sb-refresh" id="fileRebuild" title="Re-read the Fortnite install">Refresh</button><button class="sb-log" id="logBtn" title="Open the console"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M5,3C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H5M7,7H17V9H7V7M7,11H17V13H7V11M7,15H14V17H7V15Z"/></svg>Log</button></div>
+<div class="statusbar"><div class="fb-prog" id="fileProg"><i></i></div><span class="sb-left" id="bridgeBtn" title="Click to check the connection"><div class="dot wait" id="bridgeDot"></div><span id="statusText">API: checking</span></span><button class="sb-refresh" id="fileRebuild" title="Re-read the Fortnite install">Refresh</button><button class="sb-log" id="logBtn" title="Open the console"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M5,3C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H5M7,7H17V9H7V7M7,11H17V13H7V11M7,15H14V17H7V15Z"/></svg>Log</button></div>
 
 <div class="overlay" id="newsOverlay">
   <div class="panel">
@@ -1057,6 +1097,18 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <div class="upd-btns">
       <button class="btn" id="updDoneNotesBtn">Release notes</button>
       <button class="btn primary" id="updDoneOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="welcomeOverlay">
+  <div class="panel done-panel">
+    <img class="welcome-logo" src="../assets/logo.png" alt="" draggable="false">
+    <h2>Welcome, new user</h2>
+    <div class="done-sub">Here is a quick tutorial on how to use the app. It has a short video and five steps, and you can open it any time from How to Use.</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="welcomeSkip" style="flex:1;justify-content:center">Skip</button>
+      <button class="btn primary" id="welcomeGo" style="flex:1;justify-content:center">Show me how</button>
     </div>
   </div>
 </div>
@@ -1452,9 +1504,11 @@ function setRunning(state) {
 function lineClass(line) {
   const l = line.toLowerCase()
   if (/^\[\d+\/\d+\]/.test(line) || /^={5,}/.test(line)) return 'head'
+  if (/^\d+ checked/.test(l)) return / 0 still/.test(l) ? 'ok' : 'warn'
+  if (/unity: compiles/.test(l)) return 'ok'
   if (l.startsWith('failed') || /\berror\b/.test(l) || l.includes('could not start')) return 'bad'
-  if (l.includes('warn') || l.includes('not converted') || l.includes('approximat')) return 'warn'
-  if (l.startsWith('wrote ') || l.startsWith('fixed') || l.includes('compiles') || l.startsWith('finished') || l.startsWith('check finished')) return 'ok'
+  if (l.includes('warn') || l.includes('not converted') || l.includes('could not be converted') || l.includes('approximat')) return 'warn'
+  if (l.startsWith('wrote ') || l.trimStart().startsWith('fixed') || l.includes('compiles') || l.startsWith('finished') || l.startsWith('check finished')) return 'ok'
   return ''
 }
 
@@ -2011,11 +2065,13 @@ async function init() {
   applyCustomAll()
   $('optFix').checked = settings.fix
   $('optUnity').checked = settings.useUnity
+  syncCheckBtn()
   $('pathConversions').textContent = info.conversions
   $('pathParticles').textContent = info.particles
   $('pathFixed').textContent = info.fixed
   $('pathCache').textContent = info.cache
   fillSettings()
+  if (!settings.welcomed) $('welcomeOverlay').classList.add('open')
   window.api.onLog(onLog)
   window.api.onGoto(p => { showTab('files'); jumpTo(p) })
   logReadyRes()
@@ -2047,7 +2103,11 @@ async function init() {
   refreshShaders()
 }
 
-document.querySelectorAll('.tab').forEach(t => t.onclick = () => { if ($('wrap').classList.contains('gated') && t.classList.contains('gate')) return; showTab(t.dataset.tab) })
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  if (t.dataset.soon) { showNotice({ title: 'Work in progress', body: 'This tab is in work in progress. It will be added in a future update.', noRetry: true }); return }
+  if ($('wrap').classList.contains('gated') && t.classList.contains('gate')) { showNotice({ title: 'Files is still loading', body: 'Files opens when the game files finish loading. Watch the bar on Home, or the dot at the bottom left turning green.', noRetry: true }); return }
+  showTab(t.dataset.tab)
+})
 document.querySelectorAll('.sub-nav').forEach(t => t.onclick = () => showSub(t.dataset.sub))
 $('bridgeBtn').onclick = pollBridge
 $('logBtn').onclick = () => { showTab('settings'); showSub('console') }
@@ -2057,10 +2117,12 @@ $('openFixed').onclick = () => window.api.open(info.fixed)
 $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
-const NEWS_DATE = 'Oct 24'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'Blueprints bake, cleaner particle inspector', date: NEWS_DATE }
+const NEWS_DATE = 'Nov 8'
+const NEWS_FEATURED = { title: 'Latest release', sub: 'Discord sign in, How to Use, Fix Shaders', date: NEWS_DATE }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'App', title: 'Sign in and How to Use', sub: 'Discord profile, a video tour, a Chat tab on the way.', body: 'Sign In now opens Discord in your browser. After you approve, the button shows your Discord picture and name, and clicking it lets you sign out. Only your name and picture are kept.\n\nHow to Use is a new tab with a short video and five steps. New users also see a welcome pop-up the first time they open the app. The Chat tab is greyed out for now and will come in a future update.' },
+  { tag: 'Fix Shaders', title: 'Check shaders is now Fix Shaders', sub: 'Clearer buttons, a total line, a Copy button.', body: 'The Check Shaders tab is now Fix Shaders, with a wrench icon. The button reads Check & Fix, or Check only when Fix problems automatically is off. Compile in Unity is now Test in Unity. Fixes show in green, a run ends with one line such as 3 checked, 1 fixed, 0 still with errors, and the Output header has a Copy button. The Converter icon is now a swap arrow so it no longer looks like the settings gear.' },
   { tag: 'Particles', title: 'Baked particle fixes', sub: 'Blueprints bake, cleaner inspector.', body: 'The Blueprint Converter now follows Bake Scripts in Converter Options, so its particles are played from baked replays. The Baked Particle System inspector follows the Unity Particle System layout: Main, then the modules in Unity\'s order, then Renderer and Data, and it hides controls that do nothing for that kind (lights have no size or rotation, ribbons no rotation). Light falloff now uses the baked exponent. A baked mesh with a missing material no longer shifts the other materials, and materials the export has no path for are listed when the conversion finishes.' },
   { tag: 'Converter', title: 'Converter Options', sub: 'Export Options is now Converter Options.', body: 'Export Options is now Converter Options. Bake Scripts moved there from the Particle Converter tab, next to Fix Problems and Compile in Unity. The new gear at the right of the Converter tab opens it. The text in the Converter tab is shorter too.' },
   { tag: 'Particles', title: 'Edit baked particles', sub: 'The particle player now looks like Unity\'s.', body: 'The baked particle player has a Unity Particle System style inspector: a Main module (start lifetime, speed, size, rotation, colour, gravity modifier, simulation space, seed) and modules with on/off boxes for Shape, Velocity, Force, Color, Size, Opacity, Rotation, Noise and Simulation. GPU emitters are now baked from their CPU scripts when the game files keep them. The Particle tab switch is now a small Bake Scripts toggle.' },
@@ -2876,6 +2938,7 @@ $('setExpBlueprint').onchange = () => confirmExperimental('setExpBlueprint', 'ex
 $('setDev').onchange = () => { applyDev(); saveSetting({ showDev: $('setDev').checked }); syncToggleLabels() }
 
 function fillExport() {
+  syncCheckBtn()
   $('xFix').checked = $('optFix').checked
   $('xUnity').checked = $('optUnity').checked
   syncToggleLabels()
@@ -2957,6 +3020,17 @@ $('openBlueprints').onclick = () => window.api.open(info.blueprints)
 $('openShaderConv').onclick = () => window.api.open(info.conversions)
 $('openParticleConv').onclick = () => window.api.open(info.particles)
 
+function syncCheckBtn() {
+  if (!running) $('checkBtn').textContent = $('optFix').checked ? 'Check & Fix' : 'Check only'
+}
+$('optFix').addEventListener('change', syncCheckBtn)
+$('xFix').addEventListener('change', syncCheckBtn)
+$('copyLog').onclick = async () => {
+  const text = $('log').innerText
+  await window.api.copyText(text)
+  $('copyLog').textContent = 'Copied'
+  setTimeout(() => { $('copyLog').textContent = 'Copy' }, 1200)
+}
 $('checkBtn').onclick = () => {
   if (!checkPaths.length) {
     addLine('add some .shader files or folders first')
@@ -3888,7 +3962,66 @@ $('fileQClear').onclick = () => {
   $('fileQuery').oninput()
   $('fileQuery').focus()
 }
-$('signInBtn').onclick = () => setStatus('Sign In is not available')
+let account = null
+let signingIn = false
+function paintAccount() {
+  const b = $('signInBtn')
+  b.textContent = ''
+  b.classList.toggle('me', !!account)
+  const img = document.createElement('img')
+  const span = document.createElement('span')
+  if (account) {
+    img.className = 'av'
+    img.src = account.avatar
+    span.className = 'nm'
+    span.textContent = account.name
+    b.title = 'Account'
+  } else {
+    img.src = '../assets/icons/Discord.png'
+    span.textContent = signingIn ? 'Waiting for Discord...' : 'Sign In'
+    b.title = signingIn ? 'Click to cancel' : 'Sign in with Discord'
+  }
+  img.alt = ''
+  img.draggable = false
+  b.append(img, span)
+}
+function closeAcctMenu() { $('acctMenu').classList.remove('open') }
+$('signInBtn').onclick = async e => {
+  e.stopPropagation()
+  if (account) {
+    $('acctMenuT').textContent = 'Signed in as ' + account.name
+    $('acctMenu').classList.toggle('open')
+    return
+  }
+  if (signingIn) { window.api.accountCancel(); return }
+  signingIn = true
+  paintAccount()
+  const r = await window.api.accountSignIn()
+  signingIn = false
+  if (r && r.ok) account = r.account
+  paintAccount()
+  if (r && r.ok) { setStatus('Signed in as ' + r.account.name); return }
+  const msg = { setup: 'Sign in is not set up in this build yet.', port: 'Sign in could not start because another program is using port 24331. Close it and try again.', timeout: 'Sign in took too long. Try again.', failed: 'Discord did not finish signing you in. Try again.' }[r && r.error]
+  if (msg) showNotice({ title: 'Sign in', body: msg, noRetry: true })
+}
+$('acctOut').onclick = async () => {
+  closeAcctMenu()
+  await window.api.accountSignOut()
+  account = null
+  paintAccount()
+}
+document.addEventListener('click', e => { if (!e.target.closest('#acctMenu')) closeAcctMenu() })
+window.api.accountGet().then(a => { account = a; paintAccount() }).catch(() => {})
+
+function closeWelcome(go) {
+  $('welcomeOverlay').classList.remove('open')
+  saveSetting({ welcomed: true })
+  if (go) showTab('howto')
+}
+$('welcomeSkip').onclick = () => closeWelcome(false)
+$('welcomeGo').onclick = () => closeWelcome(true)
+$('showWelcome').onclick = () => $('welcomeOverlay').classList.add('open')
+$('welcomeOverlay').onclick = e => { if (e.target === $('welcomeOverlay')) closeWelcome(false) }
 $('fileRebuild').onclick = rebuildFiles
 $('fileBack').onclick = goBack
 $('fileFwd').onclick = goForward

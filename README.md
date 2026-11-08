@@ -41,9 +41,11 @@ instant. Set "prefetchUpdates" to false in the settings file to turn that off.
   shaders, textures and meshes. If a Unity editor is found, the app builds the
   prefab for you first, in a hidden Unity project, and the folder holds no
   scripts: drag it into your Unity project's Assets.
-- Check Shaders: scan shader files for common problems and fix the safe ones.
+- Fix Shaders: check shader files for common problems, fix the safe ones on copies, and test them in Unity.
   Fixes are made on copies in Documents\Fortnite Unity Converter\Fixed
   Conversions, so your originals are never changed.
+- How to Use: a short video and five steps. New users see a welcome pop-up first.
+- Sign In: sign in with Discord to show your picture and name in the app.
 
 Your converted shaders and settings are saved in
 Documents\Fortnite Unity Converter, so updating or deleting the app never

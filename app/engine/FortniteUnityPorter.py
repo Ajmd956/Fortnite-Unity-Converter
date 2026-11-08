@@ -6144,7 +6144,7 @@ def check_one_shader(path, fix=True):
     rep = conversion_report(path)
     if rep:
         if rep["gaps"]:
-            print("CONVERSION: %d part(s) NOT converted (replaced by 0 or a stand-in)" % len(rep["gaps"]))
+            print("CONVERSION: %d part(s) could not be converted and use a stand-in value" % len(rep["gaps"]))
         elif rep["approx"]:
             print("CONVERSION: everything converted, %d part(s) approximated" % len(rep["approx"]))
         else:
@@ -6374,7 +6374,10 @@ def run_shader_check(paths, fix=True, unity=None, fixed_out=None):
             print_unity_verdict(p, msgs, applied[p])
             summary[p]["unity_errors"] = len([m for m in msgs if m[0] == "error"])
             summary[p]["unity_fixed"] = len(applied[p])
+    tot_fixed = sum(r["fixed"] + r["unity_fixed"] for r in summary.values())
+    tot_bad = sum(1 for r in summary.values() if r["errors"] or r["unity_errors"])
     print("")
+    print("%d checked, %d fixed, %d still with errors" % (len(paths), tot_fixed, tot_bad))
     print("summary:")
     for p in paths:
         r = summary[p]
