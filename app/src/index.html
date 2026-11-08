@@ -191,11 +191,12 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .chk-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
 .chk-stage{font-size:14px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .chk-time{font-size:12px;color:var(--muted);flex:0 0 auto;}
-.chk-bar{height:6px;border-radius:3px;background:var(--input);overflow:hidden;position:relative;}
+.chk-bar{height:6px;border-radius:3px;background:var(--border-hi);overflow:hidden;position:relative;}
 .chk-bar i{display:block;height:100%;width:0;border-radius:3px;background:var(--cyan);transition:width .25s ease;}
 .chk-bar.busy i{width:35%!important;position:absolute;left:0;animation:chkslide 1.2s ease-in-out infinite;}
 @keyframes chkslide{0%{left:-35%}100%{left:100%}}
-.chk-sum{font-size:12px;color:var(--muted);min-height:15px;}
+.chk-sum{font-size:12px;color:var(--muted);}
+.chk-sum:empty{display:none;}
 .chk-list{display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
 .chk-row{display:flex;align-items:center;gap:10px;min-height:38px;padding:0 8px 0 14px;background:linear-gradient(var(--card),var(--card2));border-radius:14px;box-shadow:var(--card-shadow);}
 .chk-name{flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
