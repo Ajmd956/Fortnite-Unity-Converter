@@ -110,16 +110,6 @@ try
     Say("status: Preparing decompression");
     await OodleHelper.InitializeAsync(Path.Combine(cache, OodleHelper.OodleFileName));
 
-    try
-    {
-        var detexPath = Path.Combine(cache, CUE4Parse_Conversion.Textures.BC.DetexHelper.DLL_NAME);
-        if (CUE4Parse_Conversion.Textures.BC.DetexHelper.LoadDll(detexPath))
-            CUE4Parse_Conversion.Textures.BC.DetexHelper.Initialize(detexPath);
-    }
-    catch (Exception)
-    {
-    }
-
     Say("status: Reading game archives");
     var provider = new DefaultFileProvider(archive, SearchOption.TopDirectoryOnly, new VersionContainer(gameEngine, optionOverrides: new Dictionary<string, bool> { ["StaticMesh.KeepMobileMinLODSettingOnDesktop"] = true }), StringComparer.OrdinalIgnoreCase);
     provider.OnDemandOptions = new IoStoreOnDemandOptions

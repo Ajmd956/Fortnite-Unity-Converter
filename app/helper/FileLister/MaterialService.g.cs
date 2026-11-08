@@ -82,6 +82,8 @@ public sealed class TextureFile
 
 public sealed class MaterialService
 {
+    static readonly ExportOptions TextureOptions = new(texturePlatform: ETexturePlatform.DesktopMobile);
+
     readonly GameContext game;
     readonly string cache;
     readonly SemaphoreSlim gate = new(1, 1);   // CUE4Parse loads, one at a time
@@ -576,7 +578,7 @@ public sealed class MaterialService
             CTexture? decoded;
             try
             {
-                decoded = cap > 0 ? TextureDecoder.Decode(tex, cap, ETexturePlatform.DesktopMobile) : tex.Decode(ETexturePlatform.DesktopMobile);
+                decoded = cap > 0 ? TextureDecoder.Decode(tex, cap, TextureOptions) : tex.Decode(TextureOptions);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -622,7 +624,7 @@ public sealed class MaterialService
             try
             {
                 if (mips[i].EnsureValidBulkData(tex.MipDataProvider, i))
-                    return tex.DecodeMip(i, ETexturePlatform.DesktopMobile);
+                    return tex.DecodeMip(i, TextureOptions);
             }
             catch (Exception)
             {
