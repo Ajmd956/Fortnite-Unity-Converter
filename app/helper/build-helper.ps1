@@ -51,13 +51,30 @@ if (-not $havePin) {
     Remove-Item -LiteralPath $extract -Recurse -Force
 }
 
+$utf8 = New-Object System.Text.UTF8Encoding($false)
 $skeletalSource = Join-Path $source 'CUE4Parse\UE4\Assets\Exports\SkeletalMesh\USkeletalMesh.cs'
 if (Test-Path -LiteralPath $skeletalSource) {
     $skeletalText = [System.IO.File]::ReadAllText($skeletalSource)
     $naniteRead = 'NaniteResources = new FNaniteResources(Ar);'
     $naniteSafe = 'try { NaniteResources = new FNaniteResources(Ar); } catch (Exception) { NaniteResources = null; }'
     if ($skeletalText.Contains($naniteRead) -and -not $skeletalText.Contains($naniteSafe)) {
-        [System.IO.File]::WriteAllText($skeletalSource, $skeletalText.Replace($naniteRead, $naniteSafe), (New-Object System.Text.UTF8Encoding($false)))
+        $skeletalText = $skeletalText.Replace($naniteRead, $naniteSafe)
+    }
+    $lodRead = 'LODModels = Ar.ReadArray(() => new FStaticLODModel(Ar, bHasVertexColors));'
+    $lodTrace = '{ var lodCount = Ar.Read<int>(); LODModels = new FStaticLODModel[lodCount]; for (var lodIndex = 0; lodIndex < lodCount; lodIndex++) { var lodStart = Ar.Position; try { LODModels[lodIndex] = new FStaticLODModel(Ar, bHasVertexColors); } catch (Exception lodError) { throw new InvalidDataException("LOD " + lodIndex + " of " + lodCount + " failed (game=" + Ar.Game + ", started at " + lodStart + ", stopped at " + Ar.Position + ", file size " + Ar.Length + "): " + lodError.GetType().Name + ": " + lodError.Message + " | " + string.Join(" <- ", (lodError.StackTrace ?? "").Split((char) 10).Take(8).Select(x => x.Trim())), lodError); } } }'
+    if ($skeletalText.Contains($lodRead) -and -not $skeletalText.Contains('lodStart')) {
+        $skeletalText = $skeletalText.Replace($lodRead, $lodTrace)
+    }
+    [System.IO.File]::WriteAllText($skeletalSource, $skeletalText, $utf8)
+}
+
+$lodSource = Join-Path $source 'CUE4Parse\UE4\Assets\Exports\SkeletalMesh\FStaticLODModel.cs'
+if (Test-Path -LiteralPath $lodSource) {
+    $lodText = [System.IO.File]::ReadAllText($lodSource)
+    $vertLine = 'VertexBufferGPUSkin.VertsFloat = new FGPUVertFloat[NumVertices];'
+    $vertCheck = 'if (positionVertexBuffer.Verts.Length < NumVertices || skinWeightVertexBuffer.Weights.Length < NumVertices || staticMeshVertexBuffer.UV.Length < NumVertices) throw new InvalidDataException("vertex buffers do not match: NumVertices=" + NumVertices + " positions=" + positionVertexBuffer.Verts.Length + " skinWeights=" + skinWeightVertexBuffer.Weights.Length + " uvs=" + staticMeshVertexBuffer.UV.Length + " texCoords=" + staticMeshVertexBuffer.NumTexCoords);' + "`n" + '        ' + $vertLine
+    if ($lodText.Contains($vertLine) -and -not $lodText.Contains('vertex buffers do not match')) {
+        [System.IO.File]::WriteAllText($lodSource, $lodText.Replace($vertLine, $vertCheck), $utf8)
     }
 }
 
