@@ -1372,7 +1372,8 @@ function discordProfile(user) {
   let avatar = ''
   if (user.avatar && /^[a-z0-9_]+$/i.test(user.avatar)) avatar = 'https://cdn.discordapp.com/avatars/' + user.id + '/' + user.avatar + '.png?size=128'
   else avatar = 'https://cdn.discordapp.com/embed/avatars/' + (Number(BigInt(user.id) >> 22n) % 6) + '.png'
-  return { id: String(user.id), name, avatar }
+  const username = String(user.username || '').replace(/[^A-Za-z0-9._]/g, '').slice(0, 32)
+  return { id: String(user.id), name, username, avatar }
 }
 
 ipcMain.handle('account:get', () => settings.account || null)
