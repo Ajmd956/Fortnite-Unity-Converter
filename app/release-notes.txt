@@ -1,2 +1,13 @@
-- Signing in with Discord now shows your avatar, name and @username in the sidebar, like Fortnite Porting
-- App Settings has a new Account page (shown when signed in) with your profile and a Sign Out button
+## Added
+- What's New pop-up: after an update, the app opens and shows what was added, changed and fixed
+- What's New button in App Settings to read the notes of this version any time
+- Update Available card in the sidebar above Sign In, like Fortnite Porting. It stays after you press Cancel so you can update later
+- Fortnite Porting style loading bars on the start screen, the Home tab and the Files tab, filled as the game files load
+- Update tester dev tool (dev-tools/update-tester) to try the update flow without touching a real release
+
+## Changed
+- The start screen uses a loading bar and status line instead of a spinning ring
+- Release notes in the update window are split into Added, Changed and Fixed
+
+## Fixed
+- Release notes were cut off at 1,200 characters in the update window

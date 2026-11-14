@@ -1,0 +1,13 @@
+{
+  "name": "fortnite-unity-update-tester",
+  "version": "1.0.0",
+  "description": "Dev tool for testing the Fortnite Unity Converter update flow against a local fake release server",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

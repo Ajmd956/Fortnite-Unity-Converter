@@ -67,7 +67,7 @@ function createUpdater(opts) {
       url: auth().Authorization ? asset.url || asset.browser_download_url : asset.browser_download_url,
       digest: /^sha256:([0-9a-f]{64})$/i.test(asset.digest || '') ? asset.digest.slice(7).toLowerCase() : '',
       page: rel.html_url || '',
-      notes: String(rel.body || '').replace(/\r/g, '').trim().slice(0, 1200),
+      notes: String(rel.body || '').replace(/\r/g, '').trim().slice(0, 4000),
       published: rel.published_at || ''
     }
     return state.offered
@@ -108,7 +108,7 @@ function createUpdater(opts) {
       const notes = String(r.body || '').replace(/\r/g, '').trim()
       // older releases only said their own name; there is nothing to show for those
       if (!notes || /^Fortnite Unity Converter v?[\d.]+$/i.test(notes)) continue
-      out.push({ version: r.tag_name, notes: notes.slice(0, 1500) })
+      out.push({ version: r.tag_name, notes: notes.slice(0, 4000) })
       if (out.length >= 15) break
     }
     return out

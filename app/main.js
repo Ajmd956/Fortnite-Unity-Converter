@@ -901,54 +901,79 @@ let updater = null
 let updateOffered = null
 let updateTimer = null
 
+const devUpdateUrl = !app.isPackaged && process.env.FUC_DEV_UPDATE_URL ? String(process.env.FUC_DEV_UPDATE_URL).replace(/\/$/, '') : ''
+const devMode = !!devUpdateUrl
+const devVersion = devMode ? String(process.env.FUC_DEV_VERSION || '').trim() : ''
+const devUpdatedFrom = devMode ? String(process.env.FUC_DEV_UPDATED || '').trim() : ''
+
+function appVer() {
+  return devVersion || app.getVersion()
+}
+
 function updateExePath() {
+  if (devMode) return path.join(app.getPath('temp'), 'fuc-dev-test.exe')
   if (!app.isPackaged) return ''
   return process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+}
+
+function readBundledNotes() {
+  try { return fs.readFileSync(path.join(__dirname, 'release-notes.txt'), 'utf8').replace(/\r/g, '').trim() } catch (e) { return '' }
 }
 
 function initUpdater() {
   if (updater) return updater
   let repo = ''
   try { repo = String(JSON.parse(fs.readFileSync(path.join(__dirname, 'update.json'), 'utf8')).repo || '').trim() } catch (e) {}
-  updater = createUpdater({ repo, currentVersion: app.getVersion(), exePath: updateExePath(), tempDir: app.getPath('temp'), getToken: () => settings.updateToken })
+  updater = createUpdater({
+    repo,
+    currentVersion: appVer(),
+    exePath: updateExePath(),
+    tempDir: app.getPath('temp'),
+    getToken: () => settings.updateToken,
+    apiBase: devMode ? devUpdateUrl : undefined,
+    webBase: devMode ? devUpdateUrl : undefined
+  })
   return updater
 }
 
 function offerPayload(o) {
-  return { version: o.version, name: o.name, size: o.size, notes: o.notes, published: o.published, current: app.getVersion() }
+  return { version: o.version, name: o.name, size: o.size, notes: o.notes, published: o.published, current: appVer(), test: devMode }
 }
 
 let updateRetries = 0
 
 async function runUpdateCheck(manual) {
   if (!updateExePath()) return { status: 'unsupported' }
-  if (!manual && settings.checkUpdates === false) return { status: 'off' }
+  if (!manual && settings.checkUpdates === false && !devMode) return { status: 'off' }
   try {
     const found = await initUpdater().check()
     updateRetries = 0
     if (!found) {
       initUpdater().discardDownloaded()
-      return { status: 'latest', current: app.getVersion() }
+      if (updateOffered) {
+        updateOffered = null
+        send('update:cleared', true)
+      }
+      return { status: 'latest', current: appVer() }
     }
     const isNew = !updateOffered || updateOffered.version !== found.version
     updateOffered = found
-    // Start fetching the update now, quietly, so installing it later is nearly instant
     if (settings.prefetchUpdates !== false) initUpdater().download().catch(() => {})
     if (isNew || manual) send('update:available', Object.assign({ manual: !!manual }, offerPayload(found)))
-    return { status: 'available', version: found.version, current: app.getVersion() }
+    return { status: 'available', version: found.version, current: appVer() }
   } catch (e) {
     if (!manual && updateRetries < 3) {
       updateRetries++
       setTimeout(() => runUpdateCheck(false), 5 * 60 * 1000)
     }
-    return { status: e && e.code ? e.code : 'error', current: app.getVersion() }
+    return { status: e && e.code ? e.code : 'error', current: appVer() }
   }
 }
 
 function startUpdateChecks() {
   const exe = updateExePath()
   if (exe) fs.promises.rm(path.join(path.dirname(exe), path.basename(exe, '.exe') + '.update.exe.part'), { force: true }).catch(() => {})
-  setTimeout(() => runUpdateCheck(false), 6000)
+  setTimeout(() => runUpdateCheck(false), devMode ? 1500 : 6000)
   if (!updateTimer) updateTimer = setInterval(pollUpdate, 30 * 1000)
 }
 
@@ -958,11 +983,11 @@ let lastFullCheck = 0
 // Every 30 seconds ask only for the latest release tag. The full (rate-limited) check runs
 // only when that tag is newer than this app, and never more than once every 2 minutes.
 async function pollUpdate() {
-  if (polling || !updateExePath() || settings.checkUpdates === false) return
+  if (polling || !updateExePath() || (settings.checkUpdates === false && !devMode)) return
   polling = true
   try {
     const tag = await initUpdater().peekLatest()
-    if (!tag || compareReleaseVersions(tag, app.getVersion()) <= 0) return
+    if (!tag || compareReleaseVersions(tag, appVer()) <= 0) return
     if (updateOffered && compareReleaseVersions(updateOffered.version, tag) >= 0) return
     if (Date.now() - lastFullCheck < 2 * 60 * 1000) return
     lastFullCheck = Date.now()
@@ -985,28 +1010,32 @@ ipcMain.handle('app:updated', () => {
 })
 
 ipcMain.handle('app:releasenotes', async () => {
-  const j = updatedMeta
-  if (!j) return { ok: false }
+  const j = updatedMeta || { version: appVer(), from: '', notes: '' }
   try {
     const list = await initUpdater().notesSince(j.from, j.version)
-    if (list.length) return { ok: true, list }
+    if (list.length) return { ok: true, version: j.version, list }
   } catch (e) {}
-  if (j.notes) return { ok: true, list: [{ version: 'v' + j.version, notes: j.notes }] }
+  if (j.notes) return { ok: true, version: j.version, list: [{ version: 'v' + j.version, notes: j.notes }] }
+  const bundled = readBundledNotes()
+  if (bundled) return { ok: true, version: j.version, list: [{ version: 'v' + j.version, notes: bundled }] }
   return { ok: false }
 })
 
 ipcMain.handle('update:pending', () => (updateOffered ? offerPayload(updateOffered) : null))
 ipcMain.handle('update:check', () => runUpdateCheck(true))
-ipcMain.handle('app:version', () => ({ version: app.getVersion(), canUpdate: !!updateExePath() }))
+ipcMain.handle('app:version', () => ({ version: appVer(), canUpdate: !!updateExePath(), test: devMode }))
 
 ipcMain.handle('update:download', async () => {
   const u = initUpdater()
   try {
     const file = await u.download(p => send('update:progress', p))
-    send('update:progress', { done: true })
-    // keep the notes of this update so the new version can show them even when it starts offline
+    send('update:progress', { done: true, test: devMode })
+    if (devMode) {
+      u.discardDownloaded()
+      return { ok: true, test: true }
+    }
     if (updateOffered && updateOffered.notes) {
-      settings.pendingNotes = String(updateOffered.notes).slice(0, 1500)
+      settings.pendingNotes = String(updateOffered.notes).slice(0, 4000)
       settings.pendingFor = String(updateOffered.version || '').replace(/^v/i, '')
       try { store.save(settingsFile, settings) } catch (e) {}
     }
@@ -1067,7 +1096,9 @@ if (!gotLock) {
       })
       if (scrubbed) { try { store.save(settingsFile, settings) } catch (e) {} }
     }
-    {
+    if (devMode) {
+      if (devUpdatedFrom) justUpdated = { version: appVer(), from: devUpdatedFrom, notes: '' }
+    } else {
       const cur = app.getVersion()
       const prev = String(settings.lastVersion || '')
       if (wasUpdated({ packaged: app.isPackaged, prev, cur, hadSettings })) {
@@ -1084,11 +1115,13 @@ if (!gotLock) {
     autoDetectPaths()
     // The app never needs camera, microphone, location or similar access, so refuse any request for it
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false))
+    applyPresence()
     createWindow()
   })
 }
 
 app.on('before-quit', () => {
+  rpcStop()
   quitting = true
   saveTypeCache()
   stopTypeServer()
@@ -1147,6 +1180,7 @@ ipcMain.handle('settings:set', (_e, next) => {
   const before = settings.bridge || ''
   settings = Object.assign({}, settings, next)
   if ('profiles' in next || 'activeProfile' in next) applyProfile()
+  if ('discordPresence' in next) applyPresence()
   // Changing a profile does not restart the API by itself; the Reload button does that. Only the address restarts it.
   if (typeServer && before !== (settings.bridge || '')) {
     stopTypeServer()
@@ -1365,7 +1399,36 @@ function stopDiscordWait(result) {
   w.done(result)
 }
 
-const DISCORD_PAGE = '<!doctype html><meta charset="utf-8"><title>Fortnite Unity Converter</title><body style="background:#0D0C12;color:#E2DFF0;font:16px Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div id="m">Signing in...</div><script>var h=new URLSearchParams(location.hash.slice(1));fetch("/token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:h.get("access_token")||"",state:h.get("state")||"",error:new URLSearchParams(location.search).get("error")||""})}).then(function(r){return r.json()}).then(function(j){document.getElementById("m").textContent=j.ok?"You are signed in. You can close this tab and go back to the app.":"Sign in did not finish. Go back to the app and try again."}).catch(function(){document.getElementById("m").textContent="Sign in did not finish. Go back to the app and try again."})</script>'
+const DISCORD_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fortnite Unity Converter</title><style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#0D0C12;color:#DDD8F0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center}
+main{width:560px;max-width:calc(100vw - 32px)}
+.ic{width:64px;height:64px;margin:0 auto 34px;border-radius:50%;border:3px solid #953BF8;display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px #953BF840,inset 0 0 14px #953BF826;color:#953BF8;transition:border-color .2s,color .2s,box-shadow .2s}
+.ic svg{width:30px;height:30px;display:block}
+.ic.bad{border-color:#686490;color:#A8A4C0;box-shadow:none}
+.ic.wait{border-color:#2F2D3C;color:#686490;box-shadow:none}
+h1{margin:0;font-size:24px;line-height:32px;font-weight:600;color:#DDD8F0}
+.s{margin:12px 0 0;font-size:16px;line-height:24px;color:#A8A4C0}
+hr{border:0;border-top:1px solid #1F1D28;width:480px;max-width:100%;margin:39px auto 33px}
+.f{margin:0;font-size:12px;line-height:16px;color:#686490}
+</style></head><body><main><div class="ic wait" id="ic"></div><h1 id="t">Signing In</h1><p class="s" id="s">Finishing sign in with Discord</p><hr><p class="f" id="f">This only takes a moment.</p></main><script>
+var CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+var CROSS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+function show(ok){
+  var ic=document.getElementById("ic");
+  ic.className="ic"+(ok?"":" bad");
+  ic.innerHTML=ok?CHECK:CROSS;
+  document.title=ok?"Authentication Complete":"Sign In Failed";
+  document.getElementById("t").textContent=ok?"Authentication Complete":"Sign In Failed";
+  document.getElementById("s").textContent=ok?"You've successfully authenticated with Fortnite Unity Converter":"Discord did not finish signing you in";
+  document.getElementById("f").textContent=ok?"You can close this tab and return to the app.":"Go back to the app and try again.";
+}
+var h=new URLSearchParams(location.hash.slice(1));
+var body=JSON.stringify({token:h.get("access_token")||"",state:h.get("state")||"",error:new URLSearchParams(location.search).get("error")||""});
+try{history.replaceState(null,"","/callback")}catch(e){}
+fetch("/token",{method:"POST",headers:{"Content-Type":"application/json"},body:body}).then(function(r){return r.json()}).then(function(j){show(!!j.ok)}).catch(function(){show(false)});
+</script></body></html>`
 
 function discordProfile(user) {
   const name = String(user.global_name || user.username || 'Discord user').slice(0, 64)
@@ -1418,6 +1481,7 @@ ipcMain.handle('account:signin', () => new Promise(resolve => {
               store.save(settingsFile, settings)
               ok = true
               stopDiscordWait({ ok: true, account: prof })
+              try { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.focus() } } catch (e) {}
             }
           }
         } catch (e) {}
@@ -1437,6 +1501,84 @@ ipcMain.handle('account:signin', () => new Promise(resolve => {
     shell.openExternal(url)
   })
 }))
+
+// Discord Rich Presence: talks to the Discord app on this PC over its local pipe, like Fortnite Porting's setting
+let rpc = null
+let rpcRetry = null
+let presenceText = 'Home'
+const presenceStart = Date.now()
+
+function rpcFrame(op, data) {
+  const body = Buffer.from(JSON.stringify(data), 'utf8')
+  const head = Buffer.alloc(8)
+  head.writeInt32LE(op, 0)
+  head.writeInt32LE(body.length, 4)
+  return Buffer.concat([head, body])
+}
+
+function rpcSend() {
+  if (!rpc || !rpc.ready) return
+  const activity = { details: 'Fortnite Unity Converter', state: presenceText, timestamps: { start: presenceStart } }
+  try { rpc.sock.write(rpcFrame(1, { cmd: 'SET_ACTIVITY', args: { pid: process.pid, activity }, nonce: crypto.randomBytes(8).toString('hex') })) } catch (e) {}
+}
+
+function rpcStop() {
+  clearTimeout(rpcRetry)
+  rpcRetry = null
+  const r = rpc
+  rpc = null
+  if (r) { try { r.sock.destroy() } catch (e) {} }
+}
+
+function rpcConnect(index) {
+  if (process.platform !== 'win32' || settings.discordPresence === false) return
+  const clientId = discordClientId()
+  if (!clientId) return
+  if (index > 9) { rpcRetry = setTimeout(() => rpcConnect(0), 30000); return }
+  const sock = net.connect('\\\\?\\pipe\\discord-ipc-' + index)
+  const me = { sock, ready: false }
+  let buf = Buffer.alloc(0)
+  let opened = false
+  sock.on('connect', () => {
+    opened = true
+    rpc = me
+    sock.write(rpcFrame(0, { v: 1, client_id: clientId }))
+  })
+  sock.on('data', chunk => {
+    buf = Buffer.concat([buf, chunk])
+    while (buf.length >= 8) {
+      const op = buf.readInt32LE(0)
+      const len = buf.readInt32LE(4)
+      if (len < 0 || len > 65536) { sock.destroy(); return }
+      if (buf.length < 8 + len) break
+      let msg = null
+      try { msg = JSON.parse(buf.slice(8, 8 + len).toString('utf8')) } catch (e) {}
+      buf = buf.slice(8 + len)
+      if (op === 3) { try { sock.write(rpcFrame(4, msg || {})) } catch (e) {} }
+      else if (op === 2) { sock.destroy(); return }
+      else if (msg && msg.evt === 'READY') { me.ready = true; rpcSend() }
+    }
+  })
+  sock.on('error', () => {
+    if (!opened) rpcConnect(index + 1)
+  })
+  sock.on('close', () => {
+    if (!opened || rpc !== me) return
+    rpc = null
+    if (settings.discordPresence !== false) rpcRetry = setTimeout(() => rpcConnect(0), 30000)
+  })
+}
+
+function applyPresence() {
+  rpcStop()
+  if (settings.discordPresence !== false) rpcConnect(0)
+}
+
+ipcMain.handle('presence:set', (_e, text) => {
+  presenceText = String(text || 'Home').slice(0, 64)
+  rpcSend()
+  return true
+})
 
 ipcMain.handle('clipboard:write', (_e, text) => {
   clipboard.writeText(String(text || ''))

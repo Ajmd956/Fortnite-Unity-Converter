@@ -53,12 +53,8 @@ button:disabled{opacity:.5;cursor:default !important;}
 .acct-card .acct-hd{font-size:14px;font-weight:400;line-height:18px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .signin[hidden]{display:none;}
 .acct-page-av{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:0 0 48px;background:var(--btn);margin-right:8px;}
-#page-howto{flex:1 1 auto;}
-.howto{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:8px;}
-.howto>.row-card .rc-ctl{flex:0 0 auto;}
-.hv-wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:8px;}
-.hv-slot{flex:1 1 auto;min-height:140px;display:flex;align-items:center;justify-content:center;container-type:size;}
-.hv-box{width:min(100cqw,calc(100cqh * 16 / 9));}
+.hv-wrap{display:flex;flex-direction:column;gap:8px;}
+.hv-box{width:100%;}
 .hv{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:16px;overflow:hidden;box-shadow:var(--card-shadow);}
 .hv video{width:100%;height:100%;display:block;object-fit:contain;cursor:pointer;}
 .hv-ctl{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:32px 12px 10px;background:linear-gradient(to top,#000000d0,#00000000);opacity:0;pointer-events:none;transition:opacity .2s ease;}
@@ -105,8 +101,10 @@ input[type=range].sld.hv-seek{flex:1 1 auto;width:auto;min-width:0;}
 .home-title{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:40px;font-weight:600;color:#DDD8F0;}
 .home-title b{color:var(--cyan);font-weight:600;}
 .home-status{font-size:14px;font-weight:500;color:var(--muted);margin:8px 0;}
-.home-bar{width:500px;max-width:80%;height:8px;border-radius:4px;background:#ffffff0f;overflow:hidden;position:relative;margin:8px 0 0;}
-.home-bar i{position:absolute;top:0;bottom:0;left:-40%;width:40%;border-radius:4px;background:var(--cyan);animation:ldSlide 1.2s ease-in-out infinite;}
+.home-bar,.ld-bar,.sp-bar{--p:0%;height:8px;border-radius:4px;background:#ffffff0f;overflow:hidden;position:relative;}
+.home-bar i,.ld-bar i,.sp-bar i{position:absolute;top:0;bottom:0;left:0;width:var(--p);border-radius:4px;background:var(--cyan);transition:width .5s ease;}
+.home-bar.indet i,.ld-bar.indet i{left:-40%;width:40%;transition:none;animation:ldSlide 1.2s ease-in-out infinite;}
+.home-bar{width:500px;max-width:80%;margin:8px 0 0;}
 .home-bar.hide,.home-status.hide{display:none;}
 .home-links{display:flex;gap:8px;margin-top:12px;}
 .home-links .btn{width:125px;justify-content:center;gap:8px;font-size:14px;}
@@ -403,8 +401,7 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 #fileLoad.show{display:flex;}
 #fileLoad .ld-t{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:20px;font-weight:600;position:relative;}
 #fileLoad .ld-s{position:relative;font-size:14px;color:var(--muted);min-height:16px;max-width:80%;text-align:center;}
-.ld-bar{width:400px;max-width:70%;height:8px;border-radius:4px;background:#ffffff0f;overflow:hidden;position:relative;}
-.ld-bar i{position:absolute;top:0;bottom:0;left:-40%;width:40%;border-radius:3px;background:var(--cyan);animation:ldSlide 1.2s ease-in-out infinite;}
+.ld-bar{width:400px;max-width:70%;}
 @keyframes ldSlide{0%{left:-40%;}100%{left:100%;}}
 .fb-selrow{display:flex;align-items:center;gap:8px;}
 .fb-selrow .rc-text{flex:1;min-width:0;padding-left:8px;}
@@ -603,7 +600,28 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 #updDoneOk{background:var(--primary);color:var(--on-primary);}
 #updDoneOk:hover{background:#a355fa;}
 #updDoneOk:active{background:#8531e0;}
-.upd-notes.big{max-height:min(320px,45vh);user-select:text;}
+.upd-card{display:flex;align-items:center;gap:8px;margin:16px 8px 0;padding:10px 10px 10px 16px;background:var(--btn);border-radius:16px;box-shadow:var(--card-shadow);cursor:pointer;transition:background-color var(--fade);}
+.upd-card[hidden]{display:none;}
+.upd-card:hover{background:var(--btn-hover);}
+.upd-card:active{background:var(--btn-pressed);}
+.upd-card-tx{flex:1;min-width:0;}
+.upd-card-t{font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;}
+.upd-card-v{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.upd-card-btn{flex:0 0 28px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;border-radius:50%;background:var(--sel);color:var(--text);cursor:pointer;padding:0;}
+.upd-card-btn svg{width:14px;height:14px;pointer-events:none;}
+.wn-panel{width:clamp(420px,36vw,600px);}
+.wn-body{max-height:min(380px,50vh);overflow:auto;margin:0 0 16px;display:flex;flex-direction:column;gap:14px;user-select:text;padding-right:4px;}
+.wn-body[hidden]{display:none;}
+#updNotes.wn-body{max-height:200px;background:var(--sel);border-radius:8px;padding:10px 12px;}
+.wn-vb{display:flex;flex-direction:column;gap:12px;}
+.wn-ver{font-size:13px;font-weight:600;color:var(--text);}
+.wn-sec{display:flex;flex-direction:column;gap:6px;}
+.wn-chip{align-self:flex-start;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 10px;border-radius:10px;}
+.wn-chip.added{background:#3ddc9722;color:var(--ok);}
+.wn-chip.changed{background:#953bf833;color:var(--cyan);}
+.wn-chip.fixed{background:#f5b94222;color:var(--warn);}
+.wn-list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:1.45;color:var(--muted);}
+.wn-empty{font-size:13px;color:var(--muted);}
 .upd-bar{height:6px;border-radius:3px;background:var(--sel);overflow:hidden;margin:2px 0 4px;}
 .upd-fill{height:100%;width:0;background:var(--primary);transition:width .15s linear;}
 .done-icon{width:44px;height:44px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:#3ddc9722;border:1px solid #3ddc9755;color:var(--ok);font-size:22px;font-weight:800;}
@@ -629,22 +647,16 @@ img[src$="logo.png"]:not(.sp-logo){filter:var(--logo-filter,none);}
 }
 .sp-name b{color:var(--cyan);font-weight:600;}
 .sp-load{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:14px;opacity:0;animation:spUp .8s ease 1.1s forwards;}
-.sp-ring{
-  width:50px;height:50px;border-radius:50%;border:5px solid #ffffff12;border-top-color:var(--cyan);
-  animation:spSpin .9s linear infinite;
-}
+.sp-bar{width:500px;max-width:80vw;}
 .sp-status{font-size:14px;color:var(--muted);min-height:16px;transition:opacity .2s ease;}
 .sp-error{display:none;flex-direction:column;align-items:center;text-align:center;max-width:380px;gap:8px;}
 .sp-error.show{display:flex;animation:spUp .5s ease forwards;}
 .sp-error h3{font-size:17px;font-weight:800;color:var(--warn);letter-spacing:.04em;}
 .sp-error p{font-size:12px;color:var(--muted);line-height:1.6;}
 .sp-actions{display:flex;gap:10px;margin-top:10px;}
-#splash.failed .sp-ring,#splash.failed .sp-status{display:none;}
+#splash.failed .sp-bar,#splash.failed .sp-status{display:none;}
 @keyframes spIn{to{opacity:1;transform:scale(1);}}
 @keyframes spUp{to{opacity:1;transform:translateY(0);}}
-@keyframes spSpin{to{transform:rotate(360deg);}}
-
-.sp-ring{border-top-color:var(--cyan);}
 .sp-error h3{color:var(--warn);}
 /* Beta59: Files tab alignment with Fortnite Porting (measured from the comparison video) */
 .fb-tree{padding-top:7px;}
@@ -706,6 +718,88 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 #fileVfsBtn span{letter-spacing:.2px;}
 #fileQuery::placeholder{letter-spacing:.15px;}
 .fb-bar #fileProps{padding-left:14px;}
+
+/* ---------- first-run setup ---------- */
+#setup{position:fixed;inset:0;z-index:320;background:var(--bg);display:none;padding-top:35px;}
+#setup.open{display:flex;animation:suIn .25s ease;}
+@keyframes suIn{from{opacity:0;}to{opacity:1;}}
+.su-rail{flex:0 0 272px;width:272px;display:flex;flex-direction:column;padding:12px 16px 16px;gap:16px;}
+.su-brand{display:flex;align-items:center;gap:12px;padding:0 8px;}
+.su-brand img{width:36px;height:36px;display:block;}
+.su-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.su-steps{display:flex;flex-direction:column;gap:2px;}
+.su-step{display:flex;align-items:center;gap:12px;height:36px;padding:0 12px;border-radius:16px;color:var(--muted);font-size:14px;transition:background-color var(--fade),color var(--fade);}
+.su-step .n{flex:0 0 22px;width:22px;height:22px;border-radius:50%;background:var(--btn);box-shadow:var(--card-shadow);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--muted);}
+.su-step .n svg{width:14px;height:14px;display:block;}
+.su-step.on{background:var(--active);box-shadow:var(--card-shadow);color:var(--text);}
+.su-step.on .n{background:var(--cyan);color:#fff;}
+.su-step.done .n{background:var(--btn-bright);color:var(--text);}
+.su-main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--content);border-top:2px solid var(--border);border-left:2px solid var(--border);border-radius:16px 0 0 0;}
+.su-body{flex:1;min-height:0;overflow-y:auto;padding:48px 64px 24px;display:flex;flex-direction:column;align-items:center;}
+.su-body>*{width:100%;max-width:600px;}
+.su-body.go>*{animation:suStep .28s cubic-bezier(.22,1,.36,1);}
+@keyframes suStep{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.su-foot{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:16px 24px;border-top:1px solid var(--border);}
+.su-logo{width:72px;height:72px;display:block;margin:0 auto 20px;filter:var(--logo-filter,none) drop-shadow(0 0 22px color-mix(in srgb,var(--cyan) 33%,transparent));}
+.su-h{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:28px;line-height:34px;font-weight:600;color:var(--text);text-align:center;margin:0 0 8px;}
+.su-p{font-size:14px;line-height:21px;color:var(--muted);text-align:center;margin:0 0 28px;}
+.su-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.su-tile{display:flex;flex-direction:column;gap:6px;padding:16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.su-tile b{font-size:14px;font-weight:600;color:var(--text);}
+.su-tile span{font-size:12px;line-height:17px;color:var(--muted);}
+.su-tile .ti{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--cyan);display:grid;place-items:center;margin-bottom:4px;}
+.su-tile .ti svg{width:16px;height:16px;display:block;}
+.su-themes{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.su-theme{display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 8px 14px;background:linear-gradient(var(--card),var(--card2));border:none;border-radius:16px;box-shadow:var(--card-shadow);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer;transition:background-color var(--fade);}
+.su-theme:hover{background:var(--card-hover);}
+.su-theme i{width:28px;height:28px;border-radius:50%;display:block;box-shadow:0 0 0 2px var(--content),0 0 0 3.5px transparent;transition:box-shadow .15s ease;}
+.su-theme.on i{box-shadow:0 0 0 2px var(--content),0 0 0 3.5px var(--text);}
+.su-card{display:flex;flex-direction:column;gap:12px;padding:16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.su-row{display:flex;align-items:center;gap:8px;}
+.su-path{flex:1;min-width:0;height:32px;line-height:32px;padding:0 16px;background:var(--input);border-radius:16px;box-shadow:var(--card-shadow);font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text;}
+.su-path.empty{color:var(--dim);}
+.su-st{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:17px;color:var(--muted);}
+.su-st i{flex:0 0 8px;width:8px;height:8px;border-radius:50%;margin-top:4.5px;background:var(--dim);}
+.su-st.ok i{background:var(--ok);}
+.su-st.warn i{background:var(--warn);}
+.su-acct{display:flex;align-items:center;gap:16px;}
+.su-acct img{width:48px;height:48px;border-radius:50%;object-fit:cover;background:var(--btn);flex:0 0 48px;}
+.su-acct .nm{font-size:14px;font-weight:600;color:var(--text);}
+.su-acct .hd{font-size:12px;color:var(--muted);margin-top:2px;}
+.su-tour{display:flex;flex-direction:column;gap:8px;counter-reset:t;}
+.su-tr{display:flex;gap:16px;align-items:flex-start;padding:14px 16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.su-tr .num{flex:0 0 28px;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--cyan);display:grid;place-items:center;font-size:14px;font-weight:600;}
+.su-tr b{display:block;font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px;}
+.su-tr span{font-size:12px;line-height:17px;color:var(--muted);}
+.su-sum{display:flex;flex-direction:column;gap:8px;}
+.su-sum .su-st{align-items:center;font-size:14px;color:var(--text);padding:12px 16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.su-sum .su-st i{margin-top:0;}
+.su-sum .su-st small{margin-left:auto;font-size:12px;color:var(--muted);}
+.btn.primary{background:var(--cyan);color:#fff;}
+.btn.primary:hover{background:color-mix(in srgb,var(--cyan) 85%,#fff);}
+.btn.primary:active{background:color-mix(in srgb,var(--cyan) 75%,#000);}
+
+/* ---------- How to Use ---------- */
+#page-howto{flex:1 1 auto;}
+.howto{display:flex;flex-direction:column;gap:8px;}
+.ht-hero{display:flex;align-items:center;gap:16px;padding:20px 24px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.ht-hero img{width:44px;height:44px;flex:0 0 44px;display:block;}
+.ht-hero .tx{flex:1;min-width:0;}
+.ht-hero .t{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:20px;font-weight:600;color:var(--text);}
+.ht-hero .d{font-size:14px;line-height:20px;color:var(--muted);margin-top:2px;}
+.ht-h{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:16px;font-weight:600;color:var(--text);margin:12px 4px 0;}
+.ht-steps{display:flex;flex-direction:column;gap:8px;}
+.ht-step{display:flex;align-items:center;gap:16px;padding:14px 16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.ht-step .num{flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--cyan);display:grid;place-items:center;font-size:14px;font-weight:700;}
+.ht-step .tx{flex:1;min-width:0;}
+.ht-step .t{font-size:14px;font-weight:600;color:var(--text);}
+.ht-step .d{font-size:12px;line-height:17px;color:var(--muted);margin-top:2px;}
+.ht-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;}
+.ht-card{display:flex;flex-direction:column;gap:6px;padding:16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.ht-card .t{font-size:14px;font-weight:600;color:var(--text);}
+.ht-card .d{font-size:12px;line-height:17px;color:var(--muted);flex:1;}
+.ht-card .btn{align-self:flex-start;margin-top:6px;}
+.ht-vid{width:100%;max-width:860px;margin:0 auto;}
 </style>
 </head>
 <body>
@@ -714,8 +808,8 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
   <img class="sp-logo" src="../assets/logo.png" alt="" draggable="false">
   <div class="sp-name">Fortnite <b>Unity</b> Converter</div>
   <div class="sp-load">
-    <div class="sp-ring"></div>
     <div class="sp-status" id="spStatus">Loading dependencies...</div>
+    <div class="sp-bar" id="spBar"><i></i></div>
     <div class="sp-error" id="spError">
       <h3 id="spErrTitle"></h3>
       <p id="spErrBody"></p>
@@ -755,6 +849,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <button class="tab nav" data-tab="export"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M21.7 18.6V17.6L22.8 16.8C22.9 16.7 23 16.6 22.9 16.5L21.9 14.8C21.9 14.7 21.7 14.7 21.6 14.7L20.4 15.2C20.1 15 19.8 14.8 19.5 14.7L19.3 13.4C19.3 13.3 19.2 13.2 19.1 13.2H17.1C16.9 13.2 16.8 13.3 16.8 13.4L16.6 14.7C16.3 14.9 16.1 15 15.8 15.2L14.6 14.7C14.5 14.7 14.4 14.7 14.3 14.8L13.3 16.5C13.3 16.6 13.3 16.7 13.4 16.8L14.5 17.6V18.6L13.4 19.4C13.3 19.5 13.2 19.6 13.3 19.7L14.3 21.4C14.4 21.5 14.5 21.5 14.6 21.5L15.8 21C16 21.2 16.3 21.4 16.6 21.5L16.8 22.8C16.9 22.9 17 23 17.1 23H19.1C19.2 23 19.3 22.9 19.3 22.8L19.5 21.5C19.8 21.3 20 21.2 20.3 21L21.5 21.4C21.6 21.4 21.7 21.4 21.8 21.3L22.8 19.6C22.9 19.5 22.9 19.4 22.8 19.4L21.7 18.6M18 19.5C17.2 19.5 16.5 18.8 16.5 18S17.2 16.5 18 16.5 19.5 17.2 19.5 18 18.8 19.5 18 19.5M11 18C11 14.1 14.1 11 18 11C20 11 21.7 11.8 23 13.1V4C23 2.9 22.1 2 21 2H3C1.9 2 1 2.9 1 4V20C1 21.1 1.9 22 3 22H12.3C11.5 20.9 11 19.5 11 18M3 4H21V7H3V4Z"/></svg><span>Converter Options</span></button>
     <button class="tab nav" data-tab="settings"><svg class="ni" viewBox="0 0 24 24" fill="currentColor"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg><span>App Settings</span></button>
     <div class="spacer"></div>
+    <div class="upd-card" id="updCard" role="button" tabindex="0" hidden><div class="upd-card-tx"><div class="upd-card-t" id="updCardT">Update Available</div><div class="upd-card-v" id="updCardV"></div></div><button class="upd-card-btn" id="updCardBtn" tabindex="-1" title="View update"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg></button></div>
     <div class="side-foot"><button class="signin" id="signInBtn" title="Sign in with Discord"><img src="../assets/icons/Discord.png" alt="" draggable="false"><span>Sign In</span></button><div class="acct-card" id="acctCard" hidden><img class="acct-av" id="acctAv" alt="" draggable="false"><div class="acct-tx"><div class="acct-nm" id="acctNm"></div><div class="acct-hd" id="acctHd"></div></div></div></div>
   </aside>
   <div class="main">
@@ -765,7 +860,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="home-top">
           <div class="home-title"><span>Fortnite</span> <b>Unity</b></div>
           <div class="home-status" id="homeStatus"></div>
-          <div class="home-bar" id="homeBar"><i></i></div>
+          <div class="home-bar indet" id="homeBar"><i></i></div>
           <div class="home-links">
             <button class="btn ext" data-url=""><img src="../assets/logo.png" alt="">Website</button>
           </div>
@@ -837,8 +932,34 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 
     <div class="page" id="page-howto">
       <div class="howto">
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Welcome, new user</div><div class="rc-desc">Watch the video below. In Files, right-click a material and choose Copy Path Without Extension. Open Converter, paste it under Material Paths, name the shader if you like and press Convert. Then press Open shader and drag that folder into your Unity project's Assets.</div></div><div class="rc-ctl"><button class="btn sm" id="howtoWelcome">Show welcome</button></div></div>
-        <div class="hv-wrap" id="hvWrap">
+        <div class="ht-hero"><img src="../assets/logo.png" alt="" draggable="false"><div class="tx"><div class="t">How to Use</div><div class="d">Turn a Fortnite material into a Unity shader in five steps. Watch the video at the bottom if you would rather see it done.</div></div><button class="btn" id="howtoWelcome">Run setup again</button></div>
+
+        <div class="ht-h">Convert your first shader</div>
+        <div class="ht-steps">
+          <div class="ht-step"><div class="num">1</div><div class="tx"><div class="t">Point the app at Fortnite</div><div class="d">In App Settings, open Installation and check the Archive Directory. It is usually found on its own. Your Fortnite files then show up in Files.</div></div><button class="btn sm" data-go="installation">Open Installation</button></div>
+          <div class="ht-step"><div class="num">2</div><div class="tx"><div class="t">Find a material</div><div class="d">In Files, browse or search for a material, right-click it and choose Copy Path Without Extension.</div></div><button class="btn sm" data-go="files">Open Files</button></div>
+          <div class="ht-step"><div class="num">3</div><div class="tx"><div class="t">Convert it</div><div class="d">In Converter, open Shader Converter and paste the path under Material Paths. Name the shader if you like, then press Convert.</div></div><button class="btn sm" data-go="converter">Open Converter</button></div>
+          <div class="ht-step"><div class="num">4</div><div class="tx"><div class="t">Open the shader</div><div class="d">My Shaders lists everything you have converted. Press Open shader to jump to the file. Its Textures folder sits right beside it.</div></div><button class="btn sm" data-go="shaders">Open My Shaders</button></div>
+          <div class="ht-step"><div class="num">5</div><div class="tx"><div class="t">Use it in Unity</div><div class="d">Drag that folder into your Unity project's Assets folder. The shader and its textures are ready to use.</div></div></div>
+        </div>
+
+        <div class="ht-h">More you can do</div>
+        <div class="ht-grid">
+          <div class="ht-card"><div class="t">Preview files</div><div class="d">Open textures, models, sounds and materials from Files without leaving the app.</div><button class="btn sm" data-go="files">Open Files</button></div>
+          <div class="ht-card"><div class="t">Blueprint Converter</div><div class="d">Turn a sky dome or a prop Blueprint into a Unity prefab, with its shaders, textures, meshes and sounds.</div><button class="btn sm" data-go="converter" data-cv="blueprint">Open Blueprint Converter</button></div>
+          <div class="ht-card"><div class="t">Particle Converter</div><div class="d">Turn a Niagara system (NS_...) into a Unity prefab, saved in its own folder.</div><button class="btn sm" data-go="converter" data-cv="particle">Open Particle Converter</button></div>
+          <div class="ht-card"><div class="t">Fix Shaders</div><div class="d">Drop in .shader files and the app looks for problems and can fix them for you.</div><button class="btn sm" data-go="check">Open Fix Shaders</button></div>
+        </div>
+
+        <div class="ht-h">If something looks wrong</div>
+        <div class="ht-grid">
+          <div class="ht-card"><div class="t">No files in Files</div><div class="d">The Archive Directory in Installation must exist and hold your Fortnite game files. After changing it, press Refresh at the bottom of the window.</div><button class="btn sm" data-go="installation">Open Installation</button></div>
+          <div class="ht-card"><div class="t">A shader looks off</div><div class="d">The converter can make mistakes. Run the shader through Fix Shaders, or edit it by hand in Unity.</div><button class="btn sm" data-go="check">Open Fix Shaders</button></div>
+          <div class="ht-card"><div class="t">Unity is not found</div><div class="d">Set the Unity editor path in App Settings. Without it the helper scripts ship as .cs files instead of one built library.</div><button class="btn sm" data-go="application">Open Application</button></div>
+        </div>
+
+        <div class="ht-h">Watch it done</div>
+        <div class="ht-vid"><div class="hv-wrap" id="hvWrap">
           <div class="hv-slot" id="hvSlot"><div class="hv-box">
             <div class="hv" id="hv"><video id="howtoVideo" src="../assets/ui/howto.webm" loop muted playsinline preload="metadata" onerror="this.style.display='none'"></video>
               <div class="hv-ctl">
@@ -848,7 +969,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
               </div>
             </div>
           </div></div>
-        </div>
+        </div></div>
       </div>
     </div>
 
@@ -859,7 +980,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 
     <div class="page" id="page-files">
       <div class="fb-body">
-        <div id="fileLoad"><div class="glow"></div><div class="ld-t" id="fileLoadT">Loading files</div><div class="ld-s" id="fileLoadS"></div><div class="ld-bar"><i></i></div></div>
+        <div id="fileLoad"><div class="glow"></div><div class="ld-t" id="fileLoadT">Loading files</div><div class="ld-s" id="fileLoadS"></div><div class="ld-bar indet" id="fileLoadBar"><i></i></div></div>
         <div class="fb-tree" id="fileTree"></div>
         <div class="fb-split" id="fileSplit"></div>
         <div class="fb-right">
@@ -959,13 +1080,14 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="row-card"><div class="rc-text"><div class="rc-title">Conversion Sound</div><div class="rc-desc">Plays a sound when a shader, particle system or Blueprint finishes converting.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setConvSound" checked><span class="trk"></span><span class="lbl" data-for="setConvSound">On</span></label></div></div>
         <div class="sec-head">Updates</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Check for Updates</div><div class="rc-desc">Checks for a new version when the app starts and every few hours.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setCheckUpd"><span class="trk"></span><span class="lbl" data-for="setCheckUpd">Off</span></label></div></div>
-        <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc"><span id="updVersion">Fortnite Unity Converter</span></div></div><div class="rc-ctl"><button class="btn sm" id="updCheckBtn">Check now</button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc"><span id="updVersion">Fortnite Unity Converter</span></div></div><div class="rc-ctl"><button class="btn sm" id="wnBtn">What's new</button><button class="btn sm" id="updCheckBtn">Check now</button></div></div>
         <div class="sec-head">Advanced</div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Show Developer Settings</div><div class="rc-desc">Enables the developer settings tab.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setDev"><span class="trk"></span><span class="lbl" data-for="setDev">Off</span></label></div></div>
         <div class="row-card"><div class="rc-text"><div class="rc-title">Enable Experimental Settings</div><div class="rc-desc">Shows features that are still being tested. They may change or break.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setExperimental"><span class="trk"></span><span class="lbl" data-for="setExperimental">Off</span></label></div></div>
       </div>
       <div class="subpane" id="sub-account">
         <div class="row-card"><img class="acct-page-av" id="acctPageAv" alt="" draggable="false"><div class="rc-text"><div class="rc-title" id="acctPageNm"></div><div class="rc-desc" id="acctPageHd"></div></div><div class="rc-ctl"><button class="btn sm" id="acctOut">Sign Out</button></div></div>
+        <div class="row-card"><div class="rc-text"><div class="rc-title">Discord Rich Presence</div><div class="rc-desc">Shows what you are doing in Fortnite Unity Converter on your Discord profile.</div></div><div class="rc-ctl"><label class="tgl"><input type="checkbox" id="setPresence"><span class="trk"></span><span class="lbl" data-for="setPresence">Off</span></label></div></div>
       </div>
       <div class="subpane" id="sub-developer">
         <div class="sec-head">Fallback</div>
@@ -1084,7 +1206,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
     <h2 id="updTitle">Update</h2>
     <div class="upd-sub" id="updBody">A new version of Fortnite Unity Converter is out.</div>
     <div class="upd-meta" id="updMeta" hidden></div>
-    <div class="upd-notes" id="updNotes" hidden></div>
+    <div class="upd-notes wn-body" id="updNotes" hidden></div>
     <div class="upd-bar" id="updBar" hidden><div class="upd-fill" id="updFill"></div></div>
     <div class="upd-btns" id="updBtns">
       <button class="btn" id="updCancel">Cancel</button>
@@ -1104,27 +1226,25 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
   </div>
 </div>
 <div class="overlay" id="updatedOverlay">
-  <div class="panel upd-panel">
-    <h2>Updated successfully</h2>
+  <div class="panel upd-panel wn-panel">
+    <h2 id="wnTitle">What's new</h2>
     <div class="upd-sub" id="updDoneBody"></div>
-    <div class="upd-notes big" id="updDoneNotes" hidden></div>
+    <div class="wn-body" id="wnBody"></div>
     <div class="upd-btns">
-      <button class="btn" id="updDoneNotesBtn">Release notes</button>
       <button class="btn primary" id="updDoneOk">OK</button>
     </div>
   </div>
 </div>
 
-<div class="overlay" id="welcomeOverlay">
-  <div class="panel done-panel">
-    <img class="welcome-logo" src="../assets/logo.png" alt="" draggable="false">
-    <h2>Welcome, new user</h2>
-    <div class="done-sub">Here is a quick video on how to use the app. It shows a shader being converted, and you can watch it again any time from How to Use.</div>
-    <div style="display:flex;gap:8px">
-      <button class="btn" id="welcomeSkip" style="flex:1;justify-content:center">Skip</button>
-      <button class="btn primary" id="welcomeGo" style="flex:1;justify-content:center">Show me how</button>
-    </div>
-  </div>
+<div id="setup" aria-hidden="true">
+  <aside class="su-rail">
+    <div class="su-brand"><img src="../assets/logo.png" alt="" draggable="false"><div><div class="app-title">Fortnite <b>Unity</b></div><div class="su-sub">First-time setup</div></div></div>
+    <div class="su-steps" id="suSteps"></div>
+  </aside>
+  <section class="su-main">
+    <div class="su-body" id="suBody"></div>
+    <div class="su-foot"><button class="btn ghost" id="suSkip">Skip setup</button><div style="flex:1"></div><button class="btn" id="suBack">Back</button><button class="btn primary" id="suNext">Next</button></div>
+  </section>
 </div>
 
 <div class="overlay" id="noticeOverlay">
@@ -1669,17 +1789,98 @@ function fmtSize(n) {
   return n >= 1048576 ? (n / 1048576).toFixed(n >= 104857600 ? 0 : 1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'
 }
 
+const NOTE_SECTIONS = ['Added', 'Changed', 'Fixed']
+
+function noteSection(name) {
+  if (/fix|bug|resolv/i.test(name)) return 'Fixed'
+  if (/add|new|introduc/i.test(name)) return 'Added'
+  return 'Changed'
+}
+
+function parseNotes(text) {
+  const out = { Added: [], Changed: [], Fixed: [] }
+  let cur = ''
+  String(text || '').split('\n').forEach(raw => {
+    const line = raw.trim()
+    if (!line) return
+    const head = /^#{1,6}\s*(.+?)\s*:?\s*$/.exec(line) || /^(added|new|changed|improved|updated|fixed|fixes|bug fixes)\s*:?\s*$/i.exec(line)
+    if (head) { cur = noteSection(head[1]); return }
+    const m = /^[-*\u2022]\s+(.*)$/.exec(line)
+    const item = (m ? m[1] : line).replace(/\*\*|__|`/g, '').trim()
+    if (!item) return
+    out[cur || noteSection(/^(fix|fixed|fixes|resolved)\b/i.test(item) ? 'fix' : /^(add|added|new|introduc)/i.test(item) ? 'add' : '')].push(item)
+  })
+  return out
+}
+
+function renderNotes(el, entries) {
+  el.textContent = ''
+  const multi = entries.length > 1
+  let any = false
+  entries.forEach(e => {
+    const parsed = parseNotes(e.notes)
+    const block = document.createElement('div')
+    block.className = 'wn-vb'
+    if (multi && e.version) {
+      const v = document.createElement('div')
+      v.className = 'wn-ver'
+      v.textContent = e.version
+      block.appendChild(v)
+    }
+    NOTE_SECTIONS.forEach(name => {
+      if (!parsed[name].length) return
+      any = true
+      const sec = document.createElement('div')
+      sec.className = 'wn-sec'
+      const chip = document.createElement('span')
+      chip.className = 'wn-chip ' + name.toLowerCase()
+      chip.textContent = name
+      const ul = document.createElement('ul')
+      ul.className = 'wn-list'
+      parsed[name].forEach(t => {
+        const li = document.createElement('li')
+        li.textContent = t
+        ul.appendChild(li)
+      })
+      sec.appendChild(chip)
+      sec.appendChild(ul)
+      block.appendChild(sec)
+    })
+    el.appendChild(block)
+  })
+  if (!any) {
+    el.textContent = ''
+    const p = document.createElement('div')
+    p.className = 'wn-empty'
+    p.textContent = 'There are no release notes for this version.'
+    el.appendChild(p)
+  }
+  return any
+}
+
+let updOffer = null
+let updPct = null
+
+function paintUpdCard() {
+  $('updCard').hidden = !updOffer
+  if (!updOffer) return
+  $('updCardT').textContent = updPct === null ? 'Update Available' : 'Downloading...'
+  $('updCardV').textContent = updPct === null ? updOffer.version : updPct + '%'
+}
+
 function showUpdate(u) {
+  updOffer = u
+  paintUpdCard()
   if (updBusy) return
   if (!u.manual && updShown === u.version) return
   updShown = u.version
   $('updTitle').textContent = 'Update ' + u.version
   $('updBody').textContent = 'A new version of Fortnite Unity Converter is out.'
-  const meta = [u.current ? 'You have ' + u.current : '', fmtSize(u.size)].filter(Boolean).join(' \u00b7 ')
+  const meta = [u.test ? 'Test update' : '', u.current ? 'You have ' + u.current : '', fmtSize(u.size)].filter(Boolean).join(' \u00b7 ')
   $('updMeta').textContent = meta
   $('updMeta').hidden = !meta
-  $('updNotes').textContent = u.notes || ''
-  $('updNotes').hidden = !u.notes
+  const hasNotes = !!(u.notes && renderNotes($('updNotes'), [{ version: '', notes: u.notes }]))
+  $('updNotes').hidden = !hasNotes
   $('updBar').hidden = true
   $('updBtns').hidden = false
   $('updGo').disabled = false
@@ -1693,6 +1894,8 @@ function closeUpdate() {
 }
 
 $('updCancel').onclick = closeUpdate
+$('updCard').onclick = () => { if (updOffer) showUpdate(Object.assign({}, updOffer, { manual: true })) }
+$('updCard').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('updCard').click() } }
 $('updateOverlay').addEventListener('mousedown', e => { if (e.target === $('updateOverlay')) closeUpdate() })
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('updateOverlay').classList.contains('open')) closeUpdate() })
 
@@ -1739,50 +1942,49 @@ $('updGo').onclick = async () => {
   $('updBar').hidden = false
   $('updFill').style.width = '0'
   $('updBody').textContent = 'Downloading...'
+  updPct = 0
+  paintUpdCard()
   const r = await window.api.updateDownload()
-  if (r && r.ok) return
+  if (r && r.ok && !r.test) return
   updBusy = false
+  updPct = null
+  paintUpdCard()
   $('updBar').hidden = true
   $('updBtns').hidden = false
   $('updGo').disabled = false
+  if (r && r.ok) {
+    $('updGo').textContent = 'Download again'
+    $('updBody').textContent = 'Test update downloaded and verified. Nothing was replaced.'
+    return
+  }
   $('updGo').textContent = 'Try again'
   $('updBody').textContent = (r && r.error) || 'The update failed.'
 }
 
-// First start after an update: "Updated successfully", with the release notes one click away
-let doneNotesText = null
 function closeUpdated() { $('updatedOverlay').classList.remove('open') }
+
+async function openWhatsNew(u) {
+  let r = null
+  try { r = await window.api.releaseNotes() } catch (e) {}
+  const list = r && r.ok && r.list ? r.list : []
+  const ver = String((u && u.version) || (r && r.version) || (updCheckInfo && updCheckInfo.version) || '').replace(/^v/i, '')
+  const from = u && u.from ? String(u.from).replace(/^v/i, '') : ''
+  $('wnTitle').textContent = ver ? "What's new in v" + ver : "What's new"
+  $('updDoneBody').textContent = u ? 'Updated successfully' + (from ? ' from v' + from : '') + '.' : 'Here is what changed in this version.'
+  renderNotes($('wnBody'), list)
+  $('updatedOverlay').classList.add('open')
+}
+
 async function showUpdatedIfAny() {
   let u = null
   try { u = await window.api.updatedInfo() } catch (e) {}
   if (!u) return
-  doneNotesText = null
-  $('updDoneBody').textContent = 'Fortnite Unity Converter is now on version ' + u.version + '.'
-  $('updDoneNotes').hidden = true
-  $('updDoneNotesBtn').textContent = 'Release notes'
-  $('updDoneNotesBtn').disabled = false
-  $('updatedOverlay').classList.add('open')
+  openWhatsNew(u)
 }
 $('updDoneOk').onclick = closeUpdated
+$('wnBtn').onclick = () => openWhatsNew(null)
 $('updatedOverlay').addEventListener('mousedown', e => { if (e.target === $('updatedOverlay')) closeUpdated() })
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('updatedOverlay').classList.contains('open')) closeUpdated() })
-$('updDoneNotesBtn').onclick = async () => {
-  const box = $('updDoneNotes'), btn = $('updDoneNotesBtn')
-  if (!box.hidden) { box.hidden = true; btn.textContent = 'Release notes'; return }
-  if (doneNotesText === null) {
-    btn.disabled = true
-    btn.textContent = 'Loading...'
-    let r = null
-    try { r = await window.api.releaseNotes() } catch (e) {}
-    btn.disabled = false
-    doneNotesText = r && r.ok && r.list && r.list.length
-      ? r.list.map(x => x.version + '\n' + x.notes).join('\n\n')
-      : 'There are no release notes for this version.'
-  }
-  box.textContent = doneNotesText
-  box.hidden = false
-  btn.textContent = 'Hide notes'
-}
 
 let updCheckInfo = { version: '', canUpdate: true }
 
@@ -1791,6 +1993,7 @@ function paintVersion(extra) {
 }
 
 $('setCheckUpd').onchange = () => saveSetting({ checkUpdates: $('setCheckUpd').checked })
+$('setPresence').onchange = () => saveSetting({ discordPresence: $('setPresence').checked })
 $('updCheckBtn').onclick = async () => {
   const b = $('updCheckBtn')
   b.disabled = true
@@ -1936,6 +2139,7 @@ function showConverterSub(which) {
 }
 document.querySelectorAll('.cv-tab').forEach(t => t.onclick = () => showConverterSub(t.dataset.cv))
 
+const PRESENCE_TEXT = { home: 'On Home', howto: 'Reading How to Use', updates: 'Reading News & Updates', files: 'Browsing Files', converter: 'Converting shaders', shaders: 'Looking at My Shaders', check: 'Fixing shaders', chat: 'In Chat', export: 'Changing Converter Options', settings: 'In App Settings' }
 function showTab(name) {
   const prev = $('wrap').dataset.tab
   document.body.dataset.tab = name
@@ -1956,6 +2160,7 @@ function showTab(name) {
   if (name === 'files') openFiles()
   if (name === 'settings') fillSettings()
   if (name === 'export') fillExport()
+  try { window.api.setPresence(PRESENCE_TEXT[name] || 'Home') } catch (e) {}
 }
 
 function showSub(name) {
@@ -1994,9 +2199,41 @@ let apiOk = false
 let apiWasReady = false
 let filesAutoBuilt = false
 
+const API_STAGES = [
+  [/keys and mappings|encryption keys/i, 12],
+  [/mappings/i, 22],
+  [/decompression/i, 32],
+  [/reading game archives/i, 46],
+  [/pre-downloaded|streamed|textures/i, 62],
+  [/building the file list/i, 80],
+  [/starting the api/i, 92]
+]
+let apiFloor = 0
+let apiShown = 0
+
+function apiStagePct(text) {
+  let p = 0
+  API_STAGES.forEach(s => { if (s[0].test(text)) p = Math.max(p, s[1]) })
+  return p
+}
+
+function setApiBars(p) {
+  apiShown = p
+  $('homeBar').style.setProperty('--p', p + '%')
+  $('fileLoadBar').style.setProperty('--p', p + '%')
+}
+
+setInterval(() => {
+  if (apiOk || apiInfo.state !== 'starting') return
+  const cap = Math.min(94, apiFloor + 9)
+  if (apiShown < apiFloor) setApiBars(apiFloor)
+  else if (apiShown < cap) setApiBars(Math.min(cap, apiShown + 0.5))
+}, 500)
+
 function paintFileLoad() {
   const apiWait = !apiOk && apiInfo.state === 'starting'
   const on = apiWait || fileBuilding || fileReading
+  $('fileLoadBar').classList.toggle('indet', !(apiWait && !fileBuilding && !fileReading))
   $('fileLoad').classList.toggle('show', on)
   if (!on) return
   $('fileLoadT').textContent = fileBuilding ? 'Updating the file list' : fileReading ? 'Loading files' : 'Loading the game files'
@@ -2014,6 +2251,14 @@ function paintApi() {
   else if (wait) label = 'API: starting'
   else if (st === 'failed') label = 'API: not available'
   const loadingHome = !apiOk
+  if (wait) {
+    apiFloor = Math.max(apiFloor, apiStagePct(apiInfo.text || '') || 6)
+    if (apiShown < apiFloor) setApiBars(apiFloor)
+  } else {
+    apiFloor = 0
+    setApiBars(0)
+  }
+  $('homeBar').classList.toggle('indet', !wait)
   $('homeBar').classList.toggle('hide', !loadingHome)
   $('homeStatus').classList.toggle('hide', !loadingHome)
   $('homeStatus').textContent = wait ? (apiInfo.text || 'Loading the game files') : st === 'failed' ? 'The API is not available' : 'Waiting for the API'
@@ -2046,6 +2291,7 @@ function fillSettings() {
   $('setMinFnp').checked = !!settings.minimizeFnp
   $('setTransitions').checked = settings.tabTransitions !== false
   $('setCheckUpd').checked = settings.checkUpdates !== false
+  $('setPresence').checked = settings.discordPresence !== false
   $('setUseExports').checked = !!settings.useExportsPath
   $('setExports').value = settings.exportsPath || ''
   $('setExports').disabled = $('browseExports').disabled = !settings.useExportsPath
@@ -2107,7 +2353,7 @@ async function init() {
   $('pathFixed').textContent = info.fixed
   $('pathCache').textContent = info.cache
   fillSettings()
-  if (!settings.welcomed) $('welcomeOverlay').classList.add('open')
+  if (!settings.welcomed) suOpen()
   window.api.onLog(onLog)
   window.api.onGoto(p => { showTab('files'); jumpTo(p) })
   logReadyRes()
@@ -2125,12 +2371,19 @@ async function init() {
       if (h) h.textContent = 'Release v' + v.version
     }
   }).catch(() => {})
+  window.api.onUpdateCleared(() => { updOffer = null; updPct = null; paintUpdCard() })
   window.api.onUpdateProgress(p => {
-    if (p.done) { $('updBody').textContent = 'Restarting...'; $('updFill').style.width = '100%'; return }
-    if (p.total) {
+    if (p.done) {
+      if (p.test) return
+      $('updBody').textContent = 'Restarting...'
+      $('updFill').style.width = '100%'
+      return
+    }
+    if (p.total && updBusy) {
       const pct = Math.min(100, Math.round(p.got * 100 / p.total))
       $('updFill').style.width = pct + '%'
       $('updBody').textContent = 'Downloading... ' + pct + '%'
+      if (updBusy) { updPct = pct; paintUpdCard() }
     }
   })
   window.api.onApi(d => { apiInfo = d; paintApi() })
@@ -2154,9 +2407,12 @@ $('openFixed2').onclick = () => window.api.open(info.fixed)
 $('openCache2').onclick = () => window.api.open(info.cache)
 // News & Updates: one short list feeds the Home cards and the News & Updates tab
 const NEWS_DATE = 'Oct 24'
-const NEWS_FEATURED = { title: 'Latest release', sub: 'New How to Use page, tidier settings, clearer release notes', date: 'Nov 8' }
+const NEWS_FEATURED = { title: 'Latest release', sub: 'First-time setup, fuller How to Use, sign-in page, Rich Presence, mesh preview fix', date: 'Nov 10' }
 const NEWS_ROWS = 3
 const NEWS = [
+  { tag: 'App', date: 'Nov 10', title: 'First-time setup', sub: 'A guided setup on the first launch.', body: 'The small welcome pop-up is now a full setup with seven steps: Welcome, Theme, Fortnite files, Unity, Sign in, Quick tour and All set. Every step can be skipped, and Run setup again on the How to Use page opens it any time. How to Use is also bigger now, with the five steps from material to Unity shader, shortcuts to each tab, a fixes section and the video.' },
+  { tag: 'Account', date: 'Nov 10', title: 'Sign-in page and Rich Presence', sub: 'Matches Fortnite Porting\'s Account page.', body: 'After signing in with Discord, the browser now shows an Authentication Complete page and the app comes to the front. App Settings, Account has a Discord Rich Presence switch that shows what you are doing in the app on your Discord profile. It needs the Discord app open on your PC.' },
+  { tag: 'Fix', date: 'Nov 10', title: 'Some skeletal meshes could not preview', sub: 'Newer Nanite meshes now open.', body: 'Some newer creature meshes showed Could not preview this because their Nanite data could not be read. The app now skips that data and shows the normal mesh instead.' },
   { tag: 'App', date: 'Nov 8', title: 'New How to Use page', sub: 'A video player that matches the app.', body: 'How to Use now starts with a short welcome and a summary of what the video shows, and the video sits right under it. The browser\'s plain player controls are replaced with controls in the app\'s own style: a play and pause button, the time, and a bar you can click to jump around. The Show welcome button brings back the first-run welcome pop-up. The video also pauses when you switch to another tab.' },
   { tag: 'Settings', date: 'Nov 8', title: 'Settings regrouped', sub: 'Related settings now sit together.', body: 'The Application page in App Settings is now grouped as General, Files, Preview, Display, Audio, Updates and Advanced. Default Export Location moved up next to the Assets Folder instead of sitting alone under Loading. Check for Updates and Version are together under Updates, and the Developer and Experimental switches are under Advanced. No setting was removed or changed.' },
   { tag: 'Updates', date: 'Nov 8', title: 'Version numbers and release notes', sub: 'Next version is 2.1.0, notes list real changes.', body: 'Version numbers were counting up as 2.0.97, 2.0.98 and so on. The release after 2.0.99 is now 2.1.0, then 2.1.1 and up, so the number stays short. Release notes shown in the update pop-up are now written by hand for each release, and only fall back to the list of changes when none were written. The vague line Small fixes and improvements is gone.' },
@@ -4034,19 +4290,20 @@ function paintAccount() {
   img.draggable = false
   b.append(img, span)
 }
-$('signInBtn').onclick = async e => {
-  e.stopPropagation()
-  if (signingIn) { window.api.accountCancel(); return }
+async function doSignIn(quiet) {
+  if (signingIn) { window.api.accountCancel(); return '' }
   signingIn = true
   paintAccount()
   const r = await window.api.accountSignIn()
   signingIn = false
   if (r && r.ok) account = r.account
   paintAccount()
-  if (r && r.ok) { setStatus('Signed in as ' + r.account.name); return }
+  if (r && r.ok) { setStatus('Signed in as ' + r.account.name); return '' }
   const msg = { setup: 'Sign in is not set up in this build yet.', port: 'Sign in could not start because another program is using port 24331. Close it and try again.', timeout: 'Sign in took too long. Try again.', failed: 'Discord did not finish signing you in. Try again.' }[r && r.error]
-  if (msg) showNotice({ title: 'Sign in', body: msg, noRetry: true })
+  if (msg && !quiet) showNotice({ title: 'Sign in', body: msg, noRetry: true })
+  return msg || ''
 }
+$('signInBtn').onclick = e => { e.stopPropagation(); return doSignIn(false) }
 $('acctOut').onclick = async () => {
   await window.api.accountSignOut()
   account = null
@@ -4090,17 +4347,147 @@ $('hv').addEventListener('mousemove', hvShow)
 $('hv').addEventListener('pointerdown', hvShow)
 $('hv').addEventListener('mouseleave', () => { if (!hvSeeking) { clearTimeout(hvIdle); $('hv').classList.remove('ctl-on') } })
 hvVid.addEventListener('pause', () => { clearTimeout(hvIdle) })
-$('howtoWelcome').onclick = () => $('welcomeOverlay').classList.add('open')
-hvPaint()
+$('howtoWelcome').onclick = () => suOpen()
+document.querySelectorAll('[data-go]').forEach(b => {
+  b.onclick = () => {
+    const g = b.dataset.go
+    if (g === 'installation' || g === 'application') { showTab('settings'); showSub(g); return }
+    showTab(g)
+    if (b.dataset.cv) showConverterSub(b.dataset.cv)
+  }
+})
 
-function closeWelcome(go) {
-  $('welcomeOverlay').classList.remove('open')
-  saveSetting({ welcomed: true })
-  if (go) showTab('howto')
+// First-run setup
+const SU_STEPS = ['Welcome', 'Theme', 'Fortnite files', 'Unity', 'Sign in', 'Quick tour', 'All set']
+const SU_CHECK = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/></svg>'
+const SU_ICO = {
+  files: 'M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z',
+  shader: 'M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8L14 2M13 9V3.5L18.5 9H13Z',
+  prefab: 'M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5Z'
 }
-$('welcomeSkip').onclick = () => closeWelcome(false)
-$('welcomeGo').onclick = () => closeWelcome(true)
-$('welcomeOverlay').onclick = e => { if (e.target === $('welcomeOverlay')) closeWelcome(false) }
+let suStep = 0
+let suMsg = ''
+let suArch = { dir: '', msg: '' }
+function suEsc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) }
+function suOpen() {
+  suStep = 0
+  suMsg = ''
+  $('setup').classList.add('open')
+  $('setup').setAttribute('aria-hidden', 'false')
+  suPaint(true)
+}
+function suClose(go) {
+  $('setup').classList.remove('open')
+  $('setup').setAttribute('aria-hidden', 'true')
+  saveSetting({ welcomed: true })
+  if (go) showTab(go)
+}
+function suHead(title, sub) { return '<h1 class="su-h">' + title + '</h1><p class="su-p">' + sub + '</p>' }
+function suTile(ico, t, d) { return '<div class="su-tile"><div class="ti"><svg viewBox="0 0 24 24" fill="currentColor"><path d="' + ico + '"/></svg></div><b>' + t + '</b><span>' + d + '</span></div>' }
+function suStatus(kind, text) { return '<div class="su-st ' + kind + '"><i></i><span>' + suEsc(text) + '</span></div>' }
+async function suReadArchive() {
+  const p = curProf()
+  const dir = (p && p.archiveDirectory) || settings.fortniteArchive || ''
+  const msg = dir ? await window.api.profileCheckArchive(dir) : 'No folder chosen yet.'
+  suArch = { dir, msg }
+}
+function suBodyFor(n) {
+  if (n === 0) return '<img class="su-logo" src="../assets/logo.png" alt="" draggable="false">' + suHead('Welcome to Fortnite Unity Converter', 'Turn Fortnite materials, props and particles into things you can use in Unity. This takes about a minute and every step can be skipped.') +
+    '<div class="su-tiles">' + suTile(SU_ICO.files, 'Files', 'Browse and preview Fortnite\u2019s files.') + suTile(SU_ICO.shader, 'Shaders', 'Turn materials into Unity shaders with their textures.') + suTile(SU_ICO.prefab, 'Prefabs', 'Convert sky domes, props and particle systems.') + '</div>'
+  if (n === 1) return suHead('Pick a look', 'Choose a theme for the app. You can change it any time in App Settings, under Customizability.') +
+    '<div class="su-themes">' + THEME_PRESETS.map(t => '<button class="su-theme' + (t.name === themeId ? ' on' : '') + '" data-th="' + suEsc(t.name) + '"><i style="background:' + suEsc(t.dot) + '"></i>' + suEsc(t.name) + '</button>').join('') + '</div>'
+  if (n === 2) {
+    const ok = suArch.dir && !suArch.msg
+    return suHead('Find your Fortnite files', 'The app reads your installed Fortnite game files to show them in Files. It usually finds them on its own.') +
+      '<div class="su-card"><div class="su-row"><div class="su-path' + (suArch.dir ? '' : ' empty') + '" id="suArchPath">' + suEsc(suArch.dir || 'Not set') + '</div><button class="btn sm" id="suArchBrowse">Browse</button></div>' +
+      (ok ? suStatus('ok', 'Found your Fortnite files.') : suStatus('warn', suArch.msg || 'Checking...') + '<div class="su-st"><i></i><span>Pick the folder that holds the game files, for example C:/Fortnite/FortniteGame/Content/Paks. You can also do this later in App Settings, under Installation.</span></div>') + '</div>'
+  }
+  if (n === 3) {
+    const u = settings.unity || ''
+    return suHead('Connect Unity', 'The Unity editor is optional. With it the app can build prefabs and test shaders for you in the background.') +
+      '<div class="su-card"><div class="su-row"><div class="su-path' + (u ? '' : ' empty') + '">' + suEsc(u || 'Not set') + '</div><button class="btn sm" id="suUnityBrowse">Browse</button></div>' +
+      (u ? suStatus('ok', 'Unity editor set.') : suStatus('', 'No Unity editor found yet. You can skip this and add it later in App Settings.')) + '</div>'
+  }
+  if (n === 4) {
+    const bar = account
+      ? '<div class="su-acct"><img src="' + suEsc(account.avatar) + '" alt="" draggable="false"><div><div class="nm">' + suEsc(account.name) + '</div>' + (account.username ? '<div class="hd">@' + suEsc(account.username) + '</div>' : '') + '</div></div>' + suStatus('ok', 'You are signed in.')
+      : '<div class="su-row"><button class="btn" id="suSignIn" style="gap:8px"><img src="../assets/icons/Discord.png" alt="" draggable="false" style="width:20px;height:20px">' + (signingIn ? 'Waiting for Discord... (click to cancel)' : 'Sign in with Discord') + '</button></div>' + (suMsg ? suStatus('warn', suMsg) : suStatus('', 'Optional. Your name and picture show in the sidebar. Nothing else is needed to use the app.'))
+    return suHead('Sign in', 'Sign in with Discord to show your profile in the app.') + '<div class="su-card">' + bar + '</div>'
+  }
+  if (n === 5) return suHead('Quick tour', 'Here is the whole trip from a Fortnite material to a Unity shader.') +
+    '<div class="su-tour">' + [
+      ['Find a material', 'In Files, right-click a material and choose Copy Path Without Extension.'],
+      ['Convert it', 'In Converter, paste it under Material Paths and press Convert.'],
+      ['Open the shader', 'In My Shaders, press Open shader. The textures are right beside it.'],
+      ['Use it in Unity', 'Drag that folder into your Unity project\u2019s Assets.']
+    ].map((r, i) => '<div class="su-tr"><div class="num">' + (i + 1) + '</div><div><b>' + r[0] + '</b><span>' + r[1] + '</span></div></div>').join('') + '</div>'
+  const arch = suArch.dir && !suArch.msg
+  return suHead('You are all set', 'Everything here can be changed later in App Settings. How to Use has these steps and a video.') +
+    '<div class="su-sum">' + [
+      [arch, 'Fortnite files', arch ? 'Found' : 'Not set'],
+      [!!settings.unity, 'Unity editor', settings.unity ? 'Set' : 'Optional'],
+      [!!account, 'Discord', account ? account.name : 'Optional']
+    ].map(r => '<div class="su-st ' + (r[0] ? 'ok' : '') + '"><i></i>' + r[1] + '<small>' + suEsc(r[2]) + '</small></div>').join('') + '</div>'
+}
+function suBind() {
+  document.querySelectorAll('.su-theme').forEach(b => {
+    b.onclick = () => {
+      const t = THEME_PRESETS.find(x => x.name === b.dataset.th)
+      if (!t) return
+      themeId = t.name
+      theme = Object.assign({}, t.values)
+      applyTheme()
+      saveTheme()
+      buildThemeDD()
+      refreshPickers()
+      document.querySelectorAll('.su-theme').forEach(x => x.classList.toggle('on', x === b))
+    }
+  })
+  const ab = $('suArchBrowse')
+  if (ab) ab.onclick = async () => {
+    const picked = await window.api.pickFolder()
+    if (!picked || !picked[0]) return
+    const p = curProf()
+    if (p) { p.archiveDirectory = picked[0]; await saveProfiles(true) } else await saveSetting({ fortniteArchive: picked[0] })
+    await suReadArchive()
+    suPaint()
+  }
+  const ub = $('suUnityBrowse')
+  if (ub) ub.onclick = async () => {
+    const u = await window.api.pickUnity()
+    if (!u) return
+    await saveSetting({ unity: u })
+    suPaint()
+  }
+  const sb = $('suSignIn')
+  if (sb) sb.onclick = async () => {
+    const pending = doSignIn(true)
+    suPaint()
+    suMsg = await pending
+    suPaint()
+  }
+}
+async function suPaint(animate) {
+  if (suStep === 2 || suStep === 6) await suReadArchive()
+  $('suSteps').innerHTML = SU_STEPS.map((t, i) => '<div class="su-step' + (i === suStep ? ' on' : i < suStep ? ' done' : '') + '"><span class="n">' + (i < suStep ? SU_CHECK : i + 1) + '</span>' + t + '</div>').join('')
+  const body = $('suBody')
+  body.innerHTML = suBodyFor(suStep)
+  if (animate) { body.classList.remove('go'); void body.offsetWidth; body.classList.add('go') }
+  $('suBack').style.visibility = suStep === 0 ? 'hidden' : 'visible'
+  $('suSkip').textContent = suStep === SU_STEPS.length - 1 ? 'Finish' : 'Skip setup'
+  $('suNext').textContent = suStep === SU_STEPS.length - 1 ? 'Open How to Use' : suStep === 0 ? 'Get started' : 'Next'
+  suBind()
+}
+function suGo(d) {
+  if (suStep === SU_STEPS.length - 1 && d > 0) { suClose('howto'); return }
+  suStep = Math.max(0, Math.min(SU_STEPS.length - 1, suStep + d))
+  suMsg = ''
+  suPaint(true)
+}
+$('suNext').onclick = () => suGo(1)
+$('suBack').onclick = () => suGo(-1)
+$('suSkip').onclick = () => suClose(false)
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('setup').classList.contains('open')) suClose(false) })
 $('fileRebuild').onclick = rebuildFiles
 $('fileBack').onclick = goBack
 $('fileFwd').onclick = goForward
@@ -4598,15 +4985,22 @@ function whenVisible() {
   })
 }
 
+function spProgress(p) {
+  $('spBar').style.setProperty('--p', p + '%')
+}
+
 async function runStartup() {
   $('splash').classList.remove('failed')
   $('spError').classList.remove('show')
   $('spRetry').disabled = true
+  spProgress(0)
   await whenVisible()
   const t0 = Date.now()
   spStatus('Loading dependencies...')
+  spProgress(12)
   await wait(900)
   spStatus('Getting everything ready...')
+  spProgress(38)
   const start = await window.api.startup()
   if (!start.engine) {
     $('spRetry').disabled = false
@@ -4614,10 +5008,12 @@ async function runStartup() {
     return
   }
   spStatus('Starting the API...')
+  spProgress(68)
   window.api.startApi()
   await wait(900)
   $('spRetry').disabled = false
   spStatus("All set. Let's go!")
+  spProgress(100)
   await wait(Math.max(400, SPLASH_MIN_MS - (Date.now() - t0)))
   $('splash').classList.add('gone')
   pollBridge()

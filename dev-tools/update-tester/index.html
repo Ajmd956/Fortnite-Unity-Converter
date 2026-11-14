@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; object-src 'none'">
+<title>Fortnite Unity Update Tester</title>
+<style>
+@font-face{font-family:'SF Pro Text';font-weight:400;src:url('../../app/assets/fonts/SF-Pro-Text-Regular.otf');}
+@font-face{font-family:'SF Pro Text';font-weight:500;src:url('../../app/assets/fonts/SF-Pro-Text-Medium.otf');}
+@font-face{font-family:'SF Pro Text';font-weight:600;src:url('../../app/assets/fonts/SF-Pro-Text-Semibold.otf');}
+@font-face{font-family:'SF Pro Text';font-weight:700;src:url('../../app/assets/fonts/SF-Pro-Text-Bold.otf');}
+@font-face{font-family:'SF Pro Display';font-weight:600;src:url('../../app/assets/fonts/SF-Pro-Display-Semibold.otf');}
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0D0C12;--content:#09080D;--card:#181620;--card2:#16141E;--active:#1D1B24;--sep:#1F1D2A;
+  --input:#1D1B24;--btn:#1D1B24;--btn-hover:#252332;--btn-pressed:#232130;--sel:#252332;
+  --cyan:#953bf8;--primary:#8e22eb;--on-primary:#fff;
+  --text:#E2DFF0;--muted:#A8A4C0;--dim:#686490;
+  --ok:#3ddc97;--warn:#f5b942;--bad:#ff6655;
+  --card-shadow:inset 0 3px 2px -2px #ffffff10,inset 0 10px 25px #ffffff05,inset 0 0 0 1.5px #ffffff0a,0 4px 8px #00000020,0 8px 12px #00000010;
+}
+button,input,select,textarea{font-family:inherit;}
+*{scrollbar-width:thin;scrollbar-color:#2e2b3b transparent;}
+*:focus,*:focus-visible{outline:none;}
+body{background:var(--bg);color:var(--text);font-family:'SF Pro Text','Segoe UI',system-ui,sans-serif;height:100vh;display:flex;overflow:hidden;font-size:14px;user-select:none;}
+.drag{position:fixed;top:0;left:0;right:0;height:32px;-webkit-app-region:drag;z-index:5;}
+.winctl{position:fixed;top:0;right:0;display:flex;z-index:6;-webkit-app-region:no-drag;}
+.winctl button{width:46px;height:32px;border:none;background:transparent;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.winctl button:hover{background:#ffffff14;}
+.winctl .wc-close:hover{background:#e81123;}
+.side{width:225px;flex:0 0 225px;display:flex;flex-direction:column;padding:16px 8px;}
+.brand{display:flex;align-items:center;gap:16px;padding:0 8px 16px;height:64px;}
+.brand img{width:48px;height:48px;}
+.app-title{font-size:16px;font-weight:700;line-height:1.2;white-space:nowrap;}
+.app-title b{color:var(--cyan);}
+.app-ver{font-size:13px;color:var(--muted);margin-top:2px;}
+.sec{font-size:13px;color:var(--dim);margin:0 8px 8px;}
+.nav{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 8px;margin-bottom:4px;background:transparent;border:none;border-radius:16px;color:var(--muted);font-size:14px;cursor:pointer;text-align:left;}
+.nav svg{width:16px;height:16px;flex:0 0 16px;color:var(--text);}
+.nav:hover{background:#25233280;}
+.nav.active{background:var(--active);box-shadow:var(--card-shadow);}
+.spacer{flex:1;}
+.srv{margin:0 8px;padding:12px 16px;background:var(--btn);border-radius:16px;box-shadow:var(--card-shadow);}
+.srv-t{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);}
+.dot.on{background:var(--ok);box-shadow:0 0 8px #3ddc9755;}
+.srv-u{font-size:12px;color:var(--muted);margin-top:4px;user-select:text;}
+.main{flex:1;min-width:0;padding:44px 8px 8px 0;display:flex;}
+.content{flex:1;min-width:0;background:var(--content);border-radius:16px;box-shadow:inset 0 0 0 1px #ffffff0a;overflow:auto;padding:16px;}
+.page{display:none;flex-direction:column;gap:8px;max-width:820px;margin:0 auto;}
+.page.active{display:flex;}
+.h{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:20px;font-weight:600;padding:8px 4px 4px;}
+.hint{font-size:12px;color:var(--muted);line-height:1.5;padding:0 4px 8px;}
+.row-card{display:flex;align-items:center;gap:16px;min-height:68px;padding:16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
+.row-card.col{flex-direction:column;align-items:stretch;gap:12px;}
+.rc-text{flex:1;min-width:0;}
+.rc-title{font-size:14px;line-height:16px;}
+.rc-desc{font-size:12px;line-height:15px;color:var(--muted);margin-top:2px;}
+.rc-ctl{display:flex;gap:8px;align-items:center;}
+input[type=text],select,textarea{background:var(--input);border:none;border-radius:16px;box-shadow:var(--card-shadow);color:var(--text);padding:8px 16px;font-size:14px;user-select:text;transition:background-color .083s;}
+input[type=text]:hover,select:hover,textarea:hover{background:var(--btn-hover);}
+input[type=text]{width:160px;font-weight:600;}
+select{width:220px;font-weight:600;cursor:pointer;appearance:none;padding-right:16px;}
+select option{background:#1D1B24;}
+textarea{width:100%;height:96px;resize:none;border-radius:12px;line-height:1.5;font-size:13px;}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.cols label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 16px;border:none;border-radius:16px;background:var(--btn);box-shadow:var(--card-shadow);color:var(--text);font-size:14px;cursor:pointer;transition:background-color .083s;}
+.btn:hover{background:var(--btn-hover);}
+.btn:active{background:var(--btn-pressed);}
+.btn.primary{background:var(--primary);color:var(--on-primary);box-shadow:none;}
+.btn.primary:hover{background:#a355fa;}
+.btn.primary:active{background:#8531e0;}
+.btn:disabled{opacity:.5;cursor:default;}
+.btns{display:flex;gap:8px;flex-wrap:wrap;}
+.msg{font-size:12px;min-height:16px;padding:0 4px;color:var(--muted);}
+.msg.bad{color:var(--bad);}
+.msg.ok{color:var(--ok);}
+.hist{display:flex;flex-direction:column;gap:6px;}
+.hist-i{display:flex;align-items:center;justify-content:space-between;background:var(--btn);border-radius:12px;padding:8px 12px;font-size:13px;}
+.hist-i span{color:var(--muted);font-size:12px;}
+.badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px;background:#953bf833;color:var(--cyan);}
+.badge.off{background:#ffffff14;color:var(--muted);}
+#log{background:var(--card);border-radius:16px;box-shadow:var(--card-shadow);padding:10px 14px;font-family:Consolas,monospace;font-size:12px;line-height:1.6;min-height:320px;max-height:calc(100vh - 220px);overflow:auto;user-select:text;}
+#log div{white-space:pre-wrap;word-break:break-all;color:var(--muted);}
+#log .t{color:var(--dim);}
+#log .s2{color:var(--ok);}#log .s3{color:var(--warn);}#log .s4,#log .s5{color:var(--bad);}
+#log .ev{color:var(--cyan);}#log .ap{color:#8f8bab;}
+</style>
+</head>
+<body>
+<div class="drag"></div>
+<div class="winctl">
+  <button id="wcMin"><svg width="15" height="15" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+  <button id="wcMax"><svg width="18" height="18" viewBox="0 0 12 12" fill="none"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" stroke="currentColor" stroke-width="1.3"/></svg></button>
+  <button id="wcClose" class="wc-close"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+</div>
+<aside class="side">
+  <div class="brand">
+    <img src="../../app/assets/logo.png" alt="" draggable="false">
+    <div><div class="app-title">Fortnite <b>Unity</b></div><div class="app-ver">Update Tester</div></div>
+  </div>
+  <div class="sec">Test</div>
+  <button class="nav active" data-page="publish"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg><span>Publish Update</span></button>
+  <button class="nav" data-page="launch"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg><span>Launch App</span></button>
+  <button class="nav" data-page="log"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3,13H5V11H3V13M3,17H5V15H3V17M3,9H5V7H3V9M7,13H21V11H7V13M7,17H21V15H7V17M7,7V9H21V7H7Z"/></svg><span>Request Log</span></button>
+  <div class="spacer"></div>
+  <div class="srv"><div class="srv-t"><span class="dot" id="srvDot"></span><span>Fake release server</span></div><div class="srv-u" id="srvUrl">Starting...</div></div>
+</aside>
+<div class="main"><div class="content">
+
+<div class="page active" id="page-publish">
+  <div class="h">Publish a test update</div>
+  <div class="hint">Nothing here touches your real GitHub releases. The app is started against a fake release server on this PC, so only the test app sees these updates.</div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">Version</div><div class="rc-desc">Must be higher than the app version on the Launch App page.</div></div><div class="rc-ctl"><input type="text" id="pubVersion" spellcheck="false"></div></div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">Download size</div><div class="rc-desc">20 MB and up uses the fast multi-part download, like a real release.</div></div><div class="rc-ctl"><select id="pubSize"><option value="1">1 MB</option><option value="3" selected>3 MB</option><option value="20">20 MB (multi-part)</option><option value="60">60 MB (multi-part)</option></select></div></div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">Download behavior</div><div class="rc-desc">Try how the app reacts when the download goes wrong.</div></div><div class="rc-ctl"><select id="pubBehavior"><option value="normal">Works normally</option><option value="slow">Slow download</option><option value="http500">Server error (500)</option><option value="badhash">Wrong checksum</option><option value="noasset">Release has no EXE</option></select></div></div>
+  <div class="row-card col">
+    <div class="rc-text"><div class="rc-title">Release notes</div><div class="rc-desc">One line per change. They show in the update window and in the What's New pop-up.</div></div>
+    <div class="cols">
+      <label>Added<textarea id="pubAdded" spellcheck="false"></textarea></label>
+      <label>Changed<textarea id="pubChanged" spellcheck="false"></textarea></label>
+      <label>Fixed<textarea id="pubFixed" spellcheck="false"></textarea></label>
+    </div>
+  </div>
+  <div class="btns"><button class="btn primary" id="pubGo">Publish test update</button><button class="btn" id="pubWithdraw">Withdraw update</button><button class="btn" id="pubReset">Clear all</button></div>
+  <div class="msg" id="pubMsg"></div>
+  <div class="h" style="font-size:16px">Published test releases</div>
+  <div class="hist" id="hist"></div>
+</div>
+
+<div class="page" id="page-launch">
+  <div class="h">Launch the app</div>
+  <div class="hint">Close your normal Fortnite Unity Converter first, because only one copy can run at a time. The test copy pretends to be the version below and never replaces any files.</div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">App version</div><div class="rc-desc">The version the test app says it is.</div></div><div class="rc-ctl"><input type="text" id="lnBase" spellcheck="false"></div></div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">Update waiting</div><div class="rc-desc">Starts the app. After the loading screen the update window opens and the Update Available card shows in the sidebar. Press Cancel to check that the card stays.</div></div><div class="rc-ctl"><button class="btn primary" id="lnUpdate">Launch</button></div></div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">Just updated</div><div class="rc-desc">Starts the app as if it had just updated to the newest published test version, so the What's New pop-up shows after the loading screen.</div></div><div class="rc-ctl"><button class="btn primary" id="lnUpdated">Launch</button></div></div>
+  <div class="row-card"><div class="rc-text"><div class="rc-title">Test app</div><div class="rc-desc" id="lnState">Not running</div></div><div class="rc-ctl"><button class="btn" id="lnStop" disabled>Close test app</button></div></div>
+  <div class="msg" id="lnMsg"></div>
+</div>
+
+<div class="page" id="page-log">
+  <div class="h">Request log</div>
+  <div class="hint">Every request the test app makes to the fake release server, plus its own messages.</div>
+  <div id="log"></div>
+  <div class="btns"><button class="btn" id="logClear">Clear log</button></div>
+</div>
+
+</div></div>
+<script>
+const $ = id => document.getElementById(id)
+const T = window.tester
+let snap = null
+
+function store(k, v) {
+  try { if (v === undefined) return localStorage.getItem('ut.' + k); localStorage.setItem('ut.' + k, v) } catch (e) {}
+  return null
+}
+
+const fields = ['pubVersion', 'pubSize', 'pubBehavior', 'pubAdded', 'pubChanged', 'pubFixed', 'lnBase']
+const defaults = {
+  pubVersion: '2.0.1',
+  lnBase: '2.0.0',
+  pubAdded: 'New What\'s New pop-up\nUpdate Available card in the sidebar',
+  pubChanged: 'The loading screen uses a bar',
+  pubFixed: 'Release notes were cut off in the update window'
+}
+fields.forEach(id => {
+  const saved = store(id)
+  $(id).value = saved !== null && saved !== undefined ? saved : (defaults[id] !== undefined ? defaults[id] : $(id).value)
+  $(id).addEventListener('input', () => store(id, $(id).value))
+})
+
+document.querySelectorAll('.nav').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.nav').forEach(x => x.classList.toggle('active', x === b))
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + b.dataset.page))
+})
+
+$('wcMin').onclick = () => T.minimize()
+$('wcMax').onclick = () => T.toggleMaximize()
+$('wcClose').onclick = () => T.close()
+
+function msg(id, text, cls) {
+  $(id).textContent = text
+  $(id).className = 'msg' + (cls ? ' ' + cls : '')
+}
+
+function addLog(e) {
+  const d = document.createElement('div')
+  const time = new Date(e.t).toLocaleTimeString()
+  const t = document.createElement('span')
+  t.className = 't'
+  t.textContent = time + '  '
+  d.appendChild(t)
+  const s = document.createElement('span')
+  if (e.kind === 'request') {
+    s.className = 's' + String(e.status)[0]
+    s.textContent = e.status + '  ' + e.method + ' ' + e.path + (e.range ? '  [' + e.range + ']' : '')
+  } else {
+    s.className = e.kind === 'app' ? 'ap' : 'ev'
+    s.textContent = (e.kind === 'app' ? 'app  ' : '') + e.text
+  }
+  d.appendChild(s)
+  const box = $('log')
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 24
+  box.appendChild(d)
+  if (stick) box.scrollTop = box.scrollHeight
+}
+
+function paint(s) {
+  snap = s
+  $('srvDot').classList.toggle('on', !!s.url)
+  $('srvUrl').textContent = s.url || 'Not running'
+  $('hist').textContent = ''
+  if (!s.state.history.length) {
+    const e = document.createElement('div')
+    e.className = 'rc-desc'
+    e.textContent = 'None yet. Publish one above.'
+    $('hist').appendChild(e)
+  }
+  s.state.history.forEach((h, i) => {
+    const row = document.createElement('div')
+    row.className = 'hist-i'
+    const a = document.createElement('div')
+    a.textContent = 'v' + h.version
+    const sp = document.createElement('span')
+    sp.textContent = '  ' + h.sizeMb + ' MB  ' + (h.notes.added.length + h.notes.changed.length + h.notes.fixed.length) + ' notes'
+    a.appendChild(sp)
+    const b = document.createElement('div')
+    b.className = 'badge' + (i === 0 && s.state.available ? '' : ' off')
+    b.textContent = i === 0 && s.state.available ? 'Latest' : 'Older'
+    row.appendChild(a)
+    row.appendChild(b)
+    $('hist').appendChild(row)
+  })
+  $('pubBehavior').value = s.state.behavior
+  $('lnStop').disabled = !s.running
+  $('lnUpdate').disabled = s.running
+  $('lnUpdated').disabled = s.running
+  $('lnState').textContent = s.running ? 'Running' : 'Not running'
+  if (!s.appFound) msg('lnMsg', 'The app folder was not found next to dev-tools.', 'bad')
+}
+
+$('pubGo').onclick = async () => {
+  const r = await T.publish({
+    version: $('pubVersion').value,
+    sizeMb: $('pubSize').value,
+    behavior: $('pubBehavior').value,
+    added: $('pubAdded').value,
+    changed: $('pubChanged').value,
+    fixed: $('pubFixed').value
+  })
+  if (!r.ok) return msg('pubMsg', r.error, 'bad')
+  paint(r.snap)
+  msg('pubMsg', 'Published v' + $('pubVersion').value.replace(/^v/i, '') + '. A running test app picks it up within 30 seconds.', 'ok')
+}
+$('pubWithdraw').onclick = async () => { paint(await T.withdraw()); msg('pubMsg', 'The update was withdrawn. The fake server now says the app is up to date.', 'ok') }
+$('pubReset').onclick = async () => { paint(await T.reset()); $('log').textContent = ''; msg('pubMsg', 'Cleared.', 'ok') }
+$('pubBehavior').onchange = async () => paint(await T.behavior($('pubBehavior').value))
+
+async function launch(mode) {
+  msg('lnMsg', '')
+  const r = await T.launch({ mode, base: $('lnBase').value })
+  if (!r.ok) return msg('lnMsg', r.error, 'bad')
+  msg('lnMsg', 'Starting the test app...', 'ok')
+}
+$('lnUpdate').onclick = () => launch('update')
+$('lnUpdated').onclick = () => launch('updated')
+$('lnStop').onclick = () => T.stop()
+$('logClear').onclick = async () => { await T.clearLog(); $('log').textContent = '' }
+
+T.onLog(addLog)
+T.onAppState(async running => {
+  paint(await T.snapshot())
+  if (!running) msg('lnMsg', 'The test app closed.', '')
+})
+T.snapshot().then(s => { paint(s); s.log.forEach(addLog) })
+</script>
+</body>
+</html>

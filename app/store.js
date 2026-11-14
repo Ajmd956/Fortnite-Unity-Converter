@@ -31,6 +31,7 @@ const defaults = {
   expParticle: false,
   expBlueprint: false,
   account: null,
+  discordPresence: true,
   welcomed: false,
   lastVersion: '',
   pendingNotes: '',

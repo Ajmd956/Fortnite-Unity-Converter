@@ -56,8 +56,11 @@ $skeletalSource = Join-Path $source 'CUE4Parse\UE4\Assets\Exports\SkeletalMesh\U
 if (Test-Path -LiteralPath $skeletalSource) {
     $skeletalText = [System.IO.File]::ReadAllText($skeletalSource)
     $naniteRead = 'NaniteResources = new FNaniteResources(Ar);'
-    $naniteSafe = 'try { NaniteResources = new FNaniteResources(Ar); } catch (Exception) { NaniteResources = null; }'
-    if ($skeletalText.Contains($naniteRead) -and -not $skeletalText.Contains($naniteSafe)) {
+    $naniteOld = 'try { NaniteResources = new FNaniteResources(Ar); } catch (Exception) { NaniteResources = null; }'
+    $naniteSafe = 'try { NaniteResources = new FNaniteResources(Ar); } catch (Exception) { NaniteResources = null; Ar.Position = validPos; return; }'
+    if ($skeletalText.Contains($naniteOld)) {
+        $skeletalText = $skeletalText.Replace($naniteOld, $naniteSafe)
+    } elseif ($skeletalText.Contains($naniteRead) -and -not $skeletalText.Contains($naniteSafe)) {
         $skeletalText = $skeletalText.Replace($naniteRead, $naniteSafe)
     }
     $lodRead = 'LODModels = Ar.ReadArray(() => new FStaticLODModel(Ar, bHasVertexColors));'

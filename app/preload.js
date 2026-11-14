@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('api', {
   accountSignIn: () => ipcRenderer.invoke('account:signin'),
   accountCancel: () => ipcRenderer.invoke('account:cancel'),
   accountSignOut: () => ipcRenderer.invoke('account:signout'),
+  setPresence: text => ipcRenderer.invoke('presence:set', text),
   copyText: t => ipcRenderer.invoke('clipboard:write', t),
   newsImages: () => ipcRenderer.invoke('news:images'),
   homeScreens: () => ipcRenderer.invoke('home:screens'),
@@ -93,5 +94,6 @@ contextBridge.exposeInMainWorld('api', {
   appVersion: () => ipcRenderer.invoke('app:version'),
   onGoto: cb => listen('files:goto', cb),
   onUpdate: cb => listen('update:available', cb),
+  onUpdateCleared: cb => listen('update:cleared', cb),
   onUpdateProgress: cb => listen('update:progress', cb)
 })
