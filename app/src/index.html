@@ -572,42 +572,21 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .overlay.open .panel{transform:translateY(0);}
 .panel h2{font-size:14px;font-weight:700;margin-bottom:14px;}
 .done-panel{text-align:center;}
-#updateOverlay{backdrop-filter:none;}
 .upd-panel{width:clamp(380px,33.3vw,560px);padding:24px;border:none;border-radius:16px;box-shadow:inset 0 1px 2px -1px #ffffff50,inset 0 -1px 2px -2px #ffffff50,0 4px 8px #00000020,0 8px 12px #00000010,0 0 16px 4px #00000080;}
 .upd-panel h2{font-size:18px;font-weight:600;margin-bottom:8px;}
 .upd-sub{font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.4;}
 .upd-btns{display:flex;justify-content:flex-end;gap:12px;}
-.upd-btns .btn{height:28px;padding:0 12px;min-width:0;justify-content:center;border-radius:14px;font-weight:400;box-shadow:none;}
-#updCancel{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
-#updCancel:hover{background:#2a2733;}
-#updCancel:active{background:#1a1822;}
-#updGo{background:var(--primary);color:var(--on-primary);}
-#updGo:hover{background:#a355fa;}
-#updGo:active{background:#8531e0;}
-#updGo:disabled{opacity:.6;cursor:default;}
-#updateOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
+.upd-btns .btn{justify-content:center;}
+#updateOverlay{background:#00001080;backdrop-filter:none;}
 .upd-meta{font-size:12px;color:var(--muted);margin:-10px 0 12px;}
 .upd-notes{max-height:140px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.5;color:var(--muted);background:var(--sel);border-radius:8px;padding:10px 12px;margin:0 0 16px;}
-#updatedOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
-#instOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;}
-#instOverlay .btn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
-#instOverlay .btn:hover{background:#2a2733;}
-#instOverlay .btn:active{background:#1a1822;}
-#updDoneNotesBtn{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
-#confirmOverlay{background:rgba(0,0,0,.35);backdrop-filter:none;z-index:300;}
+#updatedOverlay{background:#00001080;backdrop-filter:none;}
+#instOverlay{background:#00001080;backdrop-filter:none;}
+#confirmOverlay{background:#00001080;backdrop-filter:none;z-index:300;}
 .confirm-h{display:flex;align-items:center;gap:8px;}
 .confirm-ico{width:22px;height:22px;color:#c9a64a;flex:none;}
-#confirmNo{background:#201e27;box-shadow:inset 0 0 0 1px #ffffff14;}
-#confirmNo:hover{background:#2a2733;}
-#confirmNo:active{background:#1a1822;}
-#confirmYes{background:var(--primary);color:var(--on-primary);}
-#confirmYes:hover{background:#a355fa;}
-#confirmYes:active{background:#8531e0;}
-#updDoneNotesBtn:hover{background:#2a2733;}
-#updDoneNotesBtn:active{background:#1a1822;}
-#updDoneOk{background:var(--primary);color:var(--on-primary);}
-#updDoneOk:hover{background:#a355fa;}
-#updDoneOk:active{background:#8531e0;}
+.confirm-ico.info{color:var(--cyan);}
+#noticeOverlay{background:#00001080;backdrop-filter:none;z-index:300;}
 .upd-card{display:flex;align-items:center;gap:8px;margin:16px 8px 0;padding:10px 10px 10px 16px;background:var(--btn);border-radius:16px;box-shadow:var(--card-shadow);cursor:pointer;transition:background-color var(--fade);}
 .upd-card[hidden]{display:none;}
 .upd-card:hover{background:var(--btn-hover);}
@@ -783,9 +762,10 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 .su-sum .su-st{align-items:center;font-size:14px;color:var(--text);padding:12px 16px;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);}
 .su-sum .su-st i{margin-top:0;}
 .su-sum .su-st small{margin-left:auto;font-size:12px;color:var(--muted);}
-.btn.primary{background:var(--cyan);color:#fff;}
-.btn.primary:hover{background:color-mix(in srgb,var(--cyan) 85%,#fff);}
-.btn.primary:active{background:color-mix(in srgb,var(--cyan) 75%,#000);}
+.btn.primary{background:linear-gradient(color-mix(in srgb,var(--cyan) 88%,#000),var(--cyan));color:#fff;font-weight:500;}
+.btn.primary:hover{background:linear-gradient(color-mix(in srgb,var(--cyan) 94%,#fff),var(--cyan));}
+.btn.primary:active{background:linear-gradient(color-mix(in srgb,var(--cyan) 88%,#000),var(--cyan));}
+.btn.primary:disabled{opacity:.5;}
 
 /* ---------- How to Use ---------- */
 #page-howto{flex:1 1 auto;}
@@ -1259,13 +1239,12 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 </div>
 
 <div class="overlay" id="noticeOverlay">
-  <div class="panel done-panel">
-    <div class="done-icon warn" id="noticeIcon">!</div>
-    <h2 id="noticeTitle"></h2>
-    <div class="done-sub" id="noticeBody"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn" id="noticeClose" style="flex:1;justify-content:center">Close</button>
-      <button class="btn primary" id="noticeRetry" style="flex:1;justify-content:center">Try again</button>
+  <div class="panel upd-panel">
+    <h2 class="confirm-h"><svg id="noticeIcon" class="confirm-ico" viewBox="0 0 24 24" fill="currentColor"><path id="noticeIconPath" d=""/></svg><span id="noticeTitle"></span></h2>
+    <div class="upd-sub" id="noticeBody"></div>
+    <div class="upd-btns">
+      <button class="btn" id="noticeClose">Close</button>
+      <button class="btn primary" id="noticeRetry">Try again</button>
     </div>
   </div>
 </div>
@@ -2053,9 +2032,8 @@ let noticeRetry = null
 
 function showNotice(data) {
   noticeRetry = data.retry || (() => $('convertBtn').click())
-  $('noticeIcon').classList.toggle('warn', !data.info)
   $('noticeIcon').classList.toggle('info', !!data.info)
-  $('noticeIcon').textContent = data.info ? 'i' : '!'
+  $('noticeIconPath').setAttribute('d', data.info ? 'M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z' : 'M13,14H11V10H13M13,18H11V16H13M1,21H23L12,2L1,21Z')
   $('noticeTitle').textContent = data.title
   $('noticeBody').textContent = data.body
   $('noticeRetry').hidden = !!data.noRetry

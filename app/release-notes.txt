@@ -3,3 +3,4 @@
 - Start-up progress follows Fortnite Porting's weighted stages instead of a made-up estimate, so the bar jumps to the right place as each step begins
 - The Files loader matches Fortnite Porting: glowing background, title, percentage and a 400 px bar
 - When the progress is unknown (updating the file list) a spinning ring and the status show instead of a sliding bar
+- Buttons and dialogs match Fortnite Porting: purple gradient main buttons (Get started, Enable, Download, OK), left-aligned dialogs with an icon in the title and buttons on the right, and the same dim backdrop
