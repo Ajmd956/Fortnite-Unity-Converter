@@ -4,3 +4,6 @@
 - The Files loader matches Fortnite Porting: glowing background, title, percentage and a 400 px bar
 - When the progress is unknown (updating the file list) a spinning ring and the status show instead of a sliding bar
 - Buttons and dialogs match Fortnite Porting: purple gradient main buttons (Get started, Enable, Download, OK), left-aligned dialogs with an icon in the title and buttons on the right, and the same dim backdrop
+- Flat view no longer stops at 1000 files: every match loads as you scroll down, so you can search through all files with the same name
+- Scrollbars match Fortnite Porting: hidden until you hover, then a slim rounded glossy bar that thickens when grabbed
+- Selected files and folders are now a rounded glossy button instead of a purple bar, and search matches are a soft glossy purple pill

@@ -22,11 +22,13 @@
   --card-shadow:inset 0 3px 2px -2px #ffffff10,inset 0 10px 25px #ffffff05,inset 0 0 0 1.5px #ffffff0a,0 4px 8px #00000020,0 8px 12px #00000010;--btn-hover:#252332;--btn-border:#252332;--btn-bright:#322F40;--btn-pressed:#232130;--sel:#252332;--sel-hover:#2E2B3C;--popup:#181620;--popup2:#16141E;--sep:#1F1D28;--title:#DDD8F0;--primary:var(--cyan);--on-primary:#fff;--overlay:#80000010;
 }
 button{font-family:inherit;}
-*{scrollbar-width:thin;scrollbar-color:#2e2b3b transparent;}
-::-webkit-scrollbar{width:10px;height:10px;background:transparent;}
-::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:#2e2b3b;border-radius:5px;border:2px solid transparent;background-clip:content-box;}
-::-webkit-scrollbar-thumb:hover{background:#443f58;background-clip:content-box;border:2px solid transparent;}
+::-webkit-scrollbar{width:14px;height:14px;background:transparent;}
+::-webkit-scrollbar-track{background:transparent;border-radius:7px;}
+:hover::-webkit-scrollbar-track{background:#ffffff08;}
+::-webkit-scrollbar-thumb{background:transparent;border-radius:7px;border:4px solid transparent;background-clip:content-box;transition:background-color .15s;}
+:hover::-webkit-scrollbar-thumb{background:linear-gradient(#3b3850,#322f40);background-clip:content-box;border:4px solid transparent;}
+::-webkit-scrollbar-thumb:hover{background:linear-gradient(#4a4663,#3d3a52);background-clip:content-box;border:3px solid transparent;}
+::-webkit-scrollbar-thumb:active{background:linear-gradient(#57527a,#47435f);background-clip:content-box;border:3px solid transparent;}
 ::-webkit-scrollbar-corner{background:transparent;}
 ::-webkit-scrollbar-button{display:none;width:0;height:0;}
 body{background:var(--bg);color:var(--text);font-family:'SF Pro Text','Segoe UI',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none;font-size:14px;}
@@ -352,9 +354,9 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .fb-split:hover::after,.fb-split.drag::after{background:var(--border-hi);}
 .fb-tree{flex:0 0 var(--tree-w,calc((100% - 8px) / 3.5));min-width:200px;max-width:70%;overflow:auto;background:linear-gradient(var(--card),var(--card2));border-radius:16px;box-shadow:var(--card-shadow);padding:9px 8px 8px 19px;}
 .fb-right{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;}
-.ft-row{display:flex;align-items:center;gap:0;height:32px;width:max-content;min-width:100%;padding-right:12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:400;white-space:nowrap;}
+.ft-row{display:flex;align-items:center;gap:0;height:32px;width:max-content;min-width:100%;padding-right:12px;border-radius:16px;cursor:pointer;font-size:12px;font-weight:400;white-space:nowrap;}
 .ft-row:hover{background:#ffffff0a;}
-.ft-row.sel{background:#ffffff0d;}
+.ft-row.sel{background:var(--btn-bright);box-shadow:var(--card-shadow);}
 .ft-chev{flex:0 0 20px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--text);transition:transform .12s;}
 .ft-chev svg{width:12px;height:12px;}
 .ft-chev.open{transform:rotate(90deg);}
@@ -367,9 +369,9 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .fb-grid.void .fb-empty{grid-column:auto;padding:0;font-size:14px;line-height:20px;}
 .fb-grid.void .fb-empty.tert{color:var(--dim);}
 .fb-grid.void .fb-empty .fb-line{margin-top:0;}
-.fb-item{display:flex;flex-direction:column;align-items:center;gap:4px;width:var(--fb-item,112px);padding:8px;border-radius:4px;cursor:pointer;border:none;min-width:0;}
+.fb-item{display:flex;flex-direction:column;align-items:center;gap:4px;width:var(--fb-item,112px);padding:8px;border-radius:16px;cursor:pointer;border:none;min-width:0;}
 .fb-item:hover{background:#ffffff0a;}
-.fb-item.sel{background:#ffffff14;}
+.fb-item.sel{background:var(--btn-bright);box-shadow:var(--card-shadow);}
 .fb-icon{position:relative;width:96px;height:96px;display:flex;align-items:center;justify-content:center;}
 .fb-icon img:not(.fld){width:80px;height:80px;object-fit:cover;border-radius:8px;}
 .fb-icon img.fld{width:72px;height:72px;object-fit:contain;}
@@ -377,12 +379,11 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 .fb-name{width:100%;font-size:12px;font-weight:500;color:#fff;line-height:1.3;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
 .fb-tag{display:none;width:100%;margin-top:0;font-size:10.5px;font-weight:600;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim);}
 .fb-tag.guess{opacity:.6;}
-.fb-row{position:relative;box-sizing:border-box;height:40px;line-height:36px;padding:0 10px 0 14px;font-size:14px;font-family:inherit;font-weight:400;color:var(--text);border-radius:4px;cursor:pointer;white-space:nowrap;overflow:visible;border:2px solid transparent;background-clip:padding-box;}
+.fb-row{position:relative;box-sizing:border-box;height:40px;line-height:36px;padding:0 10px 0 14px;font-size:14px;font-family:inherit;font-weight:400;color:var(--text);border-radius:16px;transition:background-color var(--fade) ease;cursor:pointer;white-space:nowrap;overflow:visible;border:2px solid transparent;background-clip:padding-box;}
 .fb-row:hover{background-color:#ffffff0f;}
-.fb-row.sel{background-color:#ffffff0f;}
-.fb-row.sel:hover{background-color:#ffffff0a;}
-.fb-row.sel::before{content:'';position:absolute;left:0;top:50%;width:3px;height:16px;margin-top:-8px;border-radius:2px;background:var(--cyan);}
-.fb-row mark{background:#953bf8a9;color:#fff;border-radius:0;}
+.fb-row.sel{background-color:var(--btn-bright);box-shadow:var(--card-shadow);}
+.fb-row.sel:hover{background-color:#3B384C;}
+.fb-row mark{background:color-mix(in srgb,var(--cyan) 38%,transparent);box-shadow:var(--card-shadow);color:#fff;border-radius:6px;padding:1px 2px;margin:0 -2px;}
 .fb-empty{grid-column:1/-1;padding:28px;text-align:center;color:var(--muted);font-size:13px;}
 .fb-link{color:var(--cyan);text-decoration:underline;cursor:pointer;text-shadow:0 0 25px var(--cyan);animation:fbPulse .5s ease-in-out infinite alternate;}
 @keyframes fbPulse{from{opacity:.5;}to{opacity:1;}}
@@ -3932,23 +3933,24 @@ function makeHighlighter(query, regex) {
   }
 }
 
-function drawFlatView(data) {
-  const grid = $('fileGrid')
-  grid.innerHTML = ''
-  grid.classList.add('flat')
-  grid.classList.remove('void')
-  const query = fileApplied.flat
-  const list = data.results.map(r => {
+const FLAT_PAGE = 500
+let flatState = { loaded: 0, total: 0, loading: false, highlight: null, query: '', regex: false, containers: [] }
+
+function addItems(list) {
+  list.forEach(it => {
+    fileItems.set(it.key, it)
+    fileOrder.push(it.key)
+  })
+}
+
+function flatItems(results) {
+  return results.map(r => {
     const name = r.p.slice(r.p.lastIndexOf('/') + 1).split('.')[0]
     return { key: 'f|' + r.p, kind: 'file', path: r.p, name, type: r.t, cls: r.c || '', tip: name }
   })
-  registerItems(list)
-  if (!list.length) {
-    drawEmpty(grid, query || fileVfsSel.size ? 'No Files Found' : 'Search or select a container to find files', false, true)
-    refreshSelection()
-    return
-  }
-  const highlight = makeHighlighter(query, fileRegex)
+}
+
+function flatRows(list, highlight) {
   const frag = document.createDocumentFragment()
   list.forEach(it => {
     const row = document.createElement('div')
@@ -3959,16 +3961,77 @@ function drawFlatView(data) {
     bindItem(row, it)
     frag.appendChild(row)
   })
-  if (data.total > list.length) {
-    const more = document.createElement('div')
-    more.className = 'fb-empty'
-    more.textContent = 'Showing ' + list.length.toLocaleString() + ' of ' + data.total.toLocaleString() + ' files. Refine your search to narrow it down.'
-    frag.appendChild(more)
+  return frag
+}
+
+function flatSentinel(grid) {
+  let el = grid.querySelector('.fb-more')
+  if (flatState.loaded >= flatState.total) {
+    if (el) el.remove()
+    return
   }
-  grid.appendChild(frag)
+  if (!el) {
+    el = document.createElement('div')
+    el.className = 'fb-empty fb-more'
+  }
+  el.textContent = 'Showing ' + flatState.loaded.toLocaleString() + ' of ' + flatState.total.toLocaleString() + ' files. Keep scrolling to load the rest.'
+  grid.appendChild(el)
+}
+
+function drawFlatView(data) {
+  const grid = $('fileGrid')
+  grid.innerHTML = ''
+  grid.classList.add('flat')
+  grid.classList.remove('void')
+  const query = fileApplied.flat
+  const list = flatItems(data.results)
+  registerItems(list)
+  if (!list.length) {
+    flatState.loaded = flatState.total = 0
+    drawEmpty(grid, query || fileVfsSel.size ? 'No Files Found' : 'Search or select a container to find files', false, true)
+    refreshSelection()
+    return
+  }
+  const highlight = makeHighlighter(query, fileRegex)
+  flatState = { loaded: list.length, total: data.total, loading: false, highlight, query, regex: fileRegex, containers: Array.from(fileVfsSel) }
+  grid.appendChild(flatRows(list, highlight))
+  flatSentinel(grid)
   grid.scrollTop = 0
   refreshSelection()
   resolveTypes(list.slice(0, 200))
+  setTimeout(loadMoreFlat, 0)
+}
+
+async function loadMoreFlat() {
+  const grid = $('fileGrid')
+  const st = flatState
+  if (!fileFlat || st.loading || st.loaded >= st.total) return
+  if (grid.scrollHeight - grid.scrollTop - grid.clientHeight > 800) return
+  st.loading = true
+  const seq = fileSeq
+  let data
+  try {
+    data = await window.api.filesSearch({ query: st.query, regex: st.regex, limit: FLAT_PAGE, offset: st.loaded, containers: st.containers })
+  } catch (e) {
+    st.loading = false
+    return
+  }
+  if (seq !== fileSeq || st !== flatState) return
+  const list = flatItems(data.results).filter(it => !fileItems.has(it.key))
+  st.loading = false
+  if (!data.results.length) {
+    st.total = st.loaded
+  } else {
+    st.loaded += data.results.length
+    st.total = data.total
+    addItems(list)
+    const more = grid.querySelector('.fb-more')
+    grid.insertBefore(flatRows(list, st.highlight), more)
+    refreshSelection()
+    resolveTypes(list.slice(0, 200))
+  }
+  flatSentinel(grid)
+  setTimeout(loadMoreFlat, 0)
 }
 
 async function runFileSearch() {
@@ -3983,7 +4046,7 @@ async function runFileSearch() {
   }
   if (fileFlat) {
     const query = fileApplied.flat
-    const data = query || fileVfsSel.size ? await window.api.filesSearch({ query, regex: fileRegex, limit: 1000, containers: Array.from(fileVfsSel) }) : { results: [], total: 0 }
+    const data = query || fileVfsSel.size ? await window.api.filesSearch({ query, regex: fileRegex, limit: FLAT_PAGE, offset: 0, containers: Array.from(fileVfsSel) }) : { results: [], total: 0 }
     if (seq === fileSeq) drawFlatView(data)
   } else {
     const data = await window.api.filesList({ dir: fileDir, search: fileApplied.folder, regex: fileRegex, type: fileType, containers: Array.from(fileVfsSel) })
@@ -4189,6 +4252,7 @@ function goForward() {
   goDir(fileHist[fileHistAt], { keep: false })
 }
 
+$('fileGrid').addEventListener('scroll', () => { if (fileFlat) loadMoreFlat() }, { passive: true })
 $('fileFlat').onclick = () => {
   fileFlat = !fileFlat
   fileSel.clear()

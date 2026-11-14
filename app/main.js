@@ -1345,13 +1345,14 @@ ipcMain.handle('files:search', async (_e, q) => {
   const match = fileIndex && (makeMatcher(q.query, q.regex) || (only ? () => true : null))
   if (!match) return { results: [], total: 0 }
   const limit = Math.min(Number(q.limit) || 1000, 2000)
+  const offset = Math.max(Number(q.offset) || 0, 0)
   const results = []
   let total = 0
   for (const f of fileIndex) {
     if (only && !only.has(f.v)) continue
     if (!match(f.p, f.l)) continue
     total++
-    if (results.length < limit) {
+    if (total > offset && results.length < limit) {
       const c = typeCache.get(f.p) || ''
       results.push({ p: f.p, t: c ? catOf(c) : f.k, c })
     }
