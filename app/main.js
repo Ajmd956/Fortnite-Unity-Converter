@@ -958,6 +958,7 @@ async function runUpdateCheck(manual) {
     }
     const isNew = !updateOffered || updateOffered.version !== found.version
     updateOffered = found
+    // Start fetching the update now, quietly, so installing it later is nearly instant
     if (settings.prefetchUpdates !== false) initUpdater().download().catch(() => {})
     if (isNew || manual) send('update:available', Object.assign({ manual: !!manual }, offerPayload(found)))
     return { status: 'available', version: found.version, current: appVer() }
@@ -1034,6 +1035,7 @@ ipcMain.handle('update:download', async () => {
       u.discardDownloaded()
       return { ok: true, test: true }
     }
+    // keep the notes of this update so the new version can show them even when it starts offline
     if (updateOffered && updateOffered.notes) {
       settings.pendingNotes = String(updateOffered.notes).slice(0, 4000)
       settings.pendingFor = String(updateOffered.version || '').replace(/^v/i, '')

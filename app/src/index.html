@@ -101,9 +101,15 @@ input[type=range].sld.hv-seek{flex:1 1 auto;width:auto;min-width:0;}
 .home-title{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:40px;font-weight:600;color:#DDD8F0;}
 .home-title b{color:var(--cyan);font-weight:600;}
 .home-status{font-size:14px;font-weight:500;color:var(--muted);margin:8px 0;}
-.home-bar,.ld-bar,.sp-bar{--p:0%;height:8px;border-radius:4px;background:#ffffff0f;overflow:hidden;position:relative;}
-.home-bar i,.ld-bar i,.sp-bar i{position:absolute;top:0;bottom:0;left:0;width:var(--p);border-radius:4px;background:var(--cyan);transition:width .5s ease;}
-.home-bar.indet i,.ld-bar.indet i{left:-40%;width:40%;transition:none;animation:ldSlide 1.2s ease-in-out infinite;}
+.home-bar,.ld-bar,.sp-bar{--p:0%;height:8px;border-radius:16px;background:var(--btn-bright);box-shadow:var(--card-shadow);position:relative;}
+.home-bar i,.ld-bar i,.sp-bar i{position:absolute;top:0;bottom:0;left:0;width:var(--p);border-radius:16px;background:var(--cyan);box-shadow:var(--card-shadow);}
+.home-bar i,.sp-bar i{transition:width 5s cubic-bezier(.215,.61,.355,1);}
+.sp-bar.fin i{transition-duration:.6s;}
+.fp-ring{width:50px;height:50px;}
+.fp-ring svg{display:block;width:50px;height:50px;animation:ringSpin 2s linear infinite;}
+.fp-ring circle{fill:none;stroke:var(--cyan);stroke-width:5;stroke-linecap:round;stroke-dasharray:10 141.4;animation:ringDash 1.5s ease-in-out infinite;}
+@keyframes ringSpin{to{transform:rotate(360deg);}}
+@keyframes ringDash{0%{stroke-dasharray:10 141.4;stroke-dashoffset:0;}50%{stroke-dasharray:90 141.4;stroke-dashoffset:-30;}100%{stroke-dasharray:10 141.4;stroke-dashoffset:-141.4;}}
 .home-bar{width:500px;max-width:80%;margin:8px 0 0;}
 .home-bar.hide,.home-status.hide{display:none;}
 .home-links{display:flex;gap:8px;margin-top:12px;}
@@ -128,7 +134,7 @@ input[type=range].sld.hv-seek{flex:1 1 auto;width:auto;min-width:0;}
 .news-d{padding-right:48px;font-size:14px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 .news-btn{position:absolute;right:16px;bottom:16px;width:40px;justify-content:center;padding:0;}
 .news-btn svg{width:20px;height:20px;}
-.glow{position:absolute;width:600px;height:600px;border-radius:50%;pointer-events:none;background:radial-gradient(circle closest-side,#A855F72E 0%,#A855F722 20%,#A855F714 42%,#A855F70A 62%,#A855F703 82%,#A855F700 100%);animation:glowPulse 3s ease-in-out infinite alternate;}
+.glow{position:absolute;width:600px;height:600px;border-radius:50%;pointer-events:none;background:radial-gradient(circle closest-side,#A855F733 0%,#A855F71A 50%,#A855F700 100%);animation:glowPulse 3s cubic-bezier(.37,0,.63,1) infinite alternate;}
 @keyframes glowPulse{from{opacity:.2;}to{opacity:.5;}}
 
 /* ---------- window chrome ---------- */
@@ -397,12 +403,14 @@ textarea:focus,input[type=text]:focus{background:var(--input);}
 
 /* files bottom bar + loading */
 .fb-body{position:relative;}
-#fileLoad{position:absolute;inset:0;overflow:hidden;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--content);border-radius:16px;}
+#fileLoad{position:absolute;inset:0;overflow:hidden;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;background:var(--content);border-radius:16px;}
 #fileLoad.show{display:flex;}
-#fileLoad .ld-t{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:20px;font-weight:600;position:relative;}
-#fileLoad .ld-s{position:relative;font-size:14px;color:var(--muted);min-height:16px;max-width:80%;text-align:center;}
-.ld-bar{width:400px;max-width:70%;}
-@keyframes ldSlide{0%{left:-40%;}100%{left:100%;}}
+#fileLoad .ld-box{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;}
+#fileLoad .ld-box.ind{gap:0;}
+#fileLoad .ld-t{font-family:'SF Pro Display','SF Pro Text',sans-serif;font-size:20px;font-weight:600;}
+#fileLoad .ld-box.ind .ld-t{margin-top:16px;}
+#fileLoad .ld-s{font-size:14px;color:var(--muted);margin-bottom:8px;}
+.ld-bar{width:400px;max-width:90vw;}
 .fb-selrow{display:flex;align-items:center;gap:8px;}
 .fb-selrow .rc-text{flex:1;min-width:0;padding-left:8px;}
 .fb-selrow .rc-ctl{gap:8px;}
@@ -860,7 +868,7 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
         <div class="home-top">
           <div class="home-title"><span>Fortnite</span> <b>Unity</b></div>
           <div class="home-status" id="homeStatus"></div>
-          <div class="home-bar indet" id="homeBar"><i></i></div>
+          <div class="home-bar" id="homeBar"><i></i></div>
           <div class="home-links">
             <button class="btn ext" data-url=""><img src="../assets/logo.png" alt="">Website</button>
           </div>
@@ -980,7 +988,10 @@ body:not([data-tab="files"]) #fileRebuild{display:none;}
 
     <div class="page" id="page-files">
       <div class="fb-body">
-        <div id="fileLoad"><div class="glow"></div><div class="ld-t" id="fileLoadT">Loading files</div><div class="ld-s" id="fileLoadS"></div><div class="ld-bar indet" id="fileLoadBar"><i></i></div></div>
+        <div id="fileLoad"><div class="glow"></div>
+          <div class="ld-box" id="fileLoadDet"><div class="ld-t">Loading Files</div><div class="ld-s" id="fileLoadS">0%</div><div class="ld-bar" id="fileLoadBar"><i></i></div></div>
+          <div class="ld-box ind" id="fileLoadInd" style="display:none"><div class="fp-ring"><svg viewBox="0 0 50 50"><circle cx="25" cy="25" r="22.5"/></svg></div><div class="ld-t" id="fileLoadT">Loading Files</div></div>
+        </div>
         <div class="fb-tree" id="fileTree"></div>
         <div class="fb-split" id="fileSplit"></div>
         <div class="fb-right">
@@ -2199,45 +2210,44 @@ let apiOk = false
 let apiWasReady = false
 let filesAutoBuilt = false
 
+// Fortnite Porting weights its start-up stages (total 73) and moves the bar to the finished share as each stage begins.
+// The Home bar then glides there over 5 seconds, so there is no timer pushing it along.
+const API_TOTAL = 73
+const API_FIRST = 5
 const API_STAGES = [
-  [/keys and mappings|encryption keys/i, 12],
-  [/mappings/i, 22],
-  [/decompression/i, 32],
-  [/reading game archives/i, 46],
-  [/pre-downloaded|streamed|textures/i, 62],
-  [/building the file list/i, 80],
-  [/starting the api/i, 92]
+  [/keys and mappings|encryption keys|no keys|no mappings/i, 6],
+  [/downloading mappings|loading mappings/i, 7],
+  [/decompression/i, 17],
+  [/reading game archives/i, 42],
+  [/pre-downloaded|streamed|textures/i, 57],
+  [/starting the api/i, 63],
+  [/building the file list/i, 73]
 ]
 let apiFloor = 0
 let apiShown = 0
 
 function apiStagePct(text) {
-  let p = 0
-  API_STAGES.forEach(s => { if (s[0].test(text)) p = Math.max(p, s[1]) })
-  return p
+  let w = 0
+  API_STAGES.forEach(s => { if (s[0].test(text)) w = Math.max(w, s[1]) })
+  return w * 100 / API_TOTAL
 }
 
 function setApiBars(p) {
   apiShown = p
   $('homeBar').style.setProperty('--p', p + '%')
   $('fileLoadBar').style.setProperty('--p', p + '%')
+  $('fileLoadS').textContent = Math.round(p) + '%'
 }
-
-setInterval(() => {
-  if (apiOk || apiInfo.state !== 'starting') return
-  const cap = Math.min(94, apiFloor + 9)
-  if (apiShown < apiFloor) setApiBars(apiFloor)
-  else if (apiShown < cap) setApiBars(Math.min(cap, apiShown + 0.5))
-}, 500)
 
 function paintFileLoad() {
   const apiWait = !apiOk && apiInfo.state === 'starting'
   const on = apiWait || fileBuilding || fileReading
-  $('fileLoadBar').classList.toggle('indet', !(apiWait && !fileBuilding && !fileReading))
+  const det = apiWait && !fileBuilding && !fileReading
   $('fileLoad').classList.toggle('show', on)
-  if (!on) return
-  $('fileLoadT').textContent = fileBuilding ? 'Updating the file list' : fileReading ? 'Loading files' : 'Loading the game files'
-  $('fileLoadS').textContent = fileBuilding ? fileBuildText : fileReading ? 'Reading the file list' : (apiInfo.text || 'Starting the API')
+  $('fileLoadDet').style.display = det ? '' : 'none'
+  $('fileLoadInd').style.display = det ? 'none' : ''
+  if (!on || det) return
+  $('fileLoadT').textContent = fileBuilding && fileBuildText ? fileBuildText : 'Loading Files'
 }
 
 let apiIdle = 'API: checking'
@@ -2252,16 +2262,15 @@ function paintApi() {
   else if (st === 'failed') label = 'API: not available'
   const loadingHome = !apiOk
   if (wait) {
-    apiFloor = Math.max(apiFloor, apiStagePct(apiInfo.text || '') || 6)
+    apiFloor = Math.max(apiFloor, apiStagePct(apiInfo.text || '') || API_FIRST * 100 / API_TOTAL)
     if (apiShown < apiFloor) setApiBars(apiFloor)
   } else {
     apiFloor = 0
     setApiBars(0)
   }
-  $('homeBar').classList.toggle('indet', !wait)
   $('homeBar').classList.toggle('hide', !loadingHome)
   $('homeStatus').classList.toggle('hide', !loadingHome)
-  $('homeStatus').textContent = wait ? (apiInfo.text || 'Loading the game files') : st === 'failed' ? 'The API is not available' : 'Waiting for the API'
+  $('homeStatus').textContent = wait ? (apiInfo.text || 'Loading Files') : st === 'failed' ? 'The API is not available' : 'Waiting for the API'
   if (apiOk) apiWasReady = true
   const gated = !apiOk && st !== 'failed' && !apiWasReady
   $('wrap').classList.toggle('gated', gated)
@@ -4986,6 +4995,7 @@ function whenVisible() {
 }
 
 function spProgress(p) {
+  $('spBar').classList.toggle('fin', p >= 100)
   $('spBar').style.setProperty('--p', p + '%')
 }
 
