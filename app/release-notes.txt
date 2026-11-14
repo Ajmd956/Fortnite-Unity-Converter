@@ -7,3 +7,4 @@
 - Flat view no longer stops at 1000 files: every match loads as you scroll down, so you can search through all files with the same name
 - Scrollbars match Fortnite Porting: hidden until you hover, then a slim rounded glossy bar that thickens when grabbed
 - Selected files and folders are now a rounded glossy button instead of a purple bar, and search matches are a soft glossy purple pill
+- Fixed the start-up loading bar dropping back to empty whenever the status switched to "Waiting for the API"; it now keeps its place and only moves forward

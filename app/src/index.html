@@ -2243,7 +2243,7 @@ function paintApi() {
   if (wait) {
     apiFloor = Math.max(apiFloor, apiStagePct(apiInfo.text || '') || API_FIRST * 100 / API_TOTAL)
     if (apiShown < apiFloor) setApiBars(apiFloor)
-  } else {
+  } else if (apiOk || st === 'failed') {
     apiFloor = 0
     setApiBars(0)
   }
