@@ -111,7 +111,7 @@ try
     await OodleHelper.InitializeAsync(Path.Combine(cache, OodleHelper.OodleFileName));
 
     Say("status: Reading game archives");
-    var provider = new DefaultFileProvider(archive, SearchOption.TopDirectoryOnly, new VersionContainer(gameEngine, optionOverrides: new Dictionary<string, bool> { ["StaticMesh.KeepMobileMinLODSettingOnDesktop"] = true }), StringComparer.OrdinalIgnoreCase);
+    var provider = new DefaultFileProvider(archive, SearchOption.TopDirectoryOnly, new VersionContainer(gameEngine), StringComparer.OrdinalIgnoreCase);
     provider.OnDemandOptions = new IoStoreOnDemandOptions
     {
         ChunkHostUri = new Uri("https://egdownload.fastly-edge.com/", UriKind.Absolute),

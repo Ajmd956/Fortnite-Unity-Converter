@@ -10,3 +10,4 @@
 - Fixed the start-up loading bar dropping back to empty whenever the status switched to "Waiting for the API"; it now keeps its place and only moves forward
 - Model Viewer: skeletal meshes are now exported the way Fortnite Porting previews them (no morph targets or sockets), and the retry also drops them, so skeletal meshes should load like other meshes. If one still fails, the error now includes its LOD counts
 - The Output log now shows the Unreal version, Nanite setting and which mappings file the engine loaded (or that none was found) each time it starts
+- Engine now reads game files the same way Fortnite Porting does (removed a static-mesh setting it does not use), and if the full model export fails the viewer still opens the mesh shape from the mesh data, like Fortnite Porting, instead of showing nothing

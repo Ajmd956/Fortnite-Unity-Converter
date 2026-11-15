@@ -162,6 +162,8 @@ static class AssetExport
                         catch (Exception fastPathError) when (fastPathError is not FileNotFoundException) { }
                     }
                     var obj = kind == "model" ? ResolveMesh(provider, stem) : provider.LoadPackageObject(stem);
+                    try
+                    {
                     var results = await RunWithDiag(provider, stem, obj, kind == "model", () => RunWithRetry(
                         () => { var s1 = new ExportSession(); s1.Add(obj); return s1.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, exportMorphTargets: kind != "model", socketFormat: kind == "model" ? ESocketFormat.None : ESocketFormat.Bone)); },
                         () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite, exportMorphTargets: false, socketFormat: ESocketFormat.None)); }),
@@ -173,6 +175,13 @@ static class AssetExport
                     var written = results.SelectMany(r => r.DiskFilePaths ?? Array.Empty<string>());
                     var first = kind == "model" ? written.FirstOrDefault(IsModelFile) : written.FirstOrDefault();
                     return first ?? outRoot;
+                    }
+                    catch (Exception) when (kind == "model")
+                    {
+                        var fallbackFile = MeshGlbFallback(provider, stem, obj, outRoot, name);
+                        if (fallbackFile is null) throw;
+                        return fallbackFile;
+                    }
                 }
                 case "meshthumb":
                 {
@@ -219,6 +228,37 @@ static class AssetExport
         {
             Gate.Release();
         }
+    }
+
+    // Fortnite Porting draws a mesh straight from its mesh data. When the full glTF export fails (the skeleton and
+    // material writers are the usual cause), the viewer still gets the mesh shape built the same way the icons are.
+    static string? MeshGlbFallback(IFileProvider provider, string stem, UObject obj, string outRoot, string name)
+    {
+        try
+        {
+            var file = Path.Combine(outRoot, name + ".glb");
+            switch (obj)
+            {
+                case USkeletalMesh skeletal:
+                {
+                    using var dto = new SkeletalMeshDto(skeletal, DtoOptions(EMeshQuality.Highest));
+                    if (dto.LODs.Count > 0) { File.WriteAllBytes(file, DtoGlb.Build(dto)); return file; }
+                    using var plain = new SkeletalMeshDto(LoadWithoutNanite(provider, stem) as USkeletalMesh ?? skeletal, DtoOptions(EMeshQuality.All));
+                    File.WriteAllBytes(file, DtoGlb.Build(plain));
+                    return file;
+                }
+                case UStaticMesh staticMesh:
+                {
+                    using var dto = new StaticMeshDto(staticMesh, DtoOptions(EMeshQuality.Highest));
+                    if (dto.LODs.Count > 0) { File.WriteAllBytes(file, DtoGlb.Build(dto)); return file; }
+                    using var plain = new StaticMeshDto(LoadWithoutNanite(provider, stem) as UStaticMesh ?? staticMesh, DtoOptions(EMeshQuality.All));
+                    File.WriteAllBytes(file, DtoGlb.Build(plain));
+                    return file;
+                }
+            }
+        }
+        catch (Exception) { }
+        return null;
     }
 
     static ExportOptions DtoOptions(EMeshQuality quality)
@@ -502,5 +542,161 @@ static class SoundDecoders
         {
             try { Directory.Delete(temp, true); } catch { }
         }
+    }
+}
+
+static class DtoGlb
+{
+    // Same placement as CUE4Parse's glTF writer: centimetres to metres, Y and Z swapped, triangle order kept.
+    public static byte[] Build<TVertex>(MeshDto<TVertex> dto) where TVertex : struct, IMeshVertex
+    {
+        if (dto.LODs.Count == 0) throw new InvalidDataException("mesh has no LOD data");
+        var lod = dto.LODs[0];
+        var vertices = lod.Vertices;
+        var nv = vertices.Length;
+        if (nv == 0 || lod.Indices.Length < 3) throw new InvalidDataException("mesh has no triangles");
+
+        var bin = new MemoryStream();
+        var bw = new BinaryWriter(bin);
+        var min = new[] { float.MaxValue, float.MaxValue, float.MaxValue };
+        var max = new[] { float.MinValue, float.MinValue, float.MinValue };
+        foreach (var v in vertices)
+        {
+            var p = v.Position;
+            var c = new[] { (float) (p.X * 0.01), (float) (p.Z * 0.01), (float) (p.Y * 0.01) };
+            for (var i = 0; i < 3; i++)
+            {
+                bw.Write(c[i]);
+                if (c[i] < min[i]) min[i] = c[i];
+                if (c[i] > max[i]) max[i] = c[i];
+            }
+        }
+        var normalsStart = (int) bin.Position;
+        foreach (var v in vertices)
+        {
+            var n = v.Normal;
+            float x = (float) n.X, y = (float) n.Z, z = (float) n.Y;
+            var len = MathF.Sqrt(x * x + y * y + z * z);
+            if (len < 1e-8f) { x = 0; y = 1; z = 0; len = 1; }
+            bw.Write(x / len); bw.Write(y / len); bw.Write(z / len);
+        }
+        var uvStart = (int) bin.Position;
+        foreach (var v in vertices)
+        {
+            var uv = v.Uv;
+            bw.Write((float) uv.U);
+            bw.Write((float) uv.V);
+        }
+        var indexStart = (int) bin.Position;
+
+        var prims = new List<(int Material, int Start, int Count)>();
+        void AddRange(int material, int first, int faces)
+        {
+            var start = (int) bin.Position;
+            var count = 0;
+            for (var t = 0; t < faces; t++)
+            {
+                var at = first + t * 3;
+                if (at < 0 || at + 2 >= lod.Indices.Length) break;
+                uint a = lod.Indices[at], b = lod.Indices[at + 1], c = lod.Indices[at + 2];
+                if (a >= nv || b >= nv || c >= nv) continue;
+                bw.Write(a); bw.Write(b); bw.Write(c);
+                count += 3;
+            }
+            if (count > 0) prims.Add((material, start, count));
+        }
+        foreach (var s in lod.Sections)
+            if (s.IsValid && !s.bDisabled) AddRange(s.MaterialIndex, s.FirstIndex, s.NumFaces);
+        if (prims.Count == 0) AddRange(-1, 0, lod.Indices.Length / 3);
+        if (prims.Count == 0) throw new InvalidDataException("mesh has no triangles");
+        bw.Flush();
+
+        var mats = dto.Materials;
+        var matIds = new Dictionary<int, int>();
+        var matNames = new List<string>();
+        int MaterialFor(int index)
+        {
+            if (mats.Length == 0 || index < 0) return -1;
+            index = Math.Clamp(index, 0, mats.Length - 1);
+            if (!matIds.TryGetValue(index, out var id))
+            {
+                id = matNames.Count;
+                matIds[index] = id;
+                matNames.Add(mats[index].Name);
+            }
+            return id;
+        }
+        var matOfPrim = prims.Select(p => MaterialFor(p.Material)).ToList();
+
+        using var js = new MemoryStream();
+        using (var j = new System.Text.Json.Utf8JsonWriter(js))
+        {
+            j.WriteStartObject();
+            j.WriteStartObject("asset"); j.WriteString("version", "2.0"); j.WriteString("generator", "Fortnite Unity Converter"); j.WriteEndObject();
+            j.WriteNumber("scene", 0);
+            j.WriteStartArray("scenes"); j.WriteStartObject(); j.WriteStartArray("nodes"); j.WriteNumberValue(0); j.WriteEndArray(); j.WriteEndObject(); j.WriteEndArray();
+            j.WriteStartArray("nodes"); j.WriteStartObject(); j.WriteNumber("mesh", 0); j.WriteEndObject(); j.WriteEndArray();
+            j.WriteStartArray("meshes"); j.WriteStartObject(); j.WriteStartArray("primitives");
+            for (var i = 0; i < prims.Count; i++)
+            {
+                j.WriteStartObject();
+                j.WriteStartObject("attributes"); j.WriteNumber("POSITION", 0); j.WriteNumber("NORMAL", 1); j.WriteNumber("TEXCOORD_0", 2); j.WriteEndObject();
+                j.WriteNumber("indices", 3 + i);
+                if (matOfPrim[i] >= 0) j.WriteNumber("material", matOfPrim[i]);
+                j.WriteNumber("mode", 4);
+                j.WriteEndObject();
+            }
+            j.WriteEndArray(); j.WriteEndObject(); j.WriteEndArray();
+            if (matNames.Count > 0)
+            {
+                j.WriteStartArray("materials");
+                foreach (var n in matNames)
+                {
+                    j.WriteStartObject(); j.WriteString("name", n);
+                    j.WriteStartObject("pbrMetallicRoughness"); j.WriteNumber("metallicFactor", 0); j.WriteNumber("roughnessFactor", 1); j.WriteEndObject();
+                    j.WriteEndObject();
+                }
+                j.WriteEndArray();
+            }
+            j.WriteStartArray("accessors");
+            j.WriteStartObject(); j.WriteNumber("bufferView", 0); j.WriteNumber("componentType", 5126); j.WriteNumber("count", nv); j.WriteString("type", "VEC3");
+            j.WriteStartArray("min"); foreach (var m in min) j.WriteNumberValue(m); j.WriteEndArray();
+            j.WriteStartArray("max"); foreach (var m in max) j.WriteNumberValue(m); j.WriteEndArray();
+            j.WriteEndObject();
+            j.WriteStartObject(); j.WriteNumber("bufferView", 1); j.WriteNumber("componentType", 5126); j.WriteNumber("count", nv); j.WriteString("type", "VEC3"); j.WriteEndObject();
+            j.WriteStartObject(); j.WriteNumber("bufferView", 2); j.WriteNumber("componentType", 5126); j.WriteNumber("count", nv); j.WriteString("type", "VEC2"); j.WriteEndObject();
+            for (var i = 0; i < prims.Count; i++)
+            {
+                j.WriteStartObject(); j.WriteNumber("bufferView", 3 + i); j.WriteNumber("componentType", 5125); j.WriteNumber("count", prims[i].Count); j.WriteString("type", "SCALAR"); j.WriteEndObject();
+            }
+            j.WriteEndArray();
+            j.WriteStartArray("bufferViews");
+            void View(int offset, int length, int target)
+            {
+                j.WriteStartObject(); j.WriteNumber("buffer", 0); j.WriteNumber("byteOffset", offset); j.WriteNumber("byteLength", length); j.WriteNumber("target", target); j.WriteEndObject();
+            }
+            View(0, normalsStart, 34962);
+            View(normalsStart, uvStart - normalsStart, 34962);
+            View(uvStart, indexStart - uvStart, 34962);
+            foreach (var p in prims) View(p.Start, p.Count * 4, 34963);
+            j.WriteEndArray();
+            j.WriteStartArray("buffers"); j.WriteStartObject(); j.WriteNumber("byteLength", (int) bin.Length); j.WriteEndObject(); j.WriteEndArray();
+            j.WriteEndObject();
+        }
+
+        var json = js.ToArray();
+        var jsonPad = (4 - json.Length % 4) % 4;
+        var binBytes = bin.ToArray();
+        var binPad = (4 - binBytes.Length % 4) % 4;
+        using var glb = new MemoryStream();
+        using var gw = new BinaryWriter(glb);
+        gw.Write(0x46546C67u); gw.Write(2u);
+        gw.Write((uint) (12 + 8 + json.Length + jsonPad + 8 + binBytes.Length + binPad));
+        gw.Write((uint) (json.Length + jsonPad)); gw.Write(0x4E4F534Au);
+        gw.Write(json); for (var i = 0; i < jsonPad; i++) gw.Write((byte) 0x20);
+        gw.Write((uint) (binBytes.Length + binPad)); gw.Write(0x004E4942u);
+        gw.Write(binBytes); for (var i = 0; i < binPad; i++) gw.Write((byte) 0);
+        gw.Flush();
+        return glb.ToArray();
     }
 }
