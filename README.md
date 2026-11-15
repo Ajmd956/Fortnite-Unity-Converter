@@ -246,6 +246,8 @@ stays under the same license and keeps its source available.
   https://github.com/h4lfheart/FortnitePorting
   This app grew out of FortnitePorting and still builds on its work. Thank you
   to everyone who works on it.
+  The Fortnite type definitions in app/helper/FortnitePorting.CUE4Parse are copied
+  from it (GPL-3.0).
 
 This project is not affiliated with or endorsed by Epic Games, FortnitePorting
 or Unity. Fortnite is a trademark of Epic Games.

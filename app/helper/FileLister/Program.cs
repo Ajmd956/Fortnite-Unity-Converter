@@ -120,6 +120,7 @@ try
         DownloaderClient = localTextures ? new HttpClient(new OfflineHandler()) : new HttpClient(new StreamGuardHandler()) { Timeout = TimeSpan.FromSeconds(30) },
         Timeout = TimeSpan.FromSeconds(30)
     };
+    CUE4Parse.UE4.Assets.ObjectTypeRegistry.RegisterEngine(typeof(FortnitePorting.CUE4Parse.Models.Fortnite.GameFeature.UFortGameFeatureData).Assembly); // the same Fortnite types Fortnite Porting registers
     provider.Initialize();
     provider.ReadNaniteData = loadNanite; // Fortnite Porting turns this on by default; Nanite meshes fail to read without it
 
