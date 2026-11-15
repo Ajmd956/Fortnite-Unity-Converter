@@ -132,7 +132,7 @@ static class AssetExport
                         var mobj = ResolveMesh(provider, stem);
                         var mres = await RunWithDiag(provider, stem, mobj, true, () => RunWithRetry(
                             () => { var s1 = new ExportSession(); s1.Add(mobj); return s1.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png)); },
-                            () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); }),
+                            () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(work, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite, exportMorphTargets: false, socketFormat: ESocketFormat.None)); }),
                             r => !HasModelFile(r),
                             true));
                         var bad = mres.FirstOrDefault(r => !r.Success);
@@ -163,8 +163,8 @@ static class AssetExport
                     }
                     var obj = kind == "model" ? ResolveMesh(provider, stem) : provider.LoadPackageObject(stem);
                     var results = await RunWithDiag(provider, stem, obj, kind == "model", () => RunWithRetry(
-                        () => { var s1 = new ExportSession(); s1.Add(obj); return s1.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png)); },
-                        () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite)); }),
+                        () => { var s1 = new ExportSession(); s1.Add(obj); return s1.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, exportMorphTargets: kind != "model", socketFormat: kind == "model" ? ESocketFormat.None : ESocketFormat.Bone)); },
+                        () => WithoutNanite(provider, stem, alt => { var s2 = new ExportSession(); s2.Add(alt); return s2.RunAsync(outRoot, new ExportOptions(meshFormat: EMeshFormat.Gltf2, textureFormat: ETextureFormat.Png, meshQuality: EMeshQuality.All, naniteMeshFormat: ENaniteMeshFormat.NoNanite, exportMorphTargets: false, socketFormat: ESocketFormat.None)); }),
                         r => !HasModelFile(r),
                         kind == "model"));
                     var failed = results.FirstOrDefault(r => !r.Success);
@@ -328,6 +328,7 @@ static class AssetExport
             var sb = new StringBuilder();
             sb.Append("[diag] class=").Append(obj?.GetType().Name).Append(" exportType=").Append(obj?.ExportType).Append(" name=").Append(obj?.Name);
             if (obj is UStaticMesh sm) sb.Append(" bCooked=").Append(sm.bCooked).Append(" renderData=").Append(sm.RenderData is null ? "null" : "lods=" + (sm.RenderData.LODs?.Length.ToString() ?? "null"));
+            if (obj is CUE4Parse.UE4.Assets.Exports.Engine.USkinnedAsset sk) sb.Append(" lodModels=").Append(sk.LODModels?.Length.ToString() ?? "null").Append(" lodInfo=").Append(sk.LODInfo?.Length.ToString() ?? "null").Append(" nanite=").Append(sk.NaniteResources is null ? "none" : "yes");
             sb.Append(" readNanite=").Append(provider.ReadNaniteData);
             sb.Append(" exports=");
             foreach (var o in provider.LoadPackage(stem).GetExports()) sb.Append(o.Name).Append(':').Append(o.GetType().Name).Append(o is UStaticMesh m ? (m.RenderData is null ? "(noRD)" : "(rd)") : "").Append(',');
