@@ -167,6 +167,7 @@ try
 
     if (mappingsPath is not null)
         provider.MappingsContainer = new FileUsmapTypeMappingsProvider(mappingsPath, StringComparer.Ordinal);
+    Say("log: Unreal version " + gameEngine + ", Nanite " + (loadNanite ? "on" : "off") + ", mappings " + (mappingsPath is null ? "NONE (meshes and properties cannot be read without mappings)" : Path.GetFileName(mappingsPath)));
 
     provider.LoadVirtualPaths();
 

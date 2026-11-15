@@ -410,6 +410,7 @@ function startTypeServer() {
       buf = lines.pop()
       for (const line of lines) {
         if (line === 'ready') finish(true)
+        else if (line.startsWith('log: ')) send('engine:log', '[engine] ' + line.slice(5) + '\n')
         else if (line.startsWith('status: ')) setApi('starting', line.slice(8))
         else if (line.startsWith('api: ready')) setApi('ready', '')
         else if (line.startsWith('api: unavailable')) {
