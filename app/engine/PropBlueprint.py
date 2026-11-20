@@ -4,6 +4,7 @@ SKIP_TYPES = {"BoxComponent", "CapsuleComponent", "ChildActorComponent", "FortSo
 DEFAULT_PITCH = (0.95, 1.05)
 report = []
 PATHS = {}
+LEGACY_SCRIPTS = ("PorterParticleReplayBuild.cs",)
 
 
 def note(kind, text):
@@ -551,6 +552,15 @@ def finish(spec, out, bp_name, scripts=None, ship=None):
             dst = dst.replace(a, b)
         with open(os.path.join(out, sub, dst), "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
+    for old in LEGACY_SCRIPTS:
+        for ext in ("", ".meta"):
+            stale = os.path.join(out, "Editor", old + ext)
+            if os.path.exists(stale):
+                try:
+                    os.remove(stale)
+                    print("removed old script: " + old + ext)
+                except OSError:
+                    pass
     kinds = {}
     for n in spec["nodes"]:
         kinds[n["kind"]] = kinds.get(n["kind"], 0) + 1
